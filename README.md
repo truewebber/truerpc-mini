@@ -1,8 +1,10 @@
-# TrueRPCMini · ![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)
+# TrueRPCMini
 
 A minimal, native macOS gRPC client inspired by the now-deprecated BloomRPC.
 
 > **Note**: A full-featured TrueRPC client is coming soon at [truerpc.app](https://truerpc.app). This mini version serves as a proof of concept and technology demonstration.
+
+[![License](https://img.shields.io/badge/License-MIT-blue.svg?style=flat)](LICENSE)
 
 ## Goals
 
