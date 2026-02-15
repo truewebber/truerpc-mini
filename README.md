@@ -84,6 +84,12 @@ xcodebuild test -scheme TrueRPCMini -destination 'platform=macOS'
 - [SwiftProtoParser](https://github.com/truewebber/swift-protoparser) - Runtime `.proto` file parsing
 - [SwiftProtoReflect](https://github.com/truewebber/swift-protoreflect) - Dynamic protobuf message creation and manipulation
 
+## License
+
+[MIT License](LICENSE)
+
+Copyright (c) 2026 Truewebber
+
 ## Acknowledgments
 
 Inspired by [BloomRPC](https://github.com/bloomrpc/bloomrpc), which provided an excellent GUI for gRPC testing before being deprecated.
