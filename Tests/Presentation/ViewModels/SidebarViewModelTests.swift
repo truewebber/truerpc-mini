@@ -6,16 +6,22 @@ final class SidebarViewModelTests: XCTestCase {
     
     var sut: SidebarViewModel!
     var mockUseCase: MockImportProtoFileUseCase!
+    var mockImportPathsRepository: MockImportPathsRepository!
     
     override func setUp() {
         super.setUp()
         mockUseCase = MockImportProtoFileUseCase()
-        sut = SidebarViewModel(importProtoFileUseCase: mockUseCase)
+        mockImportPathsRepository = MockImportPathsRepository()
+        sut = SidebarViewModel(
+            importProtoFileUseCase: mockUseCase,
+            importPathsRepository: mockImportPathsRepository
+        )
     }
     
     override func tearDown() {
         sut = nil
         mockUseCase = nil
+        mockImportPathsRepository = nil
         super.tearDown()
     }
     
@@ -115,12 +121,14 @@ final class SidebarViewModelTests: XCTestCase {
 class MockImportProtoFileUseCase: ImportProtoFileUseCaseProtocol {
     var executeCalled = false
     var executeURL: URL?
+    var executeImportPaths: [String]?
     var protoFileToReturn: ProtoFile?
     var shouldThrowError = false
     
     func execute(url: URL) async throws -> ProtoFile {
         executeCalled = true
         executeURL = url
+        executeImportPaths = nil
         
         if shouldThrowError {
             throw TestError.importFailed
@@ -131,6 +139,36 @@ class MockImportProtoFileUseCase: ImportProtoFileUseCaseProtocol {
         }
         
         return protoFile
+    }
+    
+    func execute(url: URL, importPaths: [String]) async throws -> ProtoFile {
+        executeCalled = true
+        executeURL = url
+        executeImportPaths = importPaths
+        
+        if shouldThrowError {
+            throw TestError.importFailed
+        }
+        
+        guard let protoFile = protoFileToReturn else {
+            throw TestError.noProtoFile
+        }
+        
+        return protoFile
+    }
+}
+
+// MARK: - Mock ImportPaths Repository
+
+class MockImportPathsRepository: ImportPathsRepositoryProtocol {
+    var importPaths: [String] = []
+    
+    func getImportPaths() -> [String] {
+        return importPaths
+    }
+    
+    func saveImportPaths(_ paths: [String]) {
+        importPaths = paths
     }
 }
 

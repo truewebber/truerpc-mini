@@ -19,6 +19,10 @@ struct TrueRPCMiniApp: App {
             FileSystemProtoRepository()
         }
         
+        di.register(ImportPathsRepositoryProtocol.self) {
+            UserDefaultsImportPathsRepository()
+        }
+        
         // Register Domain Layer dependencies
         di.register(ImportProtoFileUseCaseProtocol.self) {
             ImportProtoFileUseCase(repository: di.resolve(ProtoRepositoryProtocol.self)!)
@@ -26,7 +30,10 @@ struct TrueRPCMiniApp: App {
         
         // Register Presentation Layer dependencies
         di.register(SidebarViewModel.self, lifecycle: .transient) {
-            SidebarViewModel(importProtoFileUseCase: di.resolve(ImportProtoFileUseCaseProtocol.self)!)
+            SidebarViewModel(
+                importProtoFileUseCase: di.resolve(ImportProtoFileUseCaseProtocol.self)!,
+                importPathsRepository: di.resolve(ImportPathsRepositoryProtocol.self)!
+            )
         }
     }
     

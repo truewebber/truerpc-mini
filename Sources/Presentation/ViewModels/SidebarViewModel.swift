@@ -13,22 +13,29 @@ public final class SidebarViewModel: ObservableObject {
     // MARK: - Dependencies
     
     private let importProtoFileUseCase: ImportProtoFileUseCaseProtocol
+    private let importPathsRepository: ImportPathsRepositoryProtocol
     
     // MARK: - Initialization
     
-    public init(importProtoFileUseCase: ImportProtoFileUseCaseProtocol) {
+    public init(
+        importProtoFileUseCase: ImportProtoFileUseCaseProtocol,
+        importPathsRepository: ImportPathsRepositoryProtocol
+    ) {
         self.importProtoFileUseCase = importProtoFileUseCase
+        self.importPathsRepository = importPathsRepository
     }
     
     // MARK: - Public Methods
     
     /// Imports a proto file from the given URL
+    /// Uses configured import paths for dependency resolution
     public func importProtoFile(url: URL) async {
         isLoading = true
         error = nil
         
         do {
-            let protoFile = try await importProtoFileUseCase.execute(url: url)
+            let importPaths = importPathsRepository.getImportPaths()
+            let protoFile = try await importProtoFileUseCase.execute(url: url, importPaths: importPaths)
             protoFiles.append(protoFile)
         } catch {
             self.error = error.localizedDescription

@@ -223,13 +223,17 @@ struct SidebarView_Previews: PreviewProvider {
     static var previews: some View {
         // Preview with empty state
         SidebarView(viewModel: SidebarViewModel(
-            importProtoFileUseCase: PreviewMockUseCase()
+            importProtoFileUseCase: PreviewMockUseCase(),
+            importPathsRepository: PreviewMockImportPathsRepository()
         ))
         .previewDisplayName("Empty State")
         
         // Preview with data
         SidebarView(viewModel: {
-            let vm = SidebarViewModel(importProtoFileUseCase: PreviewMockUseCase())
+            let vm = SidebarViewModel(
+                importProtoFileUseCase: PreviewMockUseCase(),
+                importPathsRepository: PreviewMockImportPathsRepository()
+            )
             vm.protoFiles = [
                 ProtoFile(
                     name: "example.proto",
@@ -261,7 +265,10 @@ struct SidebarView_Previews: PreviewProvider {
         
         // Preview with loading state
         SidebarView(viewModel: {
-            let vm = SidebarViewModel(importProtoFileUseCase: PreviewMockUseCase())
+            let vm = SidebarViewModel(
+                importProtoFileUseCase: PreviewMockUseCase(),
+                importPathsRepository: PreviewMockImportPathsRepository()
+            )
             vm.isLoading = true
             return vm
         }())
@@ -269,7 +276,10 @@ struct SidebarView_Previews: PreviewProvider {
         
         // Preview with error
         SidebarView(viewModel: {
-            let vm = SidebarViewModel(importProtoFileUseCase: PreviewMockUseCase())
+            let vm = SidebarViewModel(
+                importProtoFileUseCase: PreviewMockUseCase(),
+                importPathsRepository: PreviewMockImportPathsRepository()
+            )
             vm.error = "Failed to load proto file"
             return vm
         }())
@@ -281,5 +291,20 @@ private class PreviewMockUseCase: ImportProtoFileUseCaseProtocol {
     func execute(url: URL) async throws -> ProtoFile {
         ProtoFile(name: "test.proto", path: url, services: [])
     }
+    
+    func execute(url: URL, importPaths: [String]) async throws -> ProtoFile {
+        ProtoFile(name: "test.proto", path: url, services: [])
+    }
+}
+
+private class PreviewMockImportPathsRepository: ImportPathsRepositoryProtocol {
+    func getImportPaths() -> [String] {
+        return []
+    }
+    
+    func saveImportPaths(_ paths: [String]) {
+        // No-op for preview
+    }
 }
 #endif
+
