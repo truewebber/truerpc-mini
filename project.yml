@@ -1,0 +1,33 @@
+name: TrueRPCMini
+options:
+  bundleIdPrefix: com.truewebber
+targets:
+  TrueRPCMini:
+    type: application
+    platform: macOS
+    deploymentTarget: "14.0"
+    sources: [Sources]
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: com.truewebber.TrueRPCMini
+    dependencies:
+      - package: SwiftProtoReflect
+      - package: SwiftProtoParser
+  TrueRPCMiniTests:
+    type: bundle.unit-test
+    platform: macOS
+    deploymentTarget: "14.0"
+    sources: [Tests]
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+    dependencies:
+      - target: TrueRPCMini
+packages:
+  SwiftProtoReflect:
+    url: https://github.com/truewebber/swift-protoreflect
+    from: 4.2.0
+  SwiftProtoParser:
+    url: https://github.com/truewebber/swift-protoparser
+    from: 0.3.0
