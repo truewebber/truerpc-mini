@@ -205,39 +205,66 @@ Setup the core dependency injection and app entry point structure.
 5. Server URL input at top
 
 ### 3.1 Domain Layer
-- [ ] **Entity: `EditorTab`**
+- [x] **Entity: `EditorTab`**
     - Contains: `id`, `methodName`, `serviceName`, `protoFile`
-- [ ] **Entity: `RequestDraft`**
+- [x] **Entity: `RequestDraft`**
     - Contains: `jsonBody: String`, `url: String`, `method: Method`
-- [ ] **Use Case: `CreateEditorTabUseCase`**
+- [x] **Use Case: `CreateEditorTabUseCase`**
     - Input: `Method`, `Service`, `ProtoFile`
     - Output: `EditorTab` with default state
-- [ ] **Use Case: `GenerateMockDataUseCase`**
+    - **Tests:** 3 tests
+- [x] **Use Case: `GenerateMockDataUseCase`**
     - Input: `Method` (inputType)
     - Output: JSON String with mock data
+    - **Tests:** 2 tests
 
 ### 3.2 Data Layer
-- [ ] **Service: `MockDataGenerator`**
-    - Uses `SwiftProtoReflect` to generate default JSON
-    - Walks message schema, creates sample values
+- [x] **Service: `MockDataGenerator`**
+    - **MVP:** Returns empty JSON `{}`
+    - **Future:** Will use SwiftProtoReflect to generate realistic mock data
+    - **Tests:** 3 tests
 
 ### 3.3 Presentation Layer
-- [ ] **ViewModel: `EditorTabViewModel`**
+- [x] **ViewModel: `EditorTabViewModel`**
     - State: `requestJson: String`, `url: String`, `isLoading: Bool`
-    - Actions: `updateJson()`, `updateUrl()`
-- [ ] **View: `RequestEditorView`**
+    - Actions: `updateJson()`, `updateUrl()`, `loadMockData()`
+    - **Tests:** 5 tests
+- [x] **View: `RequestEditorView`**
     - TextEditor for JSON (with monospace font)
     - TextField for server URL
-    - Simple layout (no syntax highlighting in MVP)
-- [ ] **Update: `TrueRPCMiniApp`**
-    - Add NavigationSplitView with Sidebar + Editor
+    - Header with method info
+    - **MVP:** No syntax highlighting, no validation
+- [x] **ViewModel: `AppViewModel`**
+    - Coordinates navigation between sidebar and editor
+    - Manages selected tab state
+- [x] **Update: `TrueRPCMiniApp`**
+    - Added NavigationSplitView with Sidebar + Editor
+    - Integrated AppViewModel coordination
 
 ### 3.4 Persistence (part of Epic 13)
 - [ ] **Save:** Global URL (last used server address) → UserDefaults
 - [ ] **Load:** On app startup, populate URL field with saved value
 - [ ] **BloomRPC:** Saves via `storeUrl()` on every URL change, loads via `getUrl()` in Editor init
 
-**Progress:** Not started
+**Total Tests in Epic 3:** 13 (3 CreateEditorTab + 2 GenerateMockData + 3 MockDataGenerator + 5 EditorTabViewModel)  
+**Completed:** Feb 15, 2026
+
+**Progress:** ✅ **COMPLETE** (MVP)
+
+**MVP Scope:**
+- ✅ Basic JSON editor with monospace font
+- ✅ URL input field
+- ✅ Method selection from sidebar
+- ✅ Auto-load mock data (empty `{}` for now)
+- ✅ NavigationSplitView integration
+
+**Future Enhancements (not in MVP):**
+- Syntax highlighting for JSON
+- JSON validation and formatting
+- Realistic mock data using SwiftProtoReflect
+- Copy/paste buttons
+- JSON prettify/minify
+- Line numbers in editor
 
 ---
 

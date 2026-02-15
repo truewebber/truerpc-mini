@@ -10,6 +10,9 @@ struct TrueRPCMiniApp: App {
     /// Sidebar ViewModel (created once and reused)
     @StateObject private var sidebarViewModel: SidebarViewModel
     
+    /// App coordinator ViewModel
+    @StateObject private var appViewModel: AppViewModel
+    
     // MARK: - Initialization
     
     init() {
@@ -30,6 +33,10 @@ struct TrueRPCMiniApp: App {
             UserDefaultsProtoPathsRepository()
         }
         
+        di.register(MockDataGeneratorProtocol.self) {
+            MockDataGenerator()
+        }
+        
         // Register Domain Layer dependencies
         di.register(ImportProtoFileUseCaseProtocol.self) {
             ImportProtoFileUseCase(repository: di.resolve(ProtoRepositoryProtocol.self)!)
@@ -41,34 +48,73 @@ struct TrueRPCMiniApp: App {
             )
         }
         
+        di.register(CreateEditorTabUseCase.self) {
+            CreateEditorTabUseCase()
+        }
+        
+        di.register(GenerateMockDataUseCase.self) {
+            GenerateMockDataUseCase(
+                mockDataGenerator: di.resolve(MockDataGeneratorProtocol.self)!
+            )
+        }
+        
         // Create SidebarViewModel once
-        let viewModel = SidebarViewModel(
+        let sidebarVM = SidebarViewModel(
             importProtoFileUseCase: di.resolve(ImportProtoFileUseCaseProtocol.self)!,
             importPathsRepository: di.resolve(ImportPathsRepositoryProtocol.self)!,
             protoPathsPersistence: di.resolve(ProtoPathsPersistenceProtocol.self)!,
             loadSavedProtosUseCase: di.resolve(LoadSavedProtosUseCase.self)!
         )
         
-        // Use _StateObject to initialize @StateObject property
-        _sidebarViewModel = StateObject(wrappedValue: viewModel)
+        // Create AppViewModel
+        let appVM = AppViewModel(
+            createEditorTabUseCase: di.resolve(CreateEditorTabUseCase.self)!,
+            generateMockDataUseCase: di.resolve(GenerateMockDataUseCase.self)!
+        )
+        
+        // Use _StateObject to initialize @StateObject properties
+        _sidebarViewModel = StateObject(wrappedValue: sidebarVM)
+        _appViewModel = StateObject(wrappedValue: appVM)
     }
     
     // MARK: - Scene
     
     var body: some Scene {
         WindowGroup {
-            NavigationView {
-                SidebarView(viewModel: sidebarViewModel)
-                    .task {
-                        // Load saved proto files on app startup
-                        await sidebarViewModel.loadSavedProtos()
+            NavigationSplitView {
+                SidebarView(
+                    viewModel: sidebarViewModel,
+                    onMethodSelected: { method, service, protoFile in
+                        appViewModel.openMethod(method: method, service: service, protoFile: protoFile)
                     }
-                
-                Text("Select a method to start")
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                )
+                .task {
+                    // Load saved proto files on app startup
+                    await sidebarViewModel.loadSavedProtos()
+                }
+            } detail: {
+                if let editorTab = appViewModel.selectedEditorTab {
+                    RequestEditorView(viewModel: editorTab)
+                } else {
+                    placeholderView
+                }
             }
-            .frame(minWidth: 800, minHeight: 600)
+            .frame(minWidth: 900, minHeight: 600)
             .environmentObject(di)
         }
+    }
+    
+    // MARK: - Subviews
+    
+    private var placeholderView: some View {
+        VStack(spacing: 16) {
+            Image(systemName: "doc.text")
+                .font(.system(size: 60))
+                .foregroundColor(.secondary)
+            Text("Select a method to start")
+                .font(.title2)
+                .foregroundColor(.secondary)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }

@@ -4,9 +4,14 @@ import SwiftUI
 public struct SidebarView: View {
     @StateObject private var viewModel: SidebarViewModel
     @State private var isImporterPresented = false
+    let onMethodSelected: (Method, Service, ProtoFile) -> Void
     
-    public init(viewModel: SidebarViewModel) {
+    public init(
+        viewModel: SidebarViewModel,
+        onMethodSelected: @escaping (Method, Service, ProtoFile) -> Void
+    ) {
         _viewModel = StateObject(wrappedValue: viewModel)
+        self.onMethodSelected = onMethodSelected
     }
     
     public var body: some View {
@@ -94,7 +99,10 @@ public struct SidebarView: View {
     private var protoFilesList: some View {
         List {
             ForEach(viewModel.protoFiles, id: \.path) { protoFile in
-                ProtoFileRow(protoFile: protoFile)
+                ProtoFileRow(
+                    protoFile: protoFile,
+                    onMethodSelected: onMethodSelected
+                )
             }
         }
         .listStyle(.sidebar)
@@ -120,6 +128,7 @@ public struct SidebarView: View {
 /// Row displaying a single proto file with its services and methods
 private struct ProtoFileRow: View {
     let protoFile: ProtoFile
+    let onMethodSelected: (Method, Service, ProtoFile) -> Void
     @State private var isExpanded = true
     
     var body: some View {
@@ -131,7 +140,11 @@ private struct ProtoFileRow: View {
                     .padding(.leading)
             } else {
                 ForEach(protoFile.services, id: \.name) { service in
-                    ServiceRow(service: service)
+                    ServiceRow(
+                        service: service,
+                        protoFile: protoFile,
+                        onMethodSelected: onMethodSelected
+                    )
                 }
             }
         } label: {
@@ -151,6 +164,8 @@ private struct ProtoFileRow: View {
 /// Row displaying a service with its methods
 private struct ServiceRow: View {
     let service: Service
+    let protoFile: ProtoFile
+    let onMethodSelected: (Method, Service, ProtoFile) -> Void
     @State private var isExpanded = true
     
     var body: some View {
@@ -162,7 +177,12 @@ private struct ServiceRow: View {
                     .padding(.leading)
             } else {
                 ForEach(service.methods, id: \.name) { method in
-                    MethodRow(method: method)
+                    MethodRow(
+                        method: method,
+                        service: service,
+                        protoFile: protoFile,
+                        onMethodSelected: onMethodSelected
+                    )
                 }
             }
         } label: {
@@ -182,10 +202,13 @@ private struct ServiceRow: View {
 /// Row displaying a single method
 private struct MethodRow: View {
     let method: Method
+    let service: Service
+    let protoFile: ProtoFile
+    let onMethodSelected: (Method, Service, ProtoFile) -> Void
     
     var body: some View {
         Button {
-            // TODO: Handle method selection in Epic 3
+            onMethodSelected(method, service, protoFile)
         } label: {
             HStack {
                 Image(systemName: methodIcon)
@@ -222,75 +245,89 @@ private struct MethodRow: View {
 struct SidebarView_Previews: PreviewProvider {
     static var previews: some View {
         // Preview with empty state
-        SidebarView(viewModel: SidebarViewModel(
-            importProtoFileUseCase: PreviewMockUseCase(),
-            importPathsRepository: PreviewMockImportPathsRepository(),
-            protoPathsPersistence: PreviewMockProtoPathsPersistence(),
-            loadSavedProtosUseCase: PreviewMockLoadSavedProtosUseCase()
-        ))
+        SidebarView(
+            viewModel: SidebarViewModel(
+                importProtoFileUseCase: PreviewMockUseCase(),
+                importPathsRepository: PreviewMockImportPathsRepository(),
+                protoPathsPersistence: PreviewMockProtoPathsPersistence(),
+                loadSavedProtosUseCase: PreviewMockLoadSavedProtosUseCase()
+            ),
+            onMethodSelected: { _, _, _ in }
+        )
         .previewDisplayName("Empty State")
         
         // Preview with data
-        SidebarView(viewModel: {
-            let vm = SidebarViewModel(
-                importProtoFileUseCase: PreviewMockUseCase(),
-                importPathsRepository: PreviewMockImportPathsRepository(),
-                protoPathsPersistence: PreviewMockProtoPathsPersistence(),
-                loadSavedProtosUseCase: PreviewMockLoadSavedProtosUseCase()
-            )
-            vm.protoFiles = [
-                ProtoFile(
-                    name: "example.proto",
-                    path: URL(fileURLWithPath: "/test/example.proto"),
-                    services: [
-                        Service(
-                            name: "UserService",
-                            methods: [
-                                Method(
-                                    name: "GetUser",
-                                    inputType: "GetUserRequest",
-                                    outputType: "GetUserResponse",
-                                    isStreaming: false
-                                ),
-                                Method(
-                                    name: "StreamUsers",
-                                    inputType: "StreamUsersRequest",
-                                    outputType: "User",
-                                    isStreaming: true
-                                )
-                            ]
-                        )
-                    ]
+        SidebarView(
+            viewModel: {
+                let vm = SidebarViewModel(
+                    importProtoFileUseCase: PreviewMockUseCase(),
+                    importPathsRepository: PreviewMockImportPathsRepository(),
+                    protoPathsPersistence: PreviewMockProtoPathsPersistence(),
+                    loadSavedProtosUseCase: PreviewMockLoadSavedProtosUseCase()
                 )
-            ]
-            return vm
-        }())
+                vm.protoFiles = [
+                    ProtoFile(
+                        name: "example.proto",
+                        path: URL(fileURLWithPath: "/test/example.proto"),
+                        services: [
+                            Service(
+                                name: "UserService",
+                                methods: [
+                                    Method(
+                                        name: "GetUser",
+                                        inputType: "GetUserRequest",
+                                        outputType: "GetUserResponse",
+                                        isStreaming: false
+                                    ),
+                                    Method(
+                                        name: "StreamUsers",
+                                        inputType: "StreamUsersRequest",
+                                        outputType: "User",
+                                        isStreaming: true
+                                    )
+                                ]
+                            )
+                        ]
+                    )
+                ]
+                return vm
+            }(),
+            onMethodSelected: { method, service, protoFile in
+                print("Selected: \(method.name) from \(service.name)")
+            }
+        )
         .previewDisplayName("With Data")
         
         // Preview with loading state
-        SidebarView(viewModel: {
-            let vm = SidebarViewModel(
-                importProtoFileUseCase: PreviewMockUseCase(),
-                importPathsRepository: PreviewMockImportPathsRepository(),
-                protoPathsPersistence: PreviewMockProtoPathsPersistence(),
-                loadSavedProtosUseCase: PreviewMockLoadSavedProtosUseCase()
-            )
-            vm.isLoading = true
-            return vm
-        }())
+        SidebarView(
+            viewModel: {
+                let vm = SidebarViewModel(
+                    importProtoFileUseCase: PreviewMockUseCase(),
+                    importPathsRepository: PreviewMockImportPathsRepository(),
+                    protoPathsPersistence: PreviewMockProtoPathsPersistence(),
+                    loadSavedProtosUseCase: PreviewMockLoadSavedProtosUseCase()
+                )
+                vm.isLoading = true
+                return vm
+            }(),
+            onMethodSelected: { _, _, _ in }
+        )
         .previewDisplayName("Loading")
         
         // Preview with error
-        SidebarView(viewModel: {
-            let vm = SidebarViewModel(
-                importProtoFileUseCase: PreviewMockUseCase(),
-                importPathsRepository: PreviewMockImportPathsRepository(),
-                protoPathsPersistence: PreviewMockProtoPathsPersistence(),
-                loadSavedProtosUseCase: PreviewMockLoadSavedProtosUseCase()
-            )
-            vm.error = "Failed to load proto file"
-            return vm
-        }())
+        SidebarView(
+            viewModel: {
+                let vm = SidebarViewModel(
+                    importProtoFileUseCase: PreviewMockUseCase(),
+                    importPathsRepository: PreviewMockImportPathsRepository(),
+                    protoPathsPersistence: PreviewMockProtoPathsPersistence(),
+                    loadSavedProtosUseCase: PreviewMockLoadSavedProtosUseCase()
+                )
+                vm.error = "Failed to load proto file"
+                return vm
+            }(),
+            onMethodSelected: { _, _, _ in }
+        )
         .previewDisplayName("Error")
     }
 }
