@@ -5,7 +5,7 @@ targets:
   TrueRPCMini:
     type: application
     platform: macOS
-    deploymentTarget: "14.0"
+    deploymentTarget: "15.0"
     sources: [Sources]
     settings:
       base:
@@ -14,10 +14,12 @@ targets:
     dependencies:
       - package: SwiftProtoReflect
       - package: SwiftProtoParser
+      - package: GRPCCore
+      - package: GRPCNIOTransportHTTP2
   TrueRPCMiniTests:
     type: bundle.unit-test
     platform: macOS
-    deploymentTarget: "14.0"
+    deploymentTarget: "15.0"
     sources: [Tests]
     settings:
       base:
@@ -31,3 +33,9 @@ packages:
   SwiftProtoParser:
     url: https://github.com/truewebber/swift-protoparser
     from: 0.3.0
+  GRPCCore:
+    url: https://github.com/grpc/grpc-swift-2.git
+    from: 2.0.0
+  GRPCNIOTransportHTTP2:
+    url: https://github.com/grpc/grpc-swift-nio-transport.git
+    from: 2.0.0
