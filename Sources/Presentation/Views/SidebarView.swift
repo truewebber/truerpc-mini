@@ -224,7 +224,9 @@ struct SidebarView_Previews: PreviewProvider {
         // Preview with empty state
         SidebarView(viewModel: SidebarViewModel(
             importProtoFileUseCase: PreviewMockUseCase(),
-            importPathsRepository: PreviewMockImportPathsRepository()
+            importPathsRepository: PreviewMockImportPathsRepository(),
+            protoPathsPersistence: PreviewMockProtoPathsPersistence(),
+            loadSavedProtosUseCase: PreviewMockLoadSavedProtosUseCase()
         ))
         .previewDisplayName("Empty State")
         
@@ -232,7 +234,9 @@ struct SidebarView_Previews: PreviewProvider {
         SidebarView(viewModel: {
             let vm = SidebarViewModel(
                 importProtoFileUseCase: PreviewMockUseCase(),
-                importPathsRepository: PreviewMockImportPathsRepository()
+                importPathsRepository: PreviewMockImportPathsRepository(),
+                protoPathsPersistence: PreviewMockProtoPathsPersistence(),
+                loadSavedProtosUseCase: PreviewMockLoadSavedProtosUseCase()
             )
             vm.protoFiles = [
                 ProtoFile(
@@ -267,7 +271,9 @@ struct SidebarView_Previews: PreviewProvider {
         SidebarView(viewModel: {
             let vm = SidebarViewModel(
                 importProtoFileUseCase: PreviewMockUseCase(),
-                importPathsRepository: PreviewMockImportPathsRepository()
+                importPathsRepository: PreviewMockImportPathsRepository(),
+                protoPathsPersistence: PreviewMockProtoPathsPersistence(),
+                loadSavedProtosUseCase: PreviewMockLoadSavedProtosUseCase()
             )
             vm.isLoading = true
             return vm
@@ -278,7 +284,9 @@ struct SidebarView_Previews: PreviewProvider {
         SidebarView(viewModel: {
             let vm = SidebarViewModel(
                 importProtoFileUseCase: PreviewMockUseCase(),
-                importPathsRepository: PreviewMockImportPathsRepository()
+                importPathsRepository: PreviewMockImportPathsRepository(),
+                protoPathsPersistence: PreviewMockProtoPathsPersistence(),
+                loadSavedProtosUseCase: PreviewMockLoadSavedProtosUseCase()
             )
             vm.error = "Failed to load proto file"
             return vm
@@ -304,6 +312,26 @@ private class PreviewMockImportPathsRepository: ImportPathsRepositoryProtocol {
     
     func saveImportPaths(_ paths: [String]) {
         // No-op for preview
+    }
+}
+
+private class PreviewMockProtoPathsPersistence: ProtoPathsPersistenceProtocol {
+    func saveProtoPaths(_ paths: [URL]) {
+        // No-op for preview
+    }
+    
+    func getProtoPaths() -> [URL] {
+        return []
+    }
+}
+
+private class PreviewMockLoadSavedProtosUseCase: LoadSavedProtosUseCase {
+    init() {
+        super.init(importProtoFileUseCase: PreviewMockUseCase())
+    }
+    
+    override func execute(urls: [URL], importPaths: [String]) async -> [ProtoFile] {
+        return []
     }
 }
 #endif

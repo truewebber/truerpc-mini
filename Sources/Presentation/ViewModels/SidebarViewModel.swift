@@ -14,21 +14,47 @@ public final class SidebarViewModel: ObservableObject {
     
     private let importProtoFileUseCase: ImportProtoFileUseCaseProtocol
     private let importPathsRepository: ImportPathsRepositoryProtocol
+    private let protoPathsPersistence: ProtoPathsPersistenceProtocol
+    private let loadSavedProtosUseCase: LoadSavedProtosUseCase
     
     // MARK: - Initialization
     
     public init(
         importProtoFileUseCase: ImportProtoFileUseCaseProtocol,
-        importPathsRepository: ImportPathsRepositoryProtocol
+        importPathsRepository: ImportPathsRepositoryProtocol,
+        protoPathsPersistence: ProtoPathsPersistenceProtocol,
+        loadSavedProtosUseCase: LoadSavedProtosUseCase
     ) {
         self.importProtoFileUseCase = importProtoFileUseCase
         self.importPathsRepository = importPathsRepository
+        self.protoPathsPersistence = protoPathsPersistence
+        self.loadSavedProtosUseCase = loadSavedProtosUseCase
     }
     
     // MARK: - Public Methods
     
+    /// Loads saved proto files from persistent storage
+    /// Called on app startup to restore previous session
+    public func loadSavedProtos() async {
+        isLoading = true
+        error = nil
+        
+        let savedPaths = protoPathsPersistence.getProtoPaths()
+        guard !savedPaths.isEmpty else {
+            isLoading = false
+            return
+        }
+        
+        let importPaths = importPathsRepository.getImportPaths()
+        let loadedProtos = await loadSavedProtosUseCase.execute(urls: savedPaths, importPaths: importPaths)
+        protoFiles = loadedProtos
+        
+        isLoading = false
+    }
+    
     /// Imports a proto file from the given URL
     /// Uses configured import paths for dependency resolution
+    /// Saves the path to persistent storage after successful import
     public func importProtoFile(url: URL) async {
         isLoading = true
         error = nil
@@ -37,10 +63,20 @@ public final class SidebarViewModel: ObservableObject {
             let importPaths = importPathsRepository.getImportPaths()
             let protoFile = try await importProtoFileUseCase.execute(url: url, importPaths: importPaths)
             protoFiles.append(protoFile)
+            
+            // Save paths after successful import
+            saveProtoPaths()
         } catch {
             self.error = error.localizedDescription
         }
         
         isLoading = false
+    }
+    
+    // MARK: - Private Methods
+    
+    private func saveProtoPaths() {
+        let paths = protoFiles.map { $0.path }
+        protoPathsPersistence.saveProtoPaths(paths)
     }
 }
