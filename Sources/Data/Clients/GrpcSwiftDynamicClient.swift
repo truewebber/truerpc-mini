@@ -78,7 +78,7 @@ public class GrpcSwiftDynamicClient: GrpcClientProtocol {
     }
     
     /// Parse server address into host and port
-    private func parseServerAddress(_ address: String) throws -> (host: String, port: Int) {
+    internal func parseServerAddress(_ address: String) throws -> (host: String, port: Int) {
         // Remove protocol if present
         let cleanAddress = address
             .replacingOccurrences(of: "http://", with: "")
@@ -97,7 +97,7 @@ public class GrpcSwiftDynamicClient: GrpcClientProtocol {
     }
     
     /// Map gRPC RPCError to GrpcClientError
-    private func mapGrpcError(_ error: RPCError) -> GrpcClientError {
+    internal func mapGrpcError(_ error: RPCError) -> GrpcClientError {
         switch error.code {
         case .unavailable:
             return .unavailable

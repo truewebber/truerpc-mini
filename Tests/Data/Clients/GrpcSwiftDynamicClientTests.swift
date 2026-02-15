@@ -1,5 +1,6 @@
 import XCTest
 import SwiftProtoReflect
+import GRPCCore
 @testable import TrueRPCMini
 
 final class GrpcSwiftDynamicClientTests: XCTestCase {
@@ -104,14 +105,256 @@ final class GrpcSwiftDynamicClientTests: XCTestCase {
         // Then
         XCTAssertEqual(jsonString, "{}")
     }
+    
+    // MARK: - Server Address Parsing
+    
+    func test_parseServerAddress_withHostAndPort_returnsCorrectValues() throws {
+        // Given
+        let address = "localhost:50051"
+        
+        // When
+        let (host, port) = try sut.parseServerAddress(address)
+        
+        // Then
+        XCTAssertEqual(host, "localhost")
+        XCTAssertEqual(port, 50051)
+    }
+    
+    func test_parseServerAddress_withOnlyHost_usesDefaultPort() throws {
+        // Given
+        let address = "api.example.com"
+        
+        // When
+        let (host, port) = try sut.parseServerAddress(address)
+        
+        // Then
+        XCTAssertEqual(host, "api.example.com")
+        XCTAssertEqual(port, 50051)
+    }
+    
+    func test_parseServerAddress_withHttpProtocol_stripsProtocol() throws {
+        // Given
+        let address = "http://localhost:8080"
+        
+        // When
+        let (host, port) = try sut.parseServerAddress(address)
+        
+        // Then
+        XCTAssertEqual(host, "localhost")
+        XCTAssertEqual(port, 8080)
+    }
+    
+    func test_parseServerAddress_withHttpsProtocol_stripsProtocol() throws {
+        // Given
+        let address = "https://api.example.com:443"
+        
+        // When
+        let (host, port) = try sut.parseServerAddress(address)
+        
+        // Then
+        XCTAssertEqual(host, "api.example.com")
+        XCTAssertEqual(port, 443)
+    }
+    
+    func test_parseServerAddress_withEmptyString_throwsError() {
+        // Given
+        let address = ""
+        
+        // When/Then
+        XCTAssertThrowsError(try sut.parseServerAddress(address)) { error in
+            guard case GrpcClientError.networkError = error else {
+                XCTFail("Expected networkError")
+                return
+            }
+        }
+    }
+    
+    func test_parseServerAddress_withInvalidPort_usesDefaultPort() throws {
+        // Given
+        let address = "localhost:invalid"
+        
+        // When
+        let (host, port) = try sut.parseServerAddress(address)
+        
+        // Then
+        XCTAssertEqual(host, "localhost")
+        XCTAssertEqual(port, 50051) // Falls back to default
+    }
+    
+    // MARK: - Error Mapping
+    
+    func test_mapGrpcError_withUnavailable_returnsUnavailable() {
+        // Given
+        let rpcError = RPCError(code: .unavailable, message: "Service unavailable")
+        
+        // When
+        let result = sut.mapGrpcError(rpcError)
+        
+        // Then
+        XCTAssertEqual(result, .unavailable)
+    }
+    
+    func test_mapGrpcError_withDeadlineExceeded_returnsTimeout() {
+        // Given
+        let rpcError = RPCError(code: .deadlineExceeded, message: "Deadline exceeded")
+        
+        // When
+        let result = sut.mapGrpcError(rpcError)
+        
+        // Then
+        XCTAssertEqual(result, .timeout)
+    }
+    
+    func test_mapGrpcError_withOtherCode_returnsNetworkError() {
+        // Given
+        let rpcError = RPCError(code: .unknown, message: "Unknown error")
+        
+        // When
+        let result = sut.mapGrpcError(rpcError)
+        
+        // Then
+        if case .networkError(let message) = result {
+            XCTAssertTrue(message.contains("Unknown"))
+        } else {
+            XCTFail("Expected networkError")
+        }
+    }
+    
+    // MARK: - Execute Unary (Integration-style tests)
+    
+    func test_executeUnary_getsMessageDescriptorsFromRepository() async throws {
+        // Given
+        let method = TrueRPCMini.Method(
+            name: "TestMethod",
+            serviceName: "TestService",
+            inputType: ".test.Request",
+            outputType: ".test.Response"
+        )
+        let request = RequestDraft(
+            jsonBody: #"{"name": "test"}"#,
+            url: "localhost:50051",
+            method: method
+        )
+        
+        // Create descriptors for input and output
+        var inputDescriptor = MessageDescriptor(name: "Request", parent: fileDescriptor)
+        inputDescriptor.addField(FieldDescriptor(name: "name", number: 1, type: .string))
+        
+        var outputDescriptor = MessageDescriptor(name: "Response", parent: fileDescriptor)
+        outputDescriptor.addField(FieldDescriptor(name: "result", number: 1, type: .string))
+        
+        // Setup mock to return different descriptors based on type
+        mockRepository.inputDescriptor = inputDescriptor
+        mockRepository.outputDescriptor = outputDescriptor
+        
+        // When - This will fail trying to connect to localhost:50051, but that's ok
+        // We're testing that it calls the repository correctly
+        do {
+            _ = try await sut.executeUnary(request: request, method: method)
+            XCTFail("Should throw network error")
+        } catch {
+            // Expected to fail at network level
+            // But we can verify repository was called
+            XCTAssertTrue(mockRepository.getMessageDescriptorCalled)
+            XCTAssertTrue(mockRepository.capturedTypeNames.contains(".test.Request"))
+            XCTAssertTrue(mockRepository.capturedTypeNames.contains(".test.Response"))
+        }
+    }
+    
+    func test_executeUnary_whenRepositoryThrows_propagatesError() async {
+        // Given
+        let method = TrueRPCMini.Method(
+            name: "TestMethod",
+            serviceName: "TestService",
+            inputType: ".test.NonExistent",
+            outputType: ".test.Response"
+        )
+        let request = RequestDraft(
+            jsonBody: "{}",
+            url: "localhost:50051",
+            method: method
+        )
+        
+        mockRepository.shouldThrow = true
+        
+        // When/Then
+        do {
+            _ = try await sut.executeUnary(request: request, method: method)
+            XCTFail("Should throw error")
+        } catch {
+            // Should get repository error (messageTypeNotFound)
+            XCTAssertTrue(error is ProtoRepositoryError)
+        }
+    }
+    
+    func test_executeUnary_withInvalidJSON_throwsError() async {
+        // Given
+        let method = TrueRPCMini.Method(
+            name: "TestMethod",
+            serviceName: "TestService",
+            inputType: ".test.Request",
+            outputType: ".test.Response"
+        )
+        let request = RequestDraft(
+            jsonBody: "{invalid json",
+            url: "localhost:50051",
+            method: method
+        )
+        
+        mockRepository.stubbedMessageDescriptor = messageDescriptor
+        
+        // When/Then
+        do {
+            _ = try await sut.executeUnary(request: request, method: method)
+            XCTFail("Should throw error")
+        } catch {
+            // Should get JSON parsing error
+            XCTAssertNotNil(error)
+        }
+    }
+    
+    func test_executeUnary_withInvalidServerAddress_throwsError() async {
+        // Given
+        let method = TrueRPCMini.Method(
+            name: "TestMethod",
+            serviceName: "TestService",
+            inputType: ".test.Request",
+            outputType: ".test.Response"
+        )
+        let request = RequestDraft(
+            jsonBody: "{}",
+            url: "", // Invalid empty address
+            method: method
+        )
+        
+        mockRepository.stubbedMessageDescriptor = messageDescriptor
+        
+        // When/Then
+        do {
+            _ = try await sut.executeUnary(request: request, method: method)
+            XCTFail("Should throw error")
+        } catch let error as GrpcClientError {
+            if case .networkError = error {
+                // Expected
+            } else {
+                XCTFail("Expected networkError, got \(error)")
+            }
+        } catch {
+            XCTFail("Expected GrpcClientError, got \(error)")
+        }
+    }
 }
 
 // MARK: - Mock Repository
 
 fileprivate class MockProtoRepository: ProtoRepositoryProtocol {
     var stubbedMessageDescriptor: MessageDescriptor?
+    var inputDescriptor: MessageDescriptor?
+    var outputDescriptor: MessageDescriptor?
     var getMessageDescriptorCalled = false
     var capturedTypeName: String?
+    var capturedTypeNames: [String] = []
+    var shouldThrow = false
     
     func loadProto(url: URL) async throws -> ProtoFile {
         fatalError("Not implemented in mock")
@@ -128,6 +371,19 @@ fileprivate class MockProtoRepository: ProtoRepositoryProtocol {
     func getMessageDescriptor(forType typeName: String) throws -> MessageDescriptor {
         getMessageDescriptorCalled = true
         capturedTypeName = typeName
+        capturedTypeNames.append(typeName)
+        
+        if shouldThrow {
+            throw ProtoRepositoryError.messageTypeNotFound(typeName)
+        }
+        
+        // Return specific descriptor based on type name
+        if typeName.contains("Request"), let descriptor = inputDescriptor {
+            return descriptor
+        }
+        if typeName.contains("Response"), let descriptor = outputDescriptor {
+            return descriptor
+        }
         
         guard let descriptor = stubbedMessageDescriptor else {
             throw ProtoRepositoryError.messageTypeNotFound(typeName)
