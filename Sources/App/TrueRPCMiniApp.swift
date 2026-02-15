@@ -7,6 +7,9 @@ struct TrueRPCMiniApp: App {
     /// Dependency Injection container
     private let di: AppDI
     
+    /// Sidebar ViewModel (created once and reused)
+    @StateObject private var sidebarViewModel: SidebarViewModel
+    
     // MARK: - Initialization
     
     init() {
@@ -38,15 +41,16 @@ struct TrueRPCMiniApp: App {
             )
         }
         
-        // Register Presentation Layer dependencies
-        di.register(SidebarViewModel.self, lifecycle: .transient) {
-            SidebarViewModel(
-                importProtoFileUseCase: di.resolve(ImportProtoFileUseCaseProtocol.self)!,
-                importPathsRepository: di.resolve(ImportPathsRepositoryProtocol.self)!,
-                protoPathsPersistence: di.resolve(ProtoPathsPersistenceProtocol.self)!,
-                loadSavedProtosUseCase: di.resolve(LoadSavedProtosUseCase.self)!
-            )
-        }
+        // Create SidebarViewModel once
+        let viewModel = SidebarViewModel(
+            importProtoFileUseCase: di.resolve(ImportProtoFileUseCaseProtocol.self)!,
+            importPathsRepository: di.resolve(ImportPathsRepositoryProtocol.self)!,
+            protoPathsPersistence: di.resolve(ProtoPathsPersistenceProtocol.self)!,
+            loadSavedProtosUseCase: di.resolve(LoadSavedProtosUseCase.self)!
+        )
+        
+        // Use _StateObject to initialize @StateObject property
+        _sidebarViewModel = StateObject(wrappedValue: viewModel)
     }
     
     // MARK: - Scene
@@ -54,10 +58,10 @@ struct TrueRPCMiniApp: App {
     var body: some Scene {
         WindowGroup {
             NavigationView {
-                SidebarView(viewModel: di.resolve(SidebarViewModel.self)!)
+                SidebarView(viewModel: sidebarViewModel)
                     .task {
                         // Load saved proto files on app startup
-                        await di.resolve(SidebarViewModel.self)?.loadSavedProtos()
+                        await sidebarViewModel.loadSavedProtos()
                     }
                 
                 Text("Select a method to start")
