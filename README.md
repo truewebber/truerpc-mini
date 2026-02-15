@@ -1,4 +1,4 @@
-# TrueRPCMini
+# TrueRPCMini · ![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)
 
 A minimal, native macOS gRPC client inspired by the now-deprecated BloomRPC.
 
@@ -81,10 +81,6 @@ xcodebuild test -scheme TrueRPCMini -destination 'platform=macOS'
 
 - [SwiftProtoParser](https://github.com/truewebber/swift-protoparser) - Runtime `.proto` file parsing
 - [SwiftProtoReflect](https://github.com/truewebber/swift-protoreflect) - Dynamic protobuf message creation and manipulation
-
-## License
-
-MIT
 
 ## Acknowledgments
 
