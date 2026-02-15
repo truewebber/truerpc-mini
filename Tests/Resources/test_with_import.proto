@@ -1,0 +1,19 @@
+syntax = "proto3";
+
+package test;
+
+import "common/types.proto";
+
+message User {
+    string id = 1;
+    string name = 2;
+    common.Timestamp created_at = 3;
+}
+
+service UserService {
+    rpc GetUser (GetUserRequest) returns (User);
+}
+
+message GetUserRequest {
+    string id = 1;
+}

@@ -143,3 +143,142 @@ final class FileSystemProtoRepositoryTests: XCTestCase {
         return fileURL
     }
 }
+
+// MARK: - Import Paths Tests
+
+extension FileSystemProtoRepositoryTests {
+    func test_loadProto_withImportPaths_parsesFileWithDependencies() async throws {
+        // Given
+        let tempDir = FileManager.default.temporaryDirectory
+        let commonDir = tempDir.appendingPathComponent("common")
+        try? FileManager.default.createDirectory(at: commonDir, withIntermediateDirectories: true)
+        
+        let commonTypesContent = """
+        syntax = "proto3";
+        
+        package common;
+        
+        message Timestamp {
+            int64 seconds = 1;
+            int32 nanos = 2;
+        }
+        """
+        let commonTypesURL = commonDir.appendingPathComponent("types.proto")
+        try commonTypesContent.write(to: commonTypesURL, atomically: true, encoding: .utf8)
+        defer { try? FileManager.default.removeItem(at: commonTypesURL) }
+        
+        let mainProtoContent = """
+        syntax = "proto3";
+        
+        package test;
+        
+        import "common/types.proto";
+        
+        message User {
+            string id = 1;
+            string name = 2;
+            common.Timestamp created_at = 3;
+        }
+        
+        service UserService {
+            rpc GetUser (GetUserRequest) returns (User);
+        }
+        
+        message GetUserRequest {
+            string id = 1;
+        }
+        """
+        let mainProtoURL = try createTempProtoFile(content: mainProtoContent, name: "test_with_import.proto")
+        defer { try? FileManager.default.removeItem(at: mainProtoURL) }
+        
+        // When
+        let protoFile = try await sut.loadProto(url: mainProtoURL, importPaths: [tempDir.path])
+        
+        // Then
+        XCTAssertEqual(protoFile.name, "test_with_import.proto")
+        XCTAssertEqual(protoFile.services.count, 1)
+        XCTAssertEqual(protoFile.services.first?.name, "UserService")
+    }
+    
+    func test_loadProto_withEmptyImportPaths_failsForFileWithDependencies() async {
+        // Given
+        let mainProtoContent = """
+        syntax = "proto3";
+        
+        package test;
+        
+        import "common/types.proto";
+        
+        message User {
+            string id = 1;
+        }
+        """
+        let mainProtoURL = try! createTempProtoFile(content: mainProtoContent, name: "test_with_import.proto")
+        defer { try? FileManager.default.removeItem(at: mainProtoURL) }
+        
+        // When/Then
+        do {
+            _ = try await sut.loadProto(url: mainProtoURL, importPaths: [])
+            XCTFail("Expected parsing to fail without import paths")
+        } catch {
+            // Success - should fail
+            XCTAssertTrue(error is ProtoRepositoryError)
+        }
+    }
+    
+    func test_loadProto_withMultipleImportPaths_findsCorrectDependency() async throws {
+        // Given
+        let tempDir = FileManager.default.temporaryDirectory
+        let commonDir = tempDir.appendingPathComponent("common")
+        try? FileManager.default.createDirectory(at: commonDir, withIntermediateDirectories: true)
+        
+        // Create another empty directory to test multiple paths
+        let emptyDir = tempDir.appendingPathComponent("empty_protos")
+        try? FileManager.default.createDirectory(at: emptyDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: emptyDir) }
+        
+        let commonTypesContent = """
+        syntax = "proto3";
+        
+        package common;
+        
+        message Timestamp {
+            int64 seconds = 1;
+            int32 nanos = 2;
+        }
+        """
+        let commonTypesURL = commonDir.appendingPathComponent("types.proto")
+        try commonTypesContent.write(to: commonTypesURL, atomically: true, encoding: .utf8)
+        defer { try? FileManager.default.removeItem(at: commonTypesURL) }
+        
+        let mainProtoContent = """
+        syntax = "proto3";
+        
+        package test;
+        
+        import "common/types.proto";
+        
+        message User {
+            string id = 1;
+            common.Timestamp created_at = 2;
+        }
+        
+        service UserService {
+            rpc GetUser (GetUserRequest) returns (User);
+        }
+        
+        message GetUserRequest {
+            string id = 1;
+        }
+        """
+        let mainProtoURL = try createTempProtoFile(content: mainProtoContent, name: "test_with_import2.proto")
+        defer { try? FileManager.default.removeItem(at: mainProtoURL) }
+        
+        // When - First path is empty but valid, second contains the dependency
+        let protoFile = try await sut.loadProto(url: mainProtoURL, importPaths: [emptyDir.path, tempDir.path])
+        
+        // Then
+        XCTAssertEqual(protoFile.name, "test_with_import2.proto")
+        XCTAssertEqual(protoFile.services.count, 1)
+    }
+}

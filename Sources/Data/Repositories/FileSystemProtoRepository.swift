@@ -10,8 +10,30 @@ public final class FileSystemProtoRepository: ProtoRepositoryProtocol {
     public init() {}
     
     public func loadProto(url: URL) async throws -> ProtoFile {
-        // Parse proto file using SwiftProtoParser
+        // Parse proto file using SwiftProtoParser without import path resolution
         let result = SwiftProtoParser.parseProtoToDescriptors(url.path)
+        
+        switch result {
+        case .success(let fileDescriptor):
+            // Map to Domain entity
+            let protoFile = mapToProtoFile(fileDescriptor: fileDescriptor, url: url)
+            
+            // Store loaded proto
+            loadedProtos.append(protoFile)
+            
+            return protoFile
+            
+        case .failure(let error):
+            throw ProtoRepositoryError.parsingFailed(error.localizedDescription)
+        }
+    }
+    
+    public func loadProto(url: URL, importPaths: [String]) async throws -> ProtoFile {
+        // Parse proto file using SwiftProtoParser with import path resolution
+        let result = SwiftProtoParser.parseProtoFileWithImportsToDescriptors(
+            url.path,
+            importPaths: importPaths
+        )
         
         switch result {
         case .success(let fileDescriptor):

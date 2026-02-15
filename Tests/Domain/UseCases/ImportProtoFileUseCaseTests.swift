@@ -112,6 +112,7 @@ final class ImportProtoFileUseCaseTests: XCTestCase {
 private class MockProtoRepository: ProtoRepositoryProtocol {
     var loadProtoCalled = false
     var loadProtoURL: URL?
+    var loadProtoImportPaths: [String]?
     var protoFileToReturn: ProtoFile?
     var shouldThrowError = false
     var errorToThrow: Error = ProtoError.invalidFormat
@@ -119,6 +120,23 @@ private class MockProtoRepository: ProtoRepositoryProtocol {
     func loadProto(url: URL) async throws -> ProtoFile {
         loadProtoCalled = true
         loadProtoURL = url
+        loadProtoImportPaths = nil
+        
+        if shouldThrowError {
+            throw errorToThrow
+        }
+        
+        guard let protoFile = protoFileToReturn else {
+            throw ProtoError.invalidFormat
+        }
+        
+        return protoFile
+    }
+    
+    func loadProto(url: URL, importPaths: [String]) async throws -> ProtoFile {
+        loadProtoCalled = true
+        loadProtoURL = url
+        loadProtoImportPaths = importPaths
         
         if shouldThrowError {
             throw errorToThrow
