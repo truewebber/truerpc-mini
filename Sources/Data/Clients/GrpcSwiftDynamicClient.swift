@@ -1,27 +1,111 @@
 import Foundation
 import GRPCCore
+import GRPCNIOTransportHTTP2
 import SwiftProtoReflect
 
 /// Dynamic gRPC client that uses SwiftProtoReflect for message handling
 /// and grpc-swift-2 for transport
 public class GrpcSwiftDynamicClient: GrpcClientProtocol {
+    private let protoRepository: ProtoRepositoryProtocol
     
-    public init() {}
+    public init(protoRepository: ProtoRepositoryProtocol) {
+        self.protoRepository = protoRepository
+    }
     
     /// Execute a unary gRPC request
     public func executeUnary(
         request: RequestDraft,
         method: TrueRPCMini.Method
     ) async throws -> GrpcResponse {
-        // TODO: Implement full gRPC client integration
-        // This requires:
-        // 1. Get message descriptors from proto
-        // 2. Parse JSON to DynamicMessage
-        // 3. Create gRPC transport
-        // 4. Execute call
-        // 5. Convert response to JSON
+        let startTime = Date()
         
-        throw GrpcClientError.unknown("Not yet implemented")
+        // 1. Get message descriptors from proto repository
+        let inputDescriptor = try protoRepository.getMessageDescriptor(forType: method.inputType)
+        let outputDescriptor = try protoRepository.getMessageDescriptor(forType: method.outputType)
+        
+        // 2. Parse JSON to DynamicMessage
+        let inputMessage = try parseJSON(request.jsonBody, using: inputDescriptor)
+        
+        // 3. Parse URL to extract host and port
+        let (host, port) = try parseServerAddress(request.url)
+        
+        do {
+            // 4. Create transport and execute with client
+            return try await withGRPCClient(
+                transport: try .http2NIOPosix(
+                    target: .dns(host: host, port: port),
+                    transportSecurity: .plaintext,
+                    config: .defaults
+                )
+            ) { client in
+                // 5. Create method descriptor for gRPC
+                let methodDescriptor = MethodDescriptor(
+                    fullyQualifiedService: method.serviceName,
+                    method: method.name
+                )
+                
+                // 6. Create serializers
+                let serializer = DynamicMessageSerializer()
+                let deserializer = DynamicMessageDeserializer(messageDescriptor: outputDescriptor)
+                
+                // 7. Execute unary call
+                return try await client.unary(
+                    request: ClientRequest(message: inputMessage),
+                    descriptor: methodDescriptor,
+                    serializer: serializer,
+                    deserializer: deserializer,
+                    options: .defaults
+                ) { response in
+                    // 8. Convert response message to JSON
+                    let responseJSON = try self.messageToJSON(response.message)
+                    let responseTime = Date().timeIntervalSince(startTime)
+                    
+                    return GrpcResponse(
+                        jsonBody: responseJSON,
+                        responseTime: responseTime,
+                        statusCode: 0, // Success
+                        statusMessage: "OK"
+                    )
+                }
+            }
+        } catch let error as RPCError {
+            // Handle gRPC-specific errors
+            throw mapGrpcError(error)
+        } catch {
+            // Handle other errors
+            throw GrpcClientError.unknown(error.localizedDescription)
+        }
+    }
+    
+    /// Parse server address into host and port
+    private func parseServerAddress(_ address: String) throws -> (host: String, port: Int) {
+        // Remove protocol if present
+        let cleanAddress = address
+            .replacingOccurrences(of: "http://", with: "")
+            .replacingOccurrences(of: "https://", with: "")
+        
+        let components = cleanAddress.split(separator: ":")
+        
+        guard !components.isEmpty else {
+            throw GrpcClientError.networkError("Invalid server address: \(address)")
+        }
+        
+        let host = String(components[0])
+        let port = components.count > 1 ? Int(components[1]) ?? 50051 : 50051
+        
+        return (host, port)
+    }
+    
+    /// Map gRPC RPCError to GrpcClientError
+    private func mapGrpcError(_ error: RPCError) -> GrpcClientError {
+        switch error.code {
+        case .unavailable:
+            return .unavailable
+        case .deadlineExceeded:
+            return .timeout
+        default:
+            return .networkError("gRPC error: \(error.code) - \(error.message)")
+        }
     }
     
     /// Parse JSON string to DynamicMessage using descriptor

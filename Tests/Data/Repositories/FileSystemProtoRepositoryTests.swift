@@ -282,3 +282,72 @@ extension FileSystemProtoRepositoryTests {
         XCTAssertEqual(protoFile.services.count, 1)
     }
 }
+
+// MARK: - Message Descriptor Tests
+
+extension FileSystemProtoRepositoryTests {
+    func test_getMessageDescriptor_whenTypeExists_returnsDescriptor() async throws {
+        // Given
+        let testProtoContent = """
+        syntax = "proto3";
+        package test;
+        
+        message TestMessage {
+          string value = 1;
+          int32 count = 2;
+        }
+        
+        service TestService {
+          rpc TestMethod(TestMessage) returns (TestMessage);
+        }
+        """
+        
+        let tempURL = try createTempProtoFile(content: testProtoContent, name: "test_desc.proto")
+        defer { try? FileManager.default.removeItem(at: tempURL) }
+        
+        _ = try await sut.loadProto(url: tempURL)
+        
+        // When
+        let descriptor = try sut.getMessageDescriptor(forType: ".test.TestMessage")
+        
+        // Then
+        XCTAssertEqual(descriptor.name, "TestMessage")
+        XCTAssertEqual(descriptor.fields.count, 2)
+    }
+    
+    func test_getMessageDescriptor_whenTypeNotFound_throwsError() async throws {
+        // Given
+        let testProtoContent = """
+        syntax = "proto3";
+        
+        message ExistingMessage {
+          string value = 1;
+        }
+        """
+        
+        let tempURL = try createTempProtoFile(content: testProtoContent, name: "test_missing.proto")
+        defer { try? FileManager.default.removeItem(at: tempURL) }
+        
+        _ = try await sut.loadProto(url: tempURL)
+        
+        // When/Then
+        XCTAssertThrowsError(try sut.getMessageDescriptor(forType: ".NonExistent")) { error in
+            guard case ProtoRepositoryError.messageTypeNotFound = error else {
+                XCTFail("Expected messageTypeNotFound error")
+                return
+            }
+        }
+    }
+    
+    func test_getMessageDescriptor_withNoLoadedProtos_throwsError() throws {
+        // Given - no protos loaded
+        
+        // When/Then
+        XCTAssertThrowsError(try sut.getMessageDescriptor(forType: ".test.Message")) { error in
+            guard case ProtoRepositoryError.messageTypeNotFound = error else {
+                XCTFail("Expected messageTypeNotFound error")
+                return
+            }
+        }
+    }
+}

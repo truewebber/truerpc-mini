@@ -6,6 +6,7 @@ import XCTest
 final class EditorTabViewModelTests: XCTestCase {
     var sut: EditorTabViewModel!
     var mockGenerateMockDataUseCase: MockGenerateMockDataUseCase!
+    var mockExecuteRequestUseCase: MockExecuteUnaryRequestUseCase!
     var testMethod: TrueRPCMini.Method!
     var testService: Service!
     var testProtoFile: ProtoFile!
@@ -14,9 +15,11 @@ final class EditorTabViewModelTests: XCTestCase {
     override func setUp() {
         super.setUp()
         mockGenerateMockDataUseCase = MockGenerateMockDataUseCase()
+        mockExecuteRequestUseCase = MockExecuteUnaryRequestUseCase()
         
         testMethod = TrueRPCMini.Method(
             name: "GetUser",
+            serviceName: "UserService",
             inputType: "GetUserRequest",
             outputType: "GetUserResponse",
             isStreaming: false
@@ -36,13 +39,15 @@ final class EditorTabViewModelTests: XCTestCase {
         
         sut = EditorTabViewModel(
             editorTab: testEditorTab,
-            generateMockDataUseCase: mockGenerateMockDataUseCase
+            generateMockDataUseCase: mockGenerateMockDataUseCase,
+            executeRequestUseCase: mockExecuteRequestUseCase
         )
     }
     
     override func tearDown() {
         sut = nil
         mockGenerateMockDataUseCase = nil
+        mockExecuteRequestUseCase = nil
         testMethod = nil
         testService = nil
         testProtoFile = nil
@@ -58,6 +63,9 @@ final class EditorTabViewModelTests: XCTestCase {
         XCTAssertEqual(sut.url, "")
         XCTAssertEqual(sut.requestJson, "")
         XCTAssertFalse(sut.isLoading)
+        XCTAssertNil(sut.response)
+        XCTAssertNil(sut.error)
+        XCTAssertFalse(sut.isExecuting)
     }
     
     // MARK: - Load Mock Data
@@ -117,6 +125,116 @@ final class EditorTabViewModelTests: XCTestCase {
         // Then
         XCTAssertEqual(sut.url, newUrl)
     }
+    
+    // MARK: - Execute Request
+    
+    func test_executeRequest_success_updatesResponse() async {
+        // Given
+        sut.updateJson(#"{"userId": 123}"#)
+        sut.updateUrl("localhost:50051")
+        
+        let expectedResponse = GrpcResponse(
+            jsonBody: #"{"id": 123, "name": "Alice"}"#,
+            responseTime: 0.123,
+            statusCode: 0,
+            statusMessage: "OK"
+        )
+        mockExecuteRequestUseCase.stubbedResponse = expectedResponse
+        
+        // When
+        await sut.executeRequest()
+        
+        // Then
+        XCTAssertNotNil(sut.response)
+        XCTAssertEqual(sut.response?.jsonBody, #"{"id": 123, "name": "Alice"}"#)
+        XCTAssertEqual(sut.response?.statusCode, 0)
+        XCTAssertNil(sut.error)
+        XCTAssertFalse(sut.isExecuting)
+    }
+    
+    func test_executeRequest_setsExecutingState() async {
+        // Given
+        sut.updateJson("{}")
+        sut.updateUrl("localhost:50051")
+        mockExecuteRequestUseCase.stubbedResponse = GrpcResponse(
+            jsonBody: "{}",
+            responseTime: 0.1,
+            statusCode: 0,
+            statusMessage: "OK"
+        )
+        
+        // When
+        await sut.executeRequest()
+        
+        // Then
+        XCTAssertFalse(sut.isExecuting) // Should be false after completion
+    }
+    
+    func test_executeRequest_failure_setsError() async {
+        // Given
+        sut.updateJson("{}")
+        sut.updateUrl("invalid-host:9999")
+        mockExecuteRequestUseCase.shouldThrowError = .networkError("Connection refused")
+        
+        // When
+        await sut.executeRequest()
+        
+        // Then
+        XCTAssertNil(sut.response)
+        XCTAssertNotNil(sut.error)
+        XCTAssertTrue(sut.error!.contains("Connection refused"))
+        XCTAssertFalse(sut.isExecuting)
+    }
+    
+    func test_executeRequest_clearsPreviousResponseAndError() async {
+        // Given
+        sut.updateJson("{}")
+        sut.updateUrl("localhost:50051")
+        
+        // Set previous state
+        let oldResponse = GrpcResponse(
+            jsonBody: "old",
+            responseTime: 0.1,
+            statusCode: 0,
+            statusMessage: "OK"
+        )
+        mockExecuteRequestUseCase.stubbedResponse = oldResponse
+        await sut.executeRequest()
+        
+        XCTAssertNotNil(sut.response)
+        
+        // Set new state (error)
+        mockExecuteRequestUseCase.stubbedResponse = nil
+        mockExecuteRequestUseCase.shouldThrowError = .timeout
+        
+        // When
+        await sut.executeRequest()
+        
+        // Then
+        XCTAssertNil(sut.response) // Previous response cleared
+        XCTAssertNotNil(sut.error)
+    }
+    
+    func test_executeRequest_callsUseCaseWithCorrectParameters() async {
+        // Given
+        sut.updateJson(#"{"test": "data"}"#)
+        sut.updateUrl("api.example.com:443")
+        mockExecuteRequestUseCase.stubbedResponse = GrpcResponse(
+            jsonBody: "{}",
+            responseTime: 0.1,
+            statusCode: 0,
+            statusMessage: "OK"
+        )
+        
+        // When
+        await sut.executeRequest()
+        
+        // Then
+        XCTAssertTrue(mockExecuteRequestUseCase.executeCalled)
+        XCTAssertEqual(mockExecuteRequestUseCase.capturedRequest?.jsonBody, #"{"test": "data"}"#)
+        XCTAssertEqual(mockExecuteRequestUseCase.capturedRequest?.url, "api.example.com:443")
+        XCTAssertEqual(mockExecuteRequestUseCase.capturedMethod?.name, "GetUser")
+    }
 }
 
 // MARK: - Mock
@@ -132,5 +250,29 @@ class MockGenerateMockDataUseCase: GenerateMockDataUseCase {
     override func execute(method: TrueRPCMini.Method) async throws -> String {
         executeCallCount += 1
         return mockJSON
+    }
+}
+
+class MockExecuteUnaryRequestUseCase: ExecuteUnaryRequestUseCaseProtocol {
+    var executeCalled = false
+    var capturedRequest: RequestDraft?
+    var capturedMethod: TrueRPCMini.Method?
+    var stubbedResponse: GrpcResponse?
+    var shouldThrowError: GrpcClientError?
+    
+    func execute(request: RequestDraft, method: TrueRPCMini.Method) async throws -> GrpcResponse {
+        executeCalled = true
+        capturedRequest = request
+        capturedMethod = method
+        
+        if let error = shouldThrowError {
+            throw error
+        }
+        
+        guard let response = stubbedResponse else {
+            throw GrpcClientError.unknown("No stubbed response")
+        }
+        
+        return response
     }
 }

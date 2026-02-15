@@ -1,4 +1,5 @@
 import Foundation
+import SwiftProtoReflect
 
 /// Protocol defining the contract for proto file repository
 /// Follows Dependency Inversion Principle - Domain defines the interface
@@ -21,4 +22,10 @@ public protocol ProtoRepositoryProtocol {
     /// Returns all currently loaded proto files
     /// - Returns: Array of loaded ProtoFile entities
     func getLoadedProtos() -> [ProtoFile]
+    
+    /// Gets the message descriptor for a specific message type from loaded protos
+    /// - Parameter typeName: Fully qualified message type name (e.g., ".package.MessageName" or "MessageName")
+    /// - Returns: MessageDescriptor for dynamic message creation
+    /// - Throws: ProtoRepositoryError if type not found in loaded protos
+    func getMessageDescriptor(forType typeName: String) throws -> MessageDescriptor
 }

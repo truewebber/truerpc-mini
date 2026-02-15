@@ -5,12 +5,12 @@ import SwiftProtoReflect
 final class GrpcSwiftDynamicClientTests: XCTestCase {
     
     var sut: GrpcSwiftDynamicClient!
+    fileprivate var mockRepository: MockProtoRepository!
     var fileDescriptor: FileDescriptor!
     var messageDescriptor: MessageDescriptor!
     
     override func setUp() {
         super.setUp()
-        sut = GrpcSwiftDynamicClient()
         
         // Create file descriptor
         fileDescriptor = FileDescriptor(name: "test.proto", package: "test")
@@ -22,10 +22,17 @@ final class GrpcSwiftDynamicClientTests: XCTestCase {
         tempDescriptor.addField(nameField)
         tempDescriptor.addField(ageField)
         messageDescriptor = tempDescriptor
+        
+        // Create mock repository
+        mockRepository = MockProtoRepository()
+        mockRepository.stubbedMessageDescriptor = messageDescriptor
+        
+        sut = GrpcSwiftDynamicClient(protoRepository: mockRepository)
     }
     
     override func tearDown() {
         sut = nil
+        mockRepository = nil
         messageDescriptor = nil
         fileDescriptor = nil
         super.tearDown()
@@ -96,5 +103,36 @@ final class GrpcSwiftDynamicClientTests: XCTestCase {
         
         // Then
         XCTAssertEqual(jsonString, "{}")
+    }
+}
+
+// MARK: - Mock Repository
+
+fileprivate class MockProtoRepository: ProtoRepositoryProtocol {
+    var stubbedMessageDescriptor: MessageDescriptor?
+    var getMessageDescriptorCalled = false
+    var capturedTypeName: String?
+    
+    func loadProto(url: URL) async throws -> ProtoFile {
+        fatalError("Not implemented in mock")
+    }
+    
+    func loadProto(url: URL, importPaths: [String]) async throws -> ProtoFile {
+        fatalError("Not implemented in mock")
+    }
+    
+    func getLoadedProtos() -> [ProtoFile] {
+        return []
+    }
+    
+    func getMessageDescriptor(forType typeName: String) throws -> MessageDescriptor {
+        getMessageDescriptorCalled = true
+        capturedTypeName = typeName
+        
+        guard let descriptor = stubbedMessageDescriptor else {
+            throw ProtoRepositoryError.messageTypeNotFound(typeName)
+        }
+        
+        return descriptor
     }
 }

@@ -37,6 +37,12 @@ struct TrueRPCMiniApp: App {
             MockDataGenerator()
         }
         
+        di.register(GrpcClientProtocol.self) {
+            GrpcSwiftDynamicClient(
+                protoRepository: di.resolve(ProtoRepositoryProtocol.self)!
+            )
+        }
+        
         // Register Domain Layer dependencies
         di.register(ImportProtoFileUseCaseProtocol.self) {
             ImportProtoFileUseCase(repository: di.resolve(ProtoRepositoryProtocol.self)!)
@@ -58,6 +64,12 @@ struct TrueRPCMiniApp: App {
             )
         }
         
+        di.register(ExecuteUnaryRequestUseCaseProtocol.self) {
+            ExecuteUnaryRequestUseCase(
+                grpcClient: di.resolve(GrpcClientProtocol.self)!
+            )
+        }
+        
         // Create SidebarViewModel once
         let sidebarVM = SidebarViewModel(
             importProtoFileUseCase: di.resolve(ImportProtoFileUseCaseProtocol.self)!,
@@ -69,7 +81,8 @@ struct TrueRPCMiniApp: App {
         // Create AppViewModel
         let appVM = AppViewModel(
             createEditorTabUseCase: di.resolve(CreateEditorTabUseCase.self)!,
-            generateMockDataUseCase: di.resolve(GenerateMockDataUseCase.self)!
+            generateMockDataUseCase: di.resolve(GenerateMockDataUseCase.self)!,
+            executeRequestUseCase: di.resolve(ExecuteUnaryRequestUseCaseProtocol.self)!
         )
         
         // Use _StateObject to initialize @StateObject properties

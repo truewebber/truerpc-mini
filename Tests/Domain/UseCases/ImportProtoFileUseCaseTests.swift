@@ -1,4 +1,5 @@
 import XCTest
+import SwiftProtoReflect
 @testable import TrueRPCMini
 
 final class ImportProtoFileUseCaseTests: XCTestCase {
@@ -151,6 +152,12 @@ private class MockProtoRepository: ProtoRepositoryProtocol {
     
     func getLoadedProtos() -> [ProtoFile] {
         return protoFileToReturn.map { [$0] } ?? []
+    }
+    
+    func getMessageDescriptor(forType typeName: String) throws -> SwiftProtoReflect.MessageDescriptor {
+        // Simple mock: return empty descriptor
+        let fileDesc = SwiftProtoReflect.FileDescriptor(name: "mock.proto", package: "mock")
+        return SwiftProtoReflect.MessageDescriptor(name: "MockMessage", parent: fileDesc)
     }
 }
 
