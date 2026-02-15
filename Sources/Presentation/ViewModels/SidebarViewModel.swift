@@ -12,11 +12,11 @@ public final class SidebarViewModel: ObservableObject {
     
     // MARK: - Dependencies
     
-    private let importProtoFileUseCase: MockImportProtoFileUseCase
+    private let importProtoFileUseCase: ImportProtoFileUseCaseProtocol
     
     // MARK: - Initialization
     
-    public init(importProtoFileUseCase: MockImportProtoFileUseCase) {
+    public init(importProtoFileUseCase: ImportProtoFileUseCaseProtocol) {
         self.importProtoFileUseCase = importProtoFileUseCase
     }
     
@@ -35,13 +35,5 @@ public final class SidebarViewModel: ObservableObject {
         }
         
         isLoading = false
-    }
-}
-
-// MARK: - Temporary Mock Type (will be replaced with protocol)
-
-public class MockImportProtoFileUseCase {
-    public func execute(url: URL) async throws -> ProtoFile {
-        fatalError("Must be implemented by mock or real use case")
     }
 }

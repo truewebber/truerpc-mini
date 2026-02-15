@@ -11,22 +11,37 @@ struct TrueRPCMiniApp: App {
     
     init() {
         // Initialize DI container
-        di = AppDI()
+        let di = AppDI()
+        self.di = di
         
-        // Register dependencies here
-        // Example:
-        // di.register(ProtoRepositoryProtocol.self) { FileSystemProtoRepository() }
-        // di.register(ImportProtoFileUseCase.self) {
-        //     ImportProtoFileUseCase(repository: di.resolve(ProtoRepositoryProtocol.self)!)
-        // }
+        // Register Data Layer dependencies
+        di.register(ProtoRepositoryProtocol.self) {
+            FileSystemProtoRepository()
+        }
+        
+        // Register Domain Layer dependencies
+        di.register(ImportProtoFileUseCaseProtocol.self) {
+            ImportProtoFileUseCase(repository: di.resolve(ProtoRepositoryProtocol.self)!)
+        }
+        
+        // Register Presentation Layer dependencies
+        di.register(SidebarViewModel.self, lifecycle: .transient) {
+            SidebarViewModel(importProtoFileUseCase: di.resolve(ImportProtoFileUseCaseProtocol.self)!)
+        }
     }
     
     // MARK: - Scene
     
     var body: some Scene {
         WindowGroup {
-            ContentView()
-                .environmentObject(di) // Make DI available throughout the app
+            NavigationView {
+                SidebarView(viewModel: di.resolve(SidebarViewModel.self)!)
+                
+                Text("Select a method to start")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+            .frame(minWidth: 800, minHeight: 600)
+            .environmentObject(di)
         }
     }
 }

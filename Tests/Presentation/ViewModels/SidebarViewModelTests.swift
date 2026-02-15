@@ -112,7 +112,7 @@ final class SidebarViewModelTests: XCTestCase {
 
 // MARK: - Mock Use Case
 
-class MockImportProtoFileUseCase {
+class MockImportProtoFileUseCase: ImportProtoFileUseCaseProtocol {
     var executeCalled = false
     var executeURL: URL?
     var protoFileToReturn: ProtoFile?
