@@ -389,3 +389,118 @@ class MockExportResponseUseCase: ExportResponseUseCase {
         capturedIncludeMetadata = includeMetadata
     }
 }
+
+// MARK: - Metadata Tests
+extension EditorTabViewModelTests {
+    
+    func test_init_setsDefaultMetadataState() {
+        // Then
+        XCTAssertEqual(sut.metadataJson, "{}")
+        XCTAssertFalse(sut.isMetadataVisible)
+    }
+    
+    func test_updateMetadata_updatesMetadataJson() {
+        // Given
+        let newMetadata = #"{"authorization": "Bearer token123"}"#
+        
+        // When
+        sut.updateMetadata(newMetadata)
+        
+        // Then
+        XCTAssertEqual(sut.metadataJson, newMetadata)
+    }
+    
+    func test_toggleMetadataVisibility_togglesState() {
+        // Given
+        XCTAssertFalse(sut.isMetadataVisible)
+        
+        // When
+        sut.toggleMetadataVisibility()
+        
+        // Then
+        XCTAssertTrue(sut.isMetadataVisible)
+        
+        // When toggled again
+        sut.toggleMetadataVisibility()
+        
+        // Then
+        XCTAssertFalse(sut.isMetadataVisible)
+    }
+    
+    func test_executeRequest_withValidMetadata_sendsMetadata() async {
+        // Given
+        sut.requestJson = "{}"
+        sut.url = "localhost:50051"
+        sut.metadataJson = #"{"authorization": "Bearer token"}"#
+        
+        mockExecuteRequestUseCase.stubbedResponse = GrpcResponse(
+            jsonBody: "{}",
+            responseTime: 0.1,
+            statusCode: 0,
+            statusMessage: "OK"
+        )
+        
+        // When
+        await sut.executeRequest()
+        
+        // Then
+        XCTAssertTrue(mockExecuteRequestUseCase.executeCalled)
+        XCTAssertNotNil(mockExecuteRequestUseCase.capturedRequest?.metadata)
+        XCTAssertEqual(
+            mockExecuteRequestUseCase.capturedRequest?.metadata?.headers["authorization"],
+            "Bearer token"
+        )
+    }
+    
+    func test_executeRequest_withEmptyMetadata_sendsNoMetadata() async {
+        // Given
+        sut.requestJson = "{}"
+        sut.url = "localhost:50051"
+        sut.metadataJson = "{}"
+        
+        mockExecuteRequestUseCase.stubbedResponse = GrpcResponse(
+            jsonBody: "{}",
+            responseTime: 0.1,
+            statusCode: 0,
+            statusMessage: "OK"
+        )
+        
+        // When
+        await sut.executeRequest()
+        
+        // Then
+        XCTAssertTrue(mockExecuteRequestUseCase.executeCalled)
+        XCTAssertNil(mockExecuteRequestUseCase.capturedRequest?.metadata)
+    }
+    
+    func test_executeRequest_withInvalidMetadataJSON_setsError() async {
+        // Given
+        sut.requestJson = "{}"
+        sut.url = "localhost:50051"
+        sut.metadataJson = "{invalid json"
+        
+        // When
+        await sut.executeRequest()
+        
+        // Then
+        XCTAssertNotNil(sut.error, "Error should be set for invalid metadata")
+        // Metadata error should prevent request execution
+        XCTAssertFalse(mockExecuteRequestUseCase.executeCalled)
+    }
+    
+    func test_executeRequest_withNonObjectMetadata_setsError() async {
+        // Given
+        sut.requestJson = "{}"
+        sut.url = "localhost:50051"
+        sut.metadataJson = "[\"array\"]"
+        
+        // When
+        await sut.executeRequest()
+        
+        // Then
+        XCTAssertNotNil(sut.error, "Error should be set for non-object metadata")
+        // Metadata error should prevent request execution
+        XCTAssertFalse(mockExecuteRequestUseCase.executeCalled)
+    }
+}
+

@@ -51,15 +51,21 @@ public class GrpcSwiftDynamicClient: GrpcClientProtocol {
                 let serializer = DynamicMessageSerializer()
                 let deserializer = DynamicMessageDeserializer(messageDescriptor: outputDescriptor)
                 
-                // 7. Execute unary call
+                // 7. Create client request with metadata
+                var clientRequest = ClientRequest(message: inputMessage)
+                if let metadata = request.metadata {
+                    clientRequest.metadata = convertToGrpcMetadata(metadata)
+                }
+                
+                // 8. Execute unary call
                 return try await client.unary(
-                    request: ClientRequest(message: inputMessage),
+                    request: clientRequest,
                     descriptor: methodDescriptor,
                     serializer: serializer,
                     deserializer: deserializer,
                     options: .defaults
                 ) { response in
-                    // 8. Convert response message to JSON
+                    // 9. Convert response message to JSON
                     let responseJSON = try self.messageToJSON(response.message)
                     let responseTime = Date().timeIntervalSince(startTime)
                     
@@ -136,5 +142,25 @@ public class GrpcSwiftDynamicClient: GrpcClientProtocol {
             throw GrpcClientError.invalidResponse
         }
         return jsonString
+    }
+    
+    /// Convert TrueRPCMini.GrpcMetadata to GRPCCore.Metadata
+    private func convertToGrpcMetadata(_ metadata: TrueRPCMini.GrpcMetadata) -> GRPCCore.Metadata {
+        var grpcMetadata = GRPCCore.Metadata()
+        
+        for (key, value) in metadata.headers {
+            // Check if this is binary metadata (keys ending with "-bin")
+            if TrueRPCMini.GrpcMetadata.isBinaryKey(key) {
+                // Binary metadata - encode as bytes
+                if let data = value.data(using: .utf8) {
+                    grpcMetadata.addBinary([UInt8](data), forKey: key)
+                }
+            } else {
+                // String metadata
+                grpcMetadata.addString(value, forKey: key)
+            }
+        }
+        
+        return grpcMetadata
     }
 }

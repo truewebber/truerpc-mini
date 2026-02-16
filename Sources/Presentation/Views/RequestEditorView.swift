@@ -88,6 +88,20 @@ struct RequestEditorView: View {
             
             Spacer()
             
+            // Metadata toggle button
+            Button(action: {
+                withAnimation {
+                    viewModel.toggleMetadataVisibility()
+                }
+            }) {
+                HStack(spacing: 4) {
+                    Image(systemName: "list.bullet.rectangle")
+                    Text("Metadata")
+                }
+            }
+            .buttonStyle(.bordered)
+            .help("Toggle metadata headers editor")
+            
             // Play button
             Button(action: {
                 Task {
@@ -115,14 +129,25 @@ struct RequestEditorView: View {
     }
     
     private var requestEditorView: some View {
-        VStack(spacing: 0) {
-            // URL input
-            urlInputView
+        VSplitView {
+            // Top: URL and JSON editor
+            VStack(spacing: 0) {
+                // URL input
+                urlInputView
+                
+                Divider()
+                
+                // JSON editor
+                jsonEditorView
+            }
+            .frame(minHeight: 200)
             
-            Divider()
-            
-            // JSON editor
-            jsonEditorView
+            // Bottom: Metadata panel (collapsible)
+            if viewModel.isMetadataVisible {
+                metadataEditorView
+                    .frame(minHeight: 100, idealHeight: 150)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
         }
     }
     
@@ -157,6 +182,32 @@ struct RequestEditorView: View {
             .border(Color.secondary.opacity(0.2), width: 1)
         }
         .padding()
+    }
+    
+    private var metadataEditorView: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("Metadata (Headers)")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                
+                Spacer()
+                
+                Text("JSON format: {\"key\": \"value\"}")
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+            }
+            
+            JSONTextEditor(text: Binding(
+                get: { viewModel.metadataJson },
+                set: { viewModel.updateMetadata($0) }
+            ))
+            .font(.system(.body, design: .monospaced))
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .border(Color.secondary.opacity(0.2), width: 1)
+        }
+        .padding()
+        .background(Color(nsColor: .controlBackgroundColor).opacity(0.5))
     }
     
     // MARK: - Actions

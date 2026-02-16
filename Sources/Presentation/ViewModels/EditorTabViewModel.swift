@@ -9,6 +9,8 @@ public final class EditorTabViewModel: ObservableObject {
     
     @Published public var requestJson: String = ""
     @Published public var url: String = ""
+    @Published public var metadataJson: String = "{}"
+    @Published public var isMetadataVisible: Bool = false
     @Published public var isLoading: Bool = false
     @Published public var response: GrpcResponse?
     @Published public var error: String?
@@ -65,6 +67,16 @@ public final class EditorTabViewModel: ObservableObject {
         url = newUrl
     }
     
+    /// Updates the metadata JSON
+    public func updateMetadata(_ newMetadata: String) {
+        metadataJson = newMetadata
+    }
+    
+    /// Toggles metadata visibility
+    public func toggleMetadataVisibility() {
+        isMetadataVisible.toggle()
+    }
+    
     /// Executes the gRPC request
     public func executeRequest() async {
         // Clear previous state
@@ -73,11 +85,19 @@ public final class EditorTabViewModel: ObservableObject {
         isExecuting = true
         
         do {
+            // Parse metadata if not empty
+            var metadata: GrpcMetadata? = nil
+            let trimmedMetadata = metadataJson.trimmingCharacters(in: .whitespacesAndNewlines)
+            if trimmedMetadata != "{}" && !trimmedMetadata.isEmpty {
+                metadata = try GrpcMetadata.from(json: metadataJson)
+            }
+            
             // Create request draft
             let requestDraft = RequestDraft(
                 jsonBody: requestJson,
                 url: url,
-                method: editorTab.method
+                method: editorTab.method,
+                metadata: metadata
             )
             
             // Execute request
@@ -88,6 +108,9 @@ public final class EditorTabViewModel: ObservableObject {
             
             // Update state with response
             response = grpcResponse
+        } catch let metadataError as GrpcMetadataError {
+            // Handle metadata parsing errors
+            error = formatMetadataError(metadataError)
         } catch let grpcError as GrpcClientError {
             // Handle gRPC-specific errors
             error = formatError(grpcError)
@@ -139,6 +162,18 @@ public final class EditorTabViewModel: ObservableObject {
             return "Invalid response from server"
         case .unknown(let message):
             return "Error: \(message)"
+        }
+    }
+    
+    /// Format metadata error for display
+    private func formatMetadataError(_ error: GrpcMetadataError) -> String {
+        switch error {
+        case .invalidJSON:
+            return "Invalid metadata JSON format"
+        case .notAnObject:
+            return "Metadata must be a JSON object with key-value pairs"
+        case .serializationFailed:
+            return "Failed to serialize metadata"
         }
     }
 }

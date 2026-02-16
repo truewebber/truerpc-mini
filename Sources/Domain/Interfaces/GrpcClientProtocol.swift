@@ -5,7 +5,7 @@ import Foundation
 public protocol GrpcClientProtocol {
     /// Execute a unary gRPC request
     /// - Parameters:
-    ///   - request: The request draft containing JSON body, URL, and method
+    ///   - request: The request draft containing JSON body, URL, method, and optional metadata
     ///   - method: The gRPC method to invoke
     /// - Returns: The gRPC response with JSON body and timing
     /// - Throws: GrpcClientError for various failure scenarios

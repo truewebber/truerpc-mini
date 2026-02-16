@@ -23,11 +23,12 @@ public class ExecuteUnaryRequestUseCase: ExecuteUnaryRequestUseCaseProtocol {
             throw GrpcClientError.invalidJSON("Invalid JSON syntax")
         }
         
-        // Create normalized request
+        // Create normalized request with metadata preserved
         let normalizedRequest = RequestDraft(
             jsonBody: normalizedJson,
             url: request.url,
-            method: request.method
+            method: request.method,
+            metadata: request.metadata
         )
         
         // Execute request via gRPC client
