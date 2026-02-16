@@ -190,14 +190,8 @@ public final class FileSystemProtoRepository: ProtoRepositoryProtocol {
     ) throws -> FieldDescriptor {
         let fieldType = convertFieldType(fieldProto.type)
         
-        print("DEBUG: convertToFieldDescriptor - name: \(fieldProto.name)")
-        print("DEBUG: - type: \(fieldProto.type)")
-        print("DEBUG: - label: \(fieldProto.label)")
-        print("DEBUG: - hasLabel: \(fieldProto.hasLabel)")
-        
         // Check if field is repeated
         let isRepeated = fieldProto.label == .repeated
-        print("DEBUG: - isRepeated: \(isRepeated)")
         
         // For message and enum types, we need to provide the typeName
         if fieldType == .message || fieldType == .enum {

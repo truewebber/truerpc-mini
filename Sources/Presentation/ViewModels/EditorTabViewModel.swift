@@ -96,14 +96,6 @@ public final class EditorTabViewModel: ObservableObject {
             error = protoError.localizedDescription
         } catch let otherError {
             // Handle other errors
-            print("ERROR: Request failed with error: \(otherError)")
-            print("ERROR: Error type: \(type(of: otherError))")
-            print("ERROR: Error details: \(String(describing: otherError))")
-            if let localizedError = otherError as? LocalizedError {
-                print("ERROR: LocalizedDescription: \(localizedError.errorDescription ?? "none")")
-                print("ERROR: FailureReason: \(localizedError.failureReason ?? "none")")
-                print("ERROR: RecoverySuggestion: \(localizedError.recoverySuggestion ?? "none")")
-            }
             error = "Request failed: \(otherError.localizedDescription)"
         }
         

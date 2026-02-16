@@ -120,28 +120,12 @@ public class GrpcSwiftDynamicClient: GrpcClientProtocol {
     
     /// Parse JSON string to DynamicMessage using descriptor
     func parseJSON(_ jsonString: String, using descriptor: MessageDescriptor) throws -> DynamicMessage {
-        print("DEBUG: parseJSON called")
-        print("DEBUG: Input JSON: \(jsonString)")
-        print("DEBUG: Message descriptor: \(descriptor.name)")
-        print("DEBUG: Fields count: \(descriptor.fields.count)")
-        for (fieldNumber, field) in descriptor.fields {
-            print("DEBUG: Field - number: \(fieldNumber), name: \(field.name), type: \(field.type)")
-        }
-        
         guard let jsonData = jsonString.data(using: .utf8) else {
             throw GrpcClientError.invalidJSON("Cannot convert string to data")
         }
         
         let deserializer = JSONDeserializer()
-        do {
-            let result = try deserializer.deserialize(jsonData, using: descriptor)
-            print("DEBUG: Deserialization successful!")
-            return result
-        } catch {
-            print("ERROR: Deserialization failed: \(error)")
-            print("ERROR: Error type: \(type(of: error))")
-            throw error
-        }
+        return try deserializer.deserialize(jsonData, using: descriptor)
     }
     
     /// Convert DynamicMessage to JSON string
