@@ -156,6 +156,56 @@ final class GrpcSwiftDynamicClientTests: XCTestCase {
         XCTAssertEqual(port, 443)
     }
     
+    // MARK: - TLS Detection Tests
+    
+    func test_shouldUseTLS_withPort443_returnsTrue() {
+        // Given
+        let port = 443
+        let url = "example.com:443"
+        
+        // When
+        let result = sut.shouldUseTLS(port: port, url: url)
+        
+        // Then
+        XCTAssertTrue(result, "Port 443 should use TLS")
+    }
+    
+    func test_shouldUseTLS_withPort50051_returnsFalse() {
+        // Given
+        let port = 50051
+        let url = "localhost:50051"
+        
+        // When
+        let result = sut.shouldUseTLS(port: port, url: url)
+        
+        // Then
+        XCTAssertFalse(result, "Port 50051 should use plaintext")
+    }
+    
+    func test_shouldUseTLS_withPort80_returnsFalse() {
+        // Given
+        let port = 80
+        let url = "example.com:80"
+        
+        // When
+        let result = sut.shouldUseTLS(port: port, url: url)
+        
+        // Then
+        XCTAssertFalse(result, "Port 80 should use plaintext")
+    }
+    
+    func test_shouldUseTLS_withPort8080_returnsFalse() {
+        // Given
+        let port = 8080
+        let url = "example.com:8080"
+        
+        // When
+        let result = sut.shouldUseTLS(port: port, url: url)
+        
+        // Then
+        XCTAssertFalse(result, "Custom port should use plaintext unless it's 443")
+    }
+    
     func test_parseServerAddress_withEmptyString_throwsError() {
         // Given
         let address = ""

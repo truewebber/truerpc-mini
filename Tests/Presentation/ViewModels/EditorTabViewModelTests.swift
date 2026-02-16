@@ -7,6 +7,7 @@ final class EditorTabViewModelTests: XCTestCase {
     var sut: EditorTabViewModel!
     var mockGenerateMockDataUseCase: MockGenerateMockDataUseCase!
     var mockExecuteRequestUseCase: MockExecuteUnaryRequestUseCase!
+    var mockExportResponseUseCase: MockExportResponseUseCase!
     var testMethod: TrueRPCMini.Method!
     var testService: Service!
     var testProtoFile: ProtoFile!
@@ -16,6 +17,7 @@ final class EditorTabViewModelTests: XCTestCase {
         super.setUp()
         mockGenerateMockDataUseCase = MockGenerateMockDataUseCase()
         mockExecuteRequestUseCase = MockExecuteUnaryRequestUseCase()
+        mockExportResponseUseCase = MockExportResponseUseCase()
         
         testMethod = TrueRPCMini.Method(
             name: "GetUser",
@@ -40,7 +42,8 @@ final class EditorTabViewModelTests: XCTestCase {
         sut = EditorTabViewModel(
             editorTab: testEditorTab,
             generateMockDataUseCase: mockGenerateMockDataUseCase,
-            executeRequestUseCase: mockExecuteRequestUseCase
+            executeRequestUseCase: mockExecuteRequestUseCase,
+            exportResponseUseCase: mockExportResponseUseCase
         )
     }
     
@@ -235,6 +238,94 @@ final class EditorTabViewModelTests: XCTestCase {
         XCTAssertEqual(mockExecuteRequestUseCase.capturedRequest?.url, "api.example.com:443")
         XCTAssertEqual(mockExecuteRequestUseCase.capturedMethod?.name, "GetUser")
     }
+    
+    // MARK: - Copy Response Tests
+    
+    func test_copyResponse_whenResponseExists_copiesJsonToClipboard() {
+        // Given
+        let testResponse = GrpcResponse(
+            jsonBody: #"{"user": "John Doe"}"#,
+            responseTime: 0.5,
+            statusCode: 0,
+            statusMessage: "OK"
+        )
+        sut.response = testResponse
+        
+        // When
+        sut.copyResponse()
+        
+        // Then
+        let pasteboard = NSPasteboard.general
+        let copiedString = pasteboard.string(forType: .string)
+        XCTAssertEqual(copiedString, #"{"user": "John Doe"}"#)
+    }
+    
+    func test_copyResponse_whenNoResponse_doesNothing() {
+        // Given
+        sut.response = nil
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString("previous content", forType: .string)
+        
+        // When
+        sut.copyResponse()
+        
+        // Then
+        let pasteboard = NSPasteboard.general
+        let content = pasteboard.string(forType: .string)
+        XCTAssertEqual(content, "previous content")
+    }
+    
+    // MARK: - Export Response Tests
+    
+    func test_exportResponse_whenResponseExists_callsExportUseCase() async throws {
+        // Given
+        let mockExportUseCase = MockExportResponseUseCase()
+        let testResponse = GrpcResponse(
+            jsonBody: #"{"result": "success"}"#,
+            responseTime: 1.2,
+            statusCode: 0,
+            statusMessage: "OK"
+        )
+        
+        let sutWithExport = EditorTabViewModel(
+            editorTab: testEditorTab,
+            generateMockDataUseCase: mockGenerateMockDataUseCase,
+            executeRequestUseCase: mockExecuteRequestUseCase,
+            exportResponseUseCase: mockExportUseCase
+        )
+        sutWithExport.response = testResponse
+        
+        let testURL = URL(fileURLWithPath: "/tmp/export.json")
+        
+        // When
+        try await sutWithExport.exportResponse(to: testURL)
+        
+        // Then
+        XCTAssertTrue(mockExportUseCase.executeCalled)
+        XCTAssertEqual(mockExportUseCase.capturedResponse?.jsonBody, testResponse.jsonBody)
+        XCTAssertEqual(mockExportUseCase.capturedDestination, testURL)
+        XCTAssertFalse(mockExportUseCase.capturedIncludeMetadata)
+    }
+    
+    func test_exportResponse_whenNoResponse_doesNothing() async throws {
+        // Given
+        let mockExportUseCase = MockExportResponseUseCase()
+        let sutWithExport = EditorTabViewModel(
+            editorTab: testEditorTab,
+            generateMockDataUseCase: mockGenerateMockDataUseCase,
+            executeRequestUseCase: mockExecuteRequestUseCase,
+            exportResponseUseCase: mockExportUseCase
+        )
+        sutWithExport.response = nil
+        
+        let testURL = URL(fileURLWithPath: "/tmp/export.json")
+        
+        // When
+        try await sutWithExport.exportResponse(to: testURL)
+        
+        // Then
+        XCTAssertFalse(mockExportUseCase.executeCalled)
+    }
 }
 
 // MARK: - Mock
@@ -274,5 +365,27 @@ class MockExecuteUnaryRequestUseCase: ExecuteUnaryRequestUseCaseProtocol {
         }
         
         return response
+    }
+}
+
+class MockExportResponseUseCase: ExportResponseUseCase {
+    var executeCalled = false
+    var capturedResponse: GrpcResponse?
+    var capturedDestination: URL?
+    var capturedIncludeMetadata: Bool = false
+    
+    init() {
+        super.init(fileManager: MockFileManager())
+    }
+    
+    override func execute(
+        response: GrpcResponse,
+        destination: URL,
+        includeMetadata: Bool = false
+    ) async throws {
+        executeCalled = true
+        capturedResponse = response
+        capturedDestination = destination
+        capturedIncludeMetadata = includeMetadata
     }
 }

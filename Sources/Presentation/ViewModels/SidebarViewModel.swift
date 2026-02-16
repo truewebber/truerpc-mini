@@ -40,40 +40,84 @@ public final class SidebarViewModel: ObservableObject {
         isLoading = true
         error = nil
         
+        // Load well-known types first
+        await loadWellKnownTypes()
+        
         let savedPaths = protoPathsPersistence.getProtoPaths()
-        print("DEBUG: Retrieved \(savedPaths.count) saved paths")
         guard !savedPaths.isEmpty else {
             isLoading = false
             return
         }
         
-        let importPaths = importPathsRepository.getImportPaths()
+        let importPaths = getImportPathsWithWellKnownTypes()
         let loadedProtos = await loadSavedProtosUseCase.execute(urls: savedPaths, importPaths: importPaths)
-        print("DEBUG: Loaded \(loadedProtos.count) proto files")
-        protoFiles = loadedProtos
+        protoFiles.append(contentsOf: loadedProtos)
         
         isLoading = false
+    }
+    
+    /// Loads Google well-known types (Empty, Timestamp, etc.)
+    /// These are loaded silently and not shown in sidebar
+    private func loadWellKnownTypes() async {
+        guard let resourcesPath = Bundle.main.resourcePath else {
+            return
+        }
+        
+        let wellKnownTypesPath = URL(fileURLWithPath: resourcesPath)
+            .appendingPathComponent("Resources")
+            .appendingPathComponent("google")
+            .appendingPathComponent("protobuf")
+        
+        // Check if well-known types directory exists
+        guard FileManager.default.fileExists(atPath: wellKnownTypesPath.path) else {
+            return
+        }
+        
+        // Load essential well-known types
+        let wellKnownFiles = ["empty.proto", "timestamp.proto", "duration.proto", "wrappers.proto"]
+        
+        for filename in wellKnownFiles {
+            let fileURL = wellKnownTypesPath.appendingPathComponent(filename)
+            
+            if FileManager.default.fileExists(atPath: fileURL.path) {
+                do {
+                    // Import silently (no import paths needed for well-known types)
+                    _ = try await importProtoFileUseCase.execute(url: fileURL, importPaths: [])
+                } catch {
+                    // Silently continue if a well-known type fails to load
+                }
+            }
+        }
+    }
+    
+    /// Get import paths including well-known types location
+    private func getImportPathsWithWellKnownTypes() -> [String] {
+        var paths = importPathsRepository.getImportPaths()
+        
+        // Add Resources path for well-known types
+        if let resourcesPath = Bundle.main.resourcePath {
+            paths.append(resourcesPath)
+        }
+        
+        return paths
     }
     
     /// Imports a proto file from the given URL
     /// Uses configured import paths for dependency resolution
     /// Saves the path to persistent storage after successful import
     public func importProtoFile(url: URL) async {
-        print("DEBUG: importProtoFile() called with: \(url.path)")
         isLoading = true
         error = nil
         
         do {
-            let importPaths = importPathsRepository.getImportPaths()
+            let importPaths = getImportPathsWithWellKnownTypes()
             let protoFile = try await importProtoFileUseCase.execute(url: url, importPaths: importPaths)
             protoFiles.append(protoFile)
-            print("DEBUG: Successfully imported proto file: \(protoFile.name)")
             
             // Save paths after successful import
             saveProtoPaths()
         } catch {
             self.error = error.localizedDescription
-            print("DEBUG: Import failed: \(error.localizedDescription)")
         }
         
         isLoading = false

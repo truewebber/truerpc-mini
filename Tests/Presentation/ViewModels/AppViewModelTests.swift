@@ -9,6 +9,7 @@ final class AppViewModelTests: XCTestCase {
     fileprivate var createTabUseCase: CreateEditorTabUseCase!
     fileprivate var generateMockDataUseCase: GenerateMockDataUseCase!
     fileprivate var executeRequestUseCase: MockExecuteRequestUseCase!
+    fileprivate var exportResponseUseCase: ExportResponseUseCase!
     
     override func setUp() {
         super.setUp()
@@ -18,6 +19,9 @@ final class AppViewModelTests: XCTestCase {
         generateMockDataUseCase = GenerateMockDataUseCase(
             mockDataGenerator: MockDataGenerator()
         )
+        exportResponseUseCase = ExportResponseUseCase(
+            fileManager: AppMockFileManager()
+        )
         
         // Only mock the execute use case (requires network)
         executeRequestUseCase = MockExecuteRequestUseCase()
@@ -25,7 +29,8 @@ final class AppViewModelTests: XCTestCase {
         sut = AppViewModel(
             createEditorTabUseCase: createTabUseCase,
             generateMockDataUseCase: generateMockDataUseCase,
-            executeRequestUseCase: executeRequestUseCase
+            executeRequestUseCase: executeRequestUseCase,
+            exportResponseUseCase: exportResponseUseCase
         )
     }
     
@@ -34,6 +39,7 @@ final class AppViewModelTests: XCTestCase {
         createTabUseCase = nil
         generateMockDataUseCase = nil
         executeRequestUseCase = nil
+        exportResponseUseCase = nil
         super.tearDown()
     }
     
@@ -176,5 +182,13 @@ fileprivate class MockExecuteRequestUseCase: ExecuteUnaryRequestUseCaseProtocol 
             statusCode: 0,
             statusMessage: "OK"
         )
+    }
+}
+
+// MARK: - Mock File Manager
+
+fileprivate class AppMockFileManager: FileManagerProtocol {
+    func write(_ data: Data, to url: URL) throws {
+        // No-op for testing
     }
 }

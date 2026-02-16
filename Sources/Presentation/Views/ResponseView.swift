@@ -6,6 +6,8 @@ struct ResponseView: View {
     let response: GrpcResponse?
     let error: String?
     let isExecuting: Bool
+    let onCopy: () -> Void
+    let onExport: () -> Void
     
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -31,11 +33,37 @@ struct ResponseView: View {
             
             if isExecuting {
                 ProgressView()
-                    .scaleEffect(0.7)
+                    .controlSize(.small)
+                    .frame(width: 16, height: 16)
                 Text("Executing...")
                     .font(.caption)
                     .foregroundColor(.secondary)
             } else if let response = response {
+                // Action buttons
+                HStack(spacing: 8) {
+                    // Copy button
+                    Button(action: onCopy) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "doc.on.doc")
+                                .font(.caption2)
+                            Text("Copy")
+                                .font(.caption)
+                        }
+                    }
+                    .buttonStyle(.borderless)
+                    
+                    // Export button
+                    Button(action: onExport) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "square.and.arrow.down")
+                                .font(.caption2)
+                            Text("Export")
+                                .font(.caption)
+                        }
+                    }
+                    .buttonStyle(.borderless)
+                }
+                
                 // Response time badge
                 HStack(spacing: 4) {
                     Image(systemName: "clock")
@@ -187,14 +215,26 @@ struct ResponseView_Previews: PreviewProvider {
     static var previews: some View {
         Group {
             // Empty state
-            ResponseView(response: nil, error: nil, isExecuting: false)
-                .frame(width: 400, height: 300)
-                .previewDisplayName("Empty State")
+            ResponseView(
+                response: nil,
+                error: nil,
+                isExecuting: false,
+                onCopy: {},
+                onExport: {}
+            )
+            .frame(width: 400, height: 300)
+            .previewDisplayName("Empty State")
             
             // Executing state
-            ResponseView(response: nil, error: nil, isExecuting: true)
-                .frame(width: 400, height: 300)
-                .previewDisplayName("Executing")
+            ResponseView(
+                response: nil,
+                error: nil,
+                isExecuting: true,
+                onCopy: {},
+                onExport: {}
+            )
+            .frame(width: 400, height: 300)
+            .previewDisplayName("Executing")
             
             // Success response
             ResponseView(
@@ -212,7 +252,9 @@ struct ResponseView_Previews: PreviewProvider {
                     statusMessage: "OK"
                 ),
                 error: nil,
-                isExecuting: false
+                isExecuting: false,
+                onCopy: { print("Copy tapped") },
+                onExport: { print("Export tapped") }
             )
             .frame(width: 400, height: 300)
             .previewDisplayName("Success Response")
@@ -221,7 +263,9 @@ struct ResponseView_Previews: PreviewProvider {
             ResponseView(
                 response: nil,
                 error: "Network error: Connection refused. Could not connect to localhost:50051",
-                isExecuting: false
+                isExecuting: false,
+                onCopy: {},
+                onExport: {}
             )
             .frame(width: 400, height: 300)
             .previewDisplayName("Error State")

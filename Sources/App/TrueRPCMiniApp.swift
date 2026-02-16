@@ -43,6 +43,10 @@ struct TrueRPCMiniApp: App {
             )
         }
         
+        di.register(FileManagerProtocol.self) {
+            SystemFileManager()
+        }
+        
         // Register Domain Layer dependencies
         di.register(ImportProtoFileUseCaseProtocol.self) {
             ImportProtoFileUseCase(repository: di.resolve(ProtoRepositoryProtocol.self)!)
@@ -70,6 +74,12 @@ struct TrueRPCMiniApp: App {
             )
         }
         
+        di.register(ExportResponseUseCase.self) {
+            ExportResponseUseCase(
+                fileManager: di.resolve(FileManagerProtocol.self)!
+            )
+        }
+        
         // Create SidebarViewModel once
         let sidebarVM = SidebarViewModel(
             importProtoFileUseCase: di.resolve(ImportProtoFileUseCaseProtocol.self)!,
@@ -82,7 +92,8 @@ struct TrueRPCMiniApp: App {
         let appVM = AppViewModel(
             createEditorTabUseCase: di.resolve(CreateEditorTabUseCase.self)!,
             generateMockDataUseCase: di.resolve(GenerateMockDataUseCase.self)!,
-            executeRequestUseCase: di.resolve(ExecuteUnaryRequestUseCaseProtocol.self)!
+            executeRequestUseCase: di.resolve(ExecuteUnaryRequestUseCaseProtocol.self)!,
+            exportResponseUseCase: di.resolve(ExportResponseUseCase.self)!
         )
         
         // Use _StateObject to initialize @StateObject properties

@@ -1,9 +1,14 @@
 import SwiftUI
+import AppKit
+import UniformTypeIdentifiers
 
 /// View for editing gRPC request parameters and displaying responses
 /// Displays URL input, JSON editor, Play button, and response panel
 struct RequestEditorView: View {
     @ObservedObject var viewModel: EditorTabViewModel
+    @State private var showExportError: Bool = false
+    @State private var exportErrorMessage: String = ""
+    @State private var showCopySuccess: Bool = false
     
     var body: some View {
         VStack(spacing: 0) {
@@ -22,7 +27,18 @@ struct RequestEditorView: View {
                 ResponseView(
                     response: viewModel.response,
                     error: viewModel.error,
-                    isExecuting: viewModel.isExecuting
+                    isExecuting: viewModel.isExecuting,
+                    onCopy: {
+                        viewModel.copyResponse()
+                        withAnimation {
+                            showCopySuccess = true
+                        }
+                    },
+                    onExport: {
+                        Task {
+                            await exportResponse()
+                        }
+                    }
                 )
                 .frame(minWidth: 300)
             }
@@ -30,6 +46,31 @@ struct RequestEditorView: View {
         .task {
             // Load mock data when view appears
             await viewModel.loadMockData()
+        }
+        .alert("Export Failed", isPresented: $showExportError) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(exportErrorMessage)
+        }
+        .overlay(alignment: .top) {
+            if showCopySuccess {
+                Text("Copied to clipboard")
+                    .font(.caption)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(Color.green)
+                    .foregroundColor(.white)
+                    .cornerRadius(8)
+                    .padding(.top, 8)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+                    .onAppear {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                            withAnimation {
+                                showCopySuccess = false
+                            }
+                        }
+                    }
+            }
         }
     }
     
@@ -65,7 +106,8 @@ struct RequestEditorView: View {
             
             if viewModel.isLoading {
                 ProgressView()
-                    .scaleEffect(0.7)
+                    .controlSize(.small)
+                    .frame(width: 16, height: 16)
             }
         }
         .padding()
@@ -105,15 +147,57 @@ struct RequestEditorView: View {
                 .font(.subheadline)
                 .foregroundColor(.secondary)
             
-            TextEditor(text: Binding(
+            JSONTextEditor(text: Binding(
                 get: { viewModel.requestJson },
                 set: { viewModel.updateJson($0) }
             ))
+            .id("json-editor-\(viewModel.editorTab.id)")
             .font(.system(.body, design: .monospaced))
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .border(Color.secondary.opacity(0.2), width: 1)
         }
         .padding()
+    }
+    
+    // MARK: - Actions
+    
+    @MainActor
+    private func exportResponse() async {
+        guard let window = NSApp.keyWindow else {
+            exportErrorMessage = "Unable to show save dialog"
+            showExportError = true
+            return
+        }
+        
+        // Create save panel
+        let savePanel = NSSavePanel()
+        savePanel.allowedContentTypes = [.json]
+        savePanel.nameFieldStringValue = viewModel.exportResponseUseCase.generateDefaultFilename()
+        savePanel.canCreateDirectories = true
+        savePanel.title = "Export Response"
+        savePanel.message = "Choose where to save the response"
+        
+        // Use continuation to bridge callback-based API to async/await
+        let url: URL? = await withCheckedContinuation { continuation in
+            savePanel.beginSheetModal(for: window) { response in
+                if response == .OK {
+                    continuation.resume(returning: savePanel.url)
+                } else {
+                    continuation.resume(returning: nil)
+                }
+            }
+        }
+        
+        guard let url = url else {
+            return
+        }
+        
+        do {
+            try await viewModel.exportResponse(to: url)
+        } catch {
+            exportErrorMessage = "Failed to export response: \(error.localizedDescription)"
+            showExportError = true
+        }
     }
 }
 
@@ -141,13 +225,16 @@ struct RequestEditorView_Previews: PreviewProvider {
             method: method
         )
         
-        // Create mock use case for preview
+        // Create mock use cases for preview
         let mockExecuteUseCase = PreviewMockExecuteUseCase()
+        let mockFileManager = PreviewMockFileManager()
+        let exportUseCase = ExportResponseUseCase(fileManager: mockFileManager)
         
         let viewModel = EditorTabViewModel(
             editorTab: editorTab,
             generateMockDataUseCase: GenerateMockDataUseCase(mockDataGenerator: MockDataGenerator()),
-            executeRequestUseCase: mockExecuteUseCase
+            executeRequestUseCase: mockExecuteUseCase,
+            exportResponseUseCase: exportUseCase
         )
         
         viewModel.url = "localhost:50051"
@@ -159,7 +246,7 @@ struct RequestEditorView_Previews: PreviewProvider {
     }
 }
 
-// MARK: - Preview Mock
+// MARK: - Preview Mocks
 
 private class PreviewMockExecuteUseCase: ExecuteUnaryRequestUseCaseProtocol {
     func execute(request: RequestDraft, method: TrueRPCMini.Method) async throws -> GrpcResponse {
@@ -172,4 +259,65 @@ private class PreviewMockExecuteUseCase: ExecuteUnaryRequestUseCaseProtocol {
         )
     }
 }
+
+private class PreviewMockFileManager: FileManagerProtocol {
+    func write(_ data: Data, to url: URL) throws {
+        // No-op for preview
+    }
+}
 #endif
+
+// MARK: - JSON Text Editor
+
+/// Custom text editor for JSON with smart quotes disabled
+struct JSONTextEditor: NSViewRepresentable {
+    @Binding var text: String
+    
+    func makeNSView(context: Context) -> NSScrollView {
+        let scrollView = NSTextView.scrollableTextView()
+        let textView = scrollView.documentView as! NSTextView
+        
+        // Disable smart quotes and dashes
+        textView.isAutomaticQuoteSubstitutionEnabled = false
+        textView.isAutomaticDashSubstitutionEnabled = false
+        textView.isAutomaticSpellingCorrectionEnabled = false
+        textView.isAutomaticTextReplacementEnabled = false
+        
+        // Set monospaced font
+        textView.font = NSFont.monospacedSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)
+        
+        // Enable wrapping
+        textView.isHorizontallyResizable = false
+        textView.textContainer?.widthTracksTextView = true
+        
+        textView.delegate = context.coordinator
+        textView.string = text
+        
+        return scrollView
+    }
+    
+    func updateNSView(_ nsView: NSScrollView, context: Context) {
+        let textView = nsView.documentView as! NSTextView
+        if textView.string != text {
+            textView.string = text
+        }
+    }
+    
+    func makeCoordinator() -> Coordinator {
+        Coordinator(self)
+    }
+    
+    class Coordinator: NSObject, NSTextViewDelegate {
+        var parent: JSONTextEditor
+        
+        init(_ parent: JSONTextEditor) {
+            self.parent = parent
+        }
+        
+        func textDidChange(_ notification: Notification) {
+            guard let textView = notification.object as? NSTextView else { return }
+            parent.text = textView.string
+        }
+    }
+}
+

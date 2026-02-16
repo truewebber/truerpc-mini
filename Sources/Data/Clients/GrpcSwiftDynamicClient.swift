@@ -29,12 +29,15 @@ public class GrpcSwiftDynamicClient: GrpcClientProtocol {
         // 3. Parse URL to extract host and port
         let (host, port) = try parseServerAddress(request.url)
         
+        // 4. Determine if TLS should be used (default for 443)
+        let useTLS = shouldUseTLS(port: port, url: request.url)
+        
         do {
-            // 4. Create transport and execute with client
+            // 5. Create transport and execute with client
             return try await withGRPCClient(
                 transport: try .http2NIOPosix(
                     target: .dns(host: host, port: port),
-                    transportSecurity: .plaintext,
+                    transportSecurity: useTLS ? .tls : .plaintext,
                     config: .defaults
                 )
             ) { client in
@@ -77,12 +80,19 @@ public class GrpcSwiftDynamicClient: GrpcClientProtocol {
         }
     }
     
+    /// Determine if TLS should be used based on port
+    /// Standard gRPC convention: port 443 = TLS, other ports = plaintext
+    internal func shouldUseTLS(port: Int, url: String) -> Bool {
+        return port == 443
+    }
+    
     /// Parse server address into host and port
     internal func parseServerAddress(_ address: String) throws -> (host: String, port: Int) {
-        // Remove protocol if present
+        // gRPC doesn't use http:// or https:// prefixes, but clean them if present
         let cleanAddress = address
             .replacingOccurrences(of: "http://", with: "")
             .replacingOccurrences(of: "https://", with: "")
+            .trimmingCharacters(in: .whitespaces)
         
         let components = cleanAddress.split(separator: ":")
         
@@ -110,12 +120,28 @@ public class GrpcSwiftDynamicClient: GrpcClientProtocol {
     
     /// Parse JSON string to DynamicMessage using descriptor
     func parseJSON(_ jsonString: String, using descriptor: MessageDescriptor) throws -> DynamicMessage {
+        print("DEBUG: parseJSON called")
+        print("DEBUG: Input JSON: \(jsonString)")
+        print("DEBUG: Message descriptor: \(descriptor.name)")
+        print("DEBUG: Fields count: \(descriptor.fields.count)")
+        for (fieldNumber, field) in descriptor.fields {
+            print("DEBUG: Field - number: \(fieldNumber), name: \(field.name), type: \(field.type)")
+        }
+        
         guard let jsonData = jsonString.data(using: .utf8) else {
             throw GrpcClientError.invalidJSON("Cannot convert string to data")
         }
         
         let deserializer = JSONDeserializer()
-        return try deserializer.deserialize(jsonData, using: descriptor)
+        do {
+            let result = try deserializer.deserialize(jsonData, using: descriptor)
+            print("DEBUG: Deserialization successful!")
+            return result
+        } catch {
+            print("ERROR: Deserialization failed: \(error)")
+            print("ERROR: Error type: \(type(of: error))")
+            throw error
+        }
     }
     
     /// Convert DynamicMessage to JSON string

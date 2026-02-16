@@ -68,13 +68,31 @@ public final class FileSystemProtoRepository: ProtoRepositoryProtocol {
         
         // Search through all loaded file descriptors
         for fileDescriptor in fileDescriptors {
-            // Check messages in this file
+            // Try searching with the file's package
             if let descriptor = try? findMessageDescriptor(
                 in: fileDescriptor,
                 typeName: normalizedTypeName,
                 package: fileDescriptor.package
             ) {
                 return descriptor
+            }
+            
+            // If not found, try stripping the first package component
+            // e.g., "example.google.protobuf.Empty" -> "google.protobuf.Empty"
+            if normalizedTypeName.contains(".") {
+                let components = normalizedTypeName.split(separator: ".")
+                if components.count > 1 {
+                    // Try removing first component
+                    let withoutFirstPackage = components.dropFirst().joined(separator: ".")
+                    
+                    if let descriptor = try? findMessageDescriptor(
+                        in: fileDescriptor,
+                        typeName: withoutFirstPackage,
+                        package: fileDescriptor.package
+                    ) {
+                        return descriptor
+                    }
+                }
             }
         }
         
@@ -172,10 +190,35 @@ public final class FileSystemProtoRepository: ProtoRepositoryProtocol {
     ) throws -> FieldDescriptor {
         let fieldType = convertFieldType(fieldProto.type)
         
+        print("DEBUG: convertToFieldDescriptor - name: \(fieldProto.name)")
+        print("DEBUG: - type: \(fieldProto.type)")
+        print("DEBUG: - label: \(fieldProto.label)")
+        print("DEBUG: - hasLabel: \(fieldProto.hasLabel)")
+        
+        // Check if field is repeated
+        let isRepeated = fieldProto.label == .repeated
+        print("DEBUG: - isRepeated: \(isRepeated)")
+        
+        // For message and enum types, we need to provide the typeName
+        if fieldType == .message || fieldType == .enum {
+            let typeName = fieldProto.typeName.hasPrefix(".") 
+                ? String(fieldProto.typeName.dropFirst()) 
+                : fieldProto.typeName
+            
+            return FieldDescriptor(
+                name: fieldProto.name,
+                number: Int(fieldProto.number),
+                type: fieldType,
+                typeName: typeName,
+                isRepeated: isRepeated
+            )
+        }
+        
         return FieldDescriptor(
             name: fieldProto.name,
             number: Int(fieldProto.number),
-            type: fieldType
+            type: fieldType,
+            isRepeated: isRepeated
         )
     }
     
@@ -211,7 +254,7 @@ public final class FileSystemProtoRepository: ProtoRepositoryProtocol {
         url: URL
     ) -> ProtoFile {
         let services = fileDescriptor.service.map { serviceDesc in
-            mapToService(serviceDescriptor: serviceDesc)
+            mapToService(serviceDescriptor: serviceDesc, package: fileDescriptor.package)
         }
         
         return ProtoFile(
@@ -222,10 +265,14 @@ public final class FileSystemProtoRepository: ProtoRepositoryProtocol {
     }
     
     private func mapToService(
-        serviceDescriptor: Google_Protobuf_ServiceDescriptorProto
+        serviceDescriptor: Google_Protobuf_ServiceDescriptorProto,
+        package: String
     ) -> Service {
+        // Construct fully qualified service name: package.ServiceName
+        let fullServiceName = package.isEmpty ? serviceDescriptor.name : "\(package).\(serviceDescriptor.name)"
+        
         let methods = serviceDescriptor.method.map { methodDesc in
-            mapToMethod(methodDescriptor: methodDesc, serviceName: serviceDescriptor.name)
+            mapToMethod(methodDescriptor: methodDesc, serviceName: fullServiceName)
         }
         
         return Service(
@@ -254,4 +301,17 @@ public enum ProtoRepositoryError: Error, Equatable {
     case parsingFailed(String)
     case fileNotFound
     case messageTypeNotFound(String)
+}
+
+extension ProtoRepositoryError: LocalizedError {
+    public var errorDescription: String? {
+        switch self {
+        case .parsingFailed(let message):
+            return "Failed to parse proto file: \(message)"
+        case .fileNotFound:
+            return "Proto file not found"
+        case .messageTypeNotFound(let typeName):
+            return "Message type '\(typeName)' not found in loaded proto files"
+        }
+    }
 }

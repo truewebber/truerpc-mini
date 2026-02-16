@@ -1,12 +1,27 @@
 name: TrueRPCMini
 options:
   bundleIdPrefix: com.truewebber
+  generateEmptyDirectories: true
+schemes:
+  TrueRPCMini:
+    build:
+      targets:
+        TrueRPCMini: all
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets:
+        - TrueRPCMiniTests
 targets:
   TrueRPCMini:
     type: application
     platform: macOS
     deploymentTarget: "15.0"
-    sources: [Sources]
+    sources:
+      - Sources
+      - path: Resources
+        type: folder
     settings:
       base:
         GENERATE_INFOPLIST_FILE: YES

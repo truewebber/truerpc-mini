@@ -13,17 +13,20 @@ public final class AppViewModel: ObservableObject {
     private let createEditorTabUseCase: CreateEditorTabUseCase
     private let generateMockDataUseCase: GenerateMockDataUseCase
     private let executeRequestUseCase: ExecuteUnaryRequestUseCaseProtocol
+    private let exportResponseUseCase: ExportResponseUseCase
     
     // MARK: - Initialization
     
     public init(
         createEditorTabUseCase: CreateEditorTabUseCase,
         generateMockDataUseCase: GenerateMockDataUseCase,
-        executeRequestUseCase: ExecuteUnaryRequestUseCaseProtocol
+        executeRequestUseCase: ExecuteUnaryRequestUseCaseProtocol,
+        exportResponseUseCase: ExportResponseUseCase
     ) {
         self.createEditorTabUseCase = createEditorTabUseCase
         self.generateMockDataUseCase = generateMockDataUseCase
         self.executeRequestUseCase = executeRequestUseCase
+        self.exportResponseUseCase = exportResponseUseCase
     }
     
     // MARK: - Public Methods
@@ -34,7 +37,8 @@ public final class AppViewModel: ObservableObject {
         let tabViewModel = EditorTabViewModel(
             editorTab: editorTab,
             generateMockDataUseCase: generateMockDataUseCase,
-            executeRequestUseCase: executeRequestUseCase
+            executeRequestUseCase: executeRequestUseCase,
+            exportResponseUseCase: exportResponseUseCase
         )
         selectedEditorTab = tabViewModel
     }

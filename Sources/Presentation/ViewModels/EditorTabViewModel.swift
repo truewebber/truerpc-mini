@@ -1,5 +1,6 @@
 import Foundation
 import SwiftUI
+import AppKit
 
 /// ViewModel for managing request editor tab state
 @MainActor
@@ -21,17 +22,20 @@ public final class EditorTabViewModel: ObservableObject {
     
     private let generateMockDataUseCase: GenerateMockDataUseCase
     private let executeRequestUseCase: ExecuteUnaryRequestUseCaseProtocol
+    public let exportResponseUseCase: ExportResponseUseCase
     
     // MARK: - Initialization
     
     public init(
         editorTab: EditorTab,
         generateMockDataUseCase: GenerateMockDataUseCase,
-        executeRequestUseCase: ExecuteUnaryRequestUseCaseProtocol
+        executeRequestUseCase: ExecuteUnaryRequestUseCaseProtocol,
+        exportResponseUseCase: ExportResponseUseCase
     ) {
         self.editorTab = editorTab
         self.generateMockDataUseCase = generateMockDataUseCase
         self.executeRequestUseCase = executeRequestUseCase
+        self.exportResponseUseCase = exportResponseUseCase
     }
     
     // MARK: - Public Methods
@@ -87,8 +91,19 @@ public final class EditorTabViewModel: ObservableObject {
         } catch let grpcError as GrpcClientError {
             // Handle gRPC-specific errors
             error = formatError(grpcError)
+        } catch let protoError as ProtoRepositoryError {
+            // Handle proto repository errors
+            error = protoError.localizedDescription
         } catch let otherError {
             // Handle other errors
+            print("ERROR: Request failed with error: \(otherError)")
+            print("ERROR: Error type: \(type(of: otherError))")
+            print("ERROR: Error details: \(String(describing: otherError))")
+            if let localizedError = otherError as? LocalizedError {
+                print("ERROR: LocalizedDescription: \(localizedError.errorDescription ?? "none")")
+                print("ERROR: FailureReason: \(localizedError.failureReason ?? "none")")
+                print("ERROR: RecoverySuggestion: \(localizedError.recoverySuggestion ?? "none")")
+            }
             error = "Request failed: \(otherError.localizedDescription)"
         }
         
@@ -96,6 +111,26 @@ public final class EditorTabViewModel: ObservableObject {
     }
     
     // MARK: - Private Methods
+    
+    /// Copy response to clipboard
+    public func copyResponse() {
+        guard let response = response else { return }
+        
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setString(response.jsonBody, forType: .string)
+    }
+    
+    /// Export response to file
+    public func exportResponse(to url: URL) async throws {
+        guard let response = response else { return }
+        
+        try await exportResponseUseCase.execute(
+            response: response,
+            destination: url,
+            includeMetadata: false
+        )
+    }
     
     /// Format gRPC error for display
     private func formatError(_ error: GrpcClientError) -> String {
