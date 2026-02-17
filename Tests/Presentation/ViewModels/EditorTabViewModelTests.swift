@@ -350,11 +350,17 @@ class MockExecuteUnaryRequestUseCase: ExecuteUnaryRequestUseCaseProtocol {
     var capturedMethod: TrueRPCMini.Method?
     var stubbedResponse: GrpcResponse?
     var shouldThrowError: GrpcClientError?
+    var shouldThrow: Bool = false
+    var errorToThrow: GrpcClientError?
     
     func execute(request: RequestDraft, method: TrueRPCMini.Method) async throws -> GrpcResponse {
         executeCalled = true
         capturedRequest = request
         capturedMethod = method
+        
+        if shouldThrow, let error = errorToThrow {
+            throw error
+        }
         
         if let error = shouldThrowError {
             throw error
@@ -501,6 +507,35 @@ extension EditorTabViewModelTests {
         XCTAssertNotNil(sut.error, "Error should be set for non-object metadata")
         // Metadata error should prevent request execution
         XCTAssertFalse(mockExecuteRequestUseCase.executeCalled)
+    }
+    
+    func test_executeRequest_withGrpcError_setsErrorAndResponse() async {
+        // Given
+        sut.requestJson = "{}"
+        sut.url = "localhost:50051"
+        
+        let errorResponse = GrpcResponse(
+            jsonBody: #"{"error": "not implemented"}"#,
+            responseTime: 0.05,
+            statusCode: 12, // gRPC UNIMPLEMENTED
+            statusMessage: "unimplemented",
+            trailers: [
+                "grpc-status": "12",
+                "grpc-message": "Method not implemented"
+            ]
+        )
+        
+        mockExecuteRequestUseCase.shouldThrow = true
+        mockExecuteRequestUseCase.errorToThrow = .grpcError("unimplemented", response: errorResponse)
+        
+        // When
+        await sut.executeRequest()
+        
+        // Then - both error and response should be set
+        XCTAssertNotNil(sut.error, "Error message should be set")
+        XCTAssertNotNil(sut.response, "Response with metadata should be set for debugging")
+        XCTAssertEqual(sut.response?.trailers?["grpc-status"], "12")
+        XCTAssertEqual(sut.response?.statusCode, 12)
     }
 }
 

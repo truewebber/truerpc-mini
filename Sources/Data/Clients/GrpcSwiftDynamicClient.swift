@@ -87,11 +87,10 @@ public class GrpcSwiftDynamicClient: GrpcClientProtocol {
             // Handle gRPC-specific errors
             let responseTime = Date().timeIntervalSince(startTime)
             
-            // Extract metadata from error if available
+            // Extract metadata from error
             let trailers = convertMetadataToDict(error.metadata)
             
-            // For gRPC errors, we still want to capture metadata for debugging
-            // Create a response with error status and metadata
+            // Create response with error status and metadata for debugging
             let errorResponse = GrpcResponse(
                 jsonBody: error.message.isEmpty ? "{}" : #"{"error": "\#(error.message)"}"#,
                 responseTime: responseTime,
@@ -101,9 +100,9 @@ public class GrpcSwiftDynamicClient: GrpcClientProtocol {
                 statusDetails: error.message
             )
             
-            // Store response for metadata visibility, but also throw error
-            // This requires changing the flow - for now just throw
-            throw mapGrpcError(error, trailers: trailers)
+            // We need to return the response with metadata, but also signal error
+            // Solution: Change GrpcClientError to carry response
+            throw GrpcClientError.grpcError(error.code.description, response: errorResponse)
         } catch {
             // Handle other errors
             throw GrpcClientError.unknown(error.localizedDescription)

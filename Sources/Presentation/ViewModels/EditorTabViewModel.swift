@@ -113,6 +113,10 @@ public final class EditorTabViewModel: ObservableObject {
             error = formatMetadataError(metadataError)
         } catch let grpcError as GrpcClientError {
             // Handle gRPC-specific errors
+            // Extract response if error contains it (for metadata visibility)
+            if case .grpcError(_, let errorResponse) = grpcError {
+                response = errorResponse
+            }
             error = formatError(grpcError)
         } catch let protoError as ProtoRepositoryError {
             // Handle proto repository errors
@@ -160,6 +164,8 @@ public final class EditorTabViewModel: ObservableObject {
             return "Service unavailable"
         case .invalidResponse:
             return "Invalid response from server"
+        case .grpcError(let message, _):
+            return "gRPC error: \(message)"
         case .unknown(let message):
             return "Error: \(message)"
         }

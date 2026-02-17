@@ -22,5 +22,27 @@ public enum GrpcClientError: Error, Equatable {
     case timeout
     case unavailable
     case invalidResponse
+    case grpcError(String, response: GrpcResponse)
     case unknown(String)
+    
+    public static func == (lhs: GrpcClientError, rhs: GrpcClientError) -> Bool {
+        switch (lhs, rhs) {
+        case (.invalidJSON(let l), .invalidJSON(let r)):
+            return l == r
+        case (.networkError(let l), .networkError(let r)):
+            return l == r
+        case (.timeout, .timeout):
+            return true
+        case (.unavailable, .unavailable):
+            return true
+        case (.invalidResponse, .invalidResponse):
+            return true
+        case (.grpcError(let lMsg, let lResp), .grpcError(let rMsg, let rResp)):
+            return lMsg == rMsg && lResp == rResp
+        case (.unknown(let l), .unknown(let r)):
+            return l == r
+        default:
+            return false
+        }
+    }
 }
