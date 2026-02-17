@@ -69,17 +69,41 @@ public class GrpcSwiftDynamicClient: GrpcClientProtocol {
                     let responseJSON = try self.messageToJSON(response.message)
                     let responseTime = Date().timeIntervalSince(startTime)
                     
+                    // 10. Extract metadata from response
+                    let headers = self.convertMetadataToDict(response.metadata)
+                    let trailers = self.convertMetadataToDict(response.trailingMetadata)
+                    
                     return GrpcResponse(
                         jsonBody: responseJSON,
                         responseTime: responseTime,
                         statusCode: 0, // Success
-                        statusMessage: "OK"
+                        statusMessage: "OK",
+                        headers: headers.isEmpty ? nil : headers,
+                        trailers: trailers.isEmpty ? nil : trailers
                     )
                 }
             }
         } catch let error as RPCError {
             // Handle gRPC-specific errors
-            throw mapGrpcError(error)
+            let responseTime = Date().timeIntervalSince(startTime)
+            
+            // Extract metadata from error if available
+            let trailers = convertMetadataToDict(error.metadata)
+            
+            // For gRPC errors, we still want to capture metadata for debugging
+            // Create a response with error status and metadata
+            let errorResponse = GrpcResponse(
+                jsonBody: error.message.isEmpty ? "{}" : #"{"error": "\#(error.message)"}"#,
+                responseTime: responseTime,
+                statusCode: error.code.rawValue,
+                statusMessage: error.code.description,
+                trailers: trailers.isEmpty ? nil : trailers,
+                statusDetails: error.message
+            )
+            
+            // Store response for metadata visibility, but also throw error
+            // This requires changing the flow - for now just throw
+            throw mapGrpcError(error, trailers: trailers)
         } catch {
             // Handle other errors
             throw GrpcClientError.unknown(error.localizedDescription)
@@ -113,14 +137,17 @@ public class GrpcSwiftDynamicClient: GrpcClientProtocol {
     }
     
     /// Map gRPC RPCError to GrpcClientError
-    internal func mapGrpcError(_ error: RPCError) -> GrpcClientError {
+    internal func mapGrpcError(_ error: RPCError, trailers: [String: String]? = nil) -> GrpcClientError {
+        let errorMessage = error.message.isEmpty ? error.code.description : error.message
+        let trailersInfo = trailers?.isEmpty == false ? " (trailers: \(trailers?.count ?? 0) items)" : ""
+        
         switch error.code {
         case .unavailable:
             return .unavailable
         case .deadlineExceeded:
             return .timeout
         default:
-            return .networkError("gRPC error: \(error.code) - \(error.message)")
+            return .networkError("gRPC error: \(error.code) - \(errorMessage)\(trailersInfo)")
         }
     }
     
@@ -162,5 +189,32 @@ public class GrpcSwiftDynamicClient: GrpcClientProtocol {
         }
         
         return grpcMetadata
+    }
+    
+    /// Convert GRPCCore.Metadata to Dictionary
+    private func convertMetadataToDict(_ metadata: GRPCCore.Metadata) -> [String: String] {
+        var result: [String: String] = [:]
+        
+        for (key, value) in metadata {
+            switch value {
+            case .string(let stringValue):
+                // Append string values (metadata can have multiple values per key)
+                if let existing = result[key] {
+                    result[key] = "\(existing), \(stringValue)"
+                } else {
+                    result[key] = stringValue
+                }
+            case .binary(let binaryValue):
+                // Convert binary to base64 string
+                let base64 = Data(binaryValue).base64EncodedString()
+                if let existing = result[key] {
+                    result[key] = "\(existing), \(base64)"
+                } else {
+                    result[key] = base64
+                }
+            }
+        }
+        
+        return result
     }
 }

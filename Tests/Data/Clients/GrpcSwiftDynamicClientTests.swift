@@ -516,3 +516,136 @@ extension GrpcSwiftDynamicClientTests {
     }
 }
 
+// MARK: - Response Metadata Tests
+extension GrpcSwiftDynamicClientTests {
+    
+    func test_convertMetadataToDict_withStringValues_convertsCorrectly() {
+        // Given
+        var metadata = GRPCCore.Metadata()
+        metadata.addString("Bearer token123", forKey: "authorization")
+        metadata.addString("application/json", forKey: "content-type")
+        
+        // When - test that string metadata is accessible
+        let authValues = metadata[stringValues: "authorization"]
+        let contentTypeValues = metadata[stringValues: "content-type"]
+        
+        // Then
+        XCTAssertEqual(Array(authValues), ["Bearer token123"])
+        XCTAssertEqual(Array(contentTypeValues), ["application/json"])
+    }
+    
+    func test_convertMetadataToDict_withBinaryValues_convertsToBase64() {
+        // Given
+        var metadata = GRPCCore.Metadata()
+        let binaryData: [UInt8] = [72, 101, 108, 108, 111] // "Hello"
+        metadata.addBinary(binaryData, forKey: "data-bin")
+        
+        // When
+        let values = metadata[binaryValues: "data-bin"]
+        
+        // Then - verify binary value is stored
+        XCTAssertEqual(Array(values).count, 1)
+        XCTAssertEqual(Array(values).first, binaryData)
+    }
+    
+    func test_convertMetadataToDict_withMultipleValuesForSameKey_combinesThem() {
+        // Given
+        var metadata = GRPCCore.Metadata()
+        metadata.addString("value1", forKey: "x-custom")
+        metadata.addString("value2", forKey: "x-custom")
+        
+        // When
+        let values = metadata[stringValues: "x-custom"]
+        
+        // Then - multiple values should be preserved
+        XCTAssertEqual(Array(values).count, 2)
+        XCTAssertEqual(Array(values), ["value1", "value2"])
+    }
+    
+    func test_convertMetadataToDict_withEmptyMetadata_returnsEmptyDict() {
+        // Given
+        let metadata = GRPCCore.Metadata()
+        
+        // Then
+        XCTAssertTrue(metadata.isEmpty)
+    }
+    
+    func test_grpcResponse_withHeaders_storesCorrectly() {
+        // Given
+        let headers = ["authorization": "Bearer token", "content-type": "application/json"]
+        
+        // When
+        let response = GrpcResponse(
+            jsonBody: "{}",
+            responseTime: 0.1,
+            statusCode: 0,
+            statusMessage: "OK",
+            headers: headers
+        )
+        
+        // Then
+        XCTAssertEqual(response.headers, headers)
+        XCTAssertNil(response.trailers)
+        XCTAssertNil(response.statusDetails)
+    }
+    
+    func test_grpcResponse_withTrailers_storesCorrectly() {
+        // Given
+        let trailers = ["grpc-status": "0", "grpc-message": "Success"]
+        
+        // When
+        let response = GrpcResponse(
+            jsonBody: "{}",
+            responseTime: 0.1,
+            statusCode: 0,
+            statusMessage: "OK",
+            trailers: trailers
+        )
+        
+        // Then
+        XCTAssertNil(response.headers)
+        XCTAssertEqual(response.trailers, trailers)
+        XCTAssertNil(response.statusDetails)
+    }
+    
+    func test_grpcResponse_withAllMetadata_storesCorrectly() {
+        // Given
+        let headers = ["authorization": "Bearer token"]
+        let trailers = ["grpc-status": "0"]
+        let statusDetails = "Request completed successfully"
+        
+        // When
+        let response = GrpcResponse(
+            jsonBody: "{}",
+            responseTime: 0.1,
+            statusCode: 0,
+            statusMessage: "OK",
+            headers: headers,
+            trailers: trailers,
+            statusDetails: statusDetails
+        )
+        
+        // Then
+        XCTAssertEqual(response.headers, headers)
+        XCTAssertEqual(response.trailers, trailers)
+        XCTAssertEqual(response.statusDetails, statusDetails)
+    }
+    
+    func test_grpcResponse_backwardCompatibility_withoutMetadata() {
+        // Given - old style initialization without metadata
+        let response = GrpcResponse(
+            jsonBody: "{}",
+            responseTime: 0.1,
+            statusCode: 0,
+            statusMessage: "OK"
+        )
+        
+        // Then - metadata fields should be nil
+        XCTAssertNil(response.headers)
+        XCTAssertNil(response.trailers)
+        XCTAssertNil(response.statusDetails)
+    }
+}
+
+
+

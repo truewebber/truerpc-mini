@@ -1,13 +1,16 @@
 import SwiftUI
 
 /// View for displaying gRPC response
-/// Shows response JSON, timing, or error state
+/// Shows response JSON, timing, status, headers, and trailers
 struct ResponseView: View {
     let response: GrpcResponse?
     let error: String?
     let isExecuting: Bool
     let onCopy: () -> Void
     let onExport: () -> Void
+    
+    @State private var showHeaders: Bool = false
+    @State private var showTrailers: Bool = false
     
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -112,10 +115,16 @@ struct ResponseView: View {
     private var contentView: some View {
         if isExecuting {
             executingStateView
-        } else if let error = error {
-            errorView(error)
         } else if let response = response {
-            responseContentView(response)
+            // Show response even if there was an error (for metadata visibility)
+            if let error = error {
+                errorViewWithMetadata(error, response: response)
+            } else {
+                responseContentView(response)
+            }
+        } else if let error = error {
+            // Pure error without response
+            errorView(error)
         } else {
             emptyStateView
         }
@@ -175,17 +184,196 @@ struct ResponseView: View {
         .background(Color(nsColor: .textBackgroundColor))
     }
     
-    private func responseContentView(_ response: GrpcResponse) -> some View {
-        VStack(spacing: 0) {
-            // Response JSON in read-only editor
-            ScrollView {
-                Text(response.jsonBody)
-                    .font(.system(.body, design: .monospaced))
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding()
+    private func errorViewWithMetadata(_ errorMessage: String, response: GrpcResponse) -> some View {
+        ScrollView {
+            VStack(spacing: 0) {
+                // Error message section
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundColor(.red)
+                            .font(.title2)
+                        Text("Request Failed")
+                            .font(.headline)
+                            .foregroundColor(.red)
+                    }
+                    
+                    Text(errorMessage)
+                        .font(.body)
+                        .foregroundColor(.primary)
+                        .textSelection(.enabled)
+                        .padding()
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(Color.red.opacity(0.05))
+                        .cornerRadius(8)
+                }
+                .padding()
+                
+                // Response body (if present)
+                if !response.jsonBody.isEmpty && response.jsonBody != "{}" {
+                    Divider()
+                    responseBodySection(response)
+                }
+                
+                // Headers section (if present)
+                if let headers = response.headers, !headers.isEmpty {
+                    Divider()
+                    metadataSection(
+                        title: "Response Headers",
+                        icon: "arrow.down.doc",
+                        metadata: headers,
+                        isExpanded: $showHeaders
+                    )
+                }
+                
+                // Trailers section (if present) - often contains error details
+                if let trailers = response.trailers, !trailers.isEmpty {
+                    Divider()
+                    metadataSection(
+                        title: "Response Trailers",
+                        icon: "arrow.down.to.line",
+                        metadata: trailers,
+                        isExpanded: $showTrailers
+                    )
+                }
+                
+                // Status details (if present)
+                if let statusDetails = response.statusDetails {
+                    Divider()
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Status Details")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                            .padding(.horizontal)
+                            .padding(.top)
+                        
+                        Text(statusDetails)
+                            .font(.system(.caption, design: .monospaced))
+                            .textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding()
+                            .background(Color.orange.opacity(0.05))
+                    }
+                    .padding(.bottom)
+                }
             }
-            .background(Color(nsColor: .textBackgroundColor))
+        }
+        .background(Color(nsColor: .textBackgroundColor))
+    }
+    
+    private func responseContentView(_ response: GrpcResponse) -> some View {
+        ScrollView {
+            VStack(spacing: 0) {
+                // Response JSON body
+                responseBodySection(response)
+                
+                // Headers section (if present)
+                if let headers = response.headers, !headers.isEmpty {
+                    Divider()
+                    metadataSection(
+                        title: "Response Headers",
+                        icon: "arrow.down.doc",
+                        metadata: headers,
+                        isExpanded: $showHeaders
+                    )
+                }
+                
+                // Trailers section (if present)
+                if let trailers = response.trailers, !trailers.isEmpty {
+                    Divider()
+                    metadataSection(
+                        title: "Response Trailers",
+                        icon: "arrow.down.to.line",
+                        metadata: trailers,
+                        isExpanded: $showTrailers
+                    )
+                }
+            }
+        }
+        .background(Color(nsColor: .textBackgroundColor))
+    }
+    
+    private func responseBodySection(_ response: GrpcResponse) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Response Body")
+                .font(.subheadline)
+                .foregroundColor(.secondary)
+                .padding(.horizontal)
+                .padding(.top)
+            
+            Text(response.jsonBody)
+                .font(.system(.body, design: .monospaced))
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding()
+        }
+    }
+    
+    private func metadataSection(
+        title: String,
+        icon: String,
+        metadata: [String: String],
+        isExpanded: Binding<Bool>
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            // Header button
+            Button(action: {
+                withAnimation {
+                    isExpanded.wrappedValue.toggle()
+                }
+            }) {
+                HStack {
+                    Image(systemName: icon)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    
+                    Text(title)
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                    
+                    Text("(\(metadata.count))")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    
+                    Spacer()
+                    
+                    Image(systemName: isExpanded.wrappedValue ? "chevron.down" : "chevron.right")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                .padding()
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .background(Color(nsColor: .controlBackgroundColor).opacity(0.5))
+            
+            // Collapsible content
+            if isExpanded.wrappedValue {
+                VStack(alignment: .leading, spacing: 4) {
+                    ForEach(metadata.sorted(by: { $0.key < $1.key }), id: \.key) { key, value in
+                        HStack(alignment: .top, spacing: 8) {
+                            Text(key)
+                                .font(.system(.caption, design: .monospaced))
+                                .foregroundColor(.secondary)
+                                .frame(minWidth: 120, alignment: .leading)
+                            
+                            Text(value)
+                                .font(.system(.caption, design: .monospaced))
+                                .textSelection(.enabled)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        .padding(.horizontal)
+                        .padding(.vertical, 4)
+                        
+                        if key != metadata.sorted(by: { $0.key < $1.key }).last?.key {
+                            Divider()
+                                .padding(.leading)
+                        }
+                    }
+                }
+                .padding(.vertical, 8)
+                .background(Color(nsColor: .textBackgroundColor).opacity(0.5))
+            }
         }
     }
     
