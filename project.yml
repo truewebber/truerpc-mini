@@ -26,6 +26,18 @@ targets:
       base:
         GENERATE_INFOPLIST_FILE: YES
         PRODUCT_BUNDLE_IDENTIFIER: com.truewebber.TrueRPCMini
+        MARKETING_VERSION: "0.2.0"
+        CURRENT_PROJECT_VERSION: "501"
+        INFOPLIST_KEY_CFBundleDisplayName: "TrueRPC-mini"
+        INFOPLIST_KEY_LSApplicationCategoryType: "public.app-category.developer-tools"
+        DEVELOPMENT_TEAM: "57UWRPUUGM"
+      configs:
+        Debug:
+          CODE_SIGN_STYLE: Automatic
+        Release:
+          CODE_SIGN_STYLE: Manual
+          CODE_SIGN_IDENTITY: "Apple Development"
+          ENABLE_HARDENED_RUNTIME: YES
     dependencies:
       - package: SwiftProtoReflect
       - package: SwiftProtoParser
