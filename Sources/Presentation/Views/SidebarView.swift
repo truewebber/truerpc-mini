@@ -3,9 +3,11 @@ import SwiftUI
 /// Sidebar view displaying imported proto files and their services/methods hierarchy
 public struct SidebarView: View {
     @StateObject private var viewModel: SidebarViewModel
+    @EnvironmentObject private var di: AppDI
     @State private var isImporterPresented = false
+    @State private var isImportPathsSheetPresented = false
     let onMethodSelected: (Method, Service, ProtoFile) -> Void
-    
+
     public init(
         viewModel: SidebarViewModel,
         onMethodSelected: @escaping (Method, Service, ProtoFile) -> Void
@@ -13,14 +15,23 @@ public struct SidebarView: View {
         _viewModel = StateObject(wrappedValue: viewModel)
         self.onMethodSelected = onMethodSelected
     }
-    
+
     public var body: some View {
         VStack(spacing: 0) {
-            // Header with Import button
             HStack {
                 Text("Services")
                     .font(.headline)
                 Spacer()
+                Button {
+                    isImportPathsSheetPresented = true
+                } label: {
+                    if viewModel.importPathsCount > 0 {
+                        Label("Import Paths (\(viewModel.importPathsCount))", systemImage: "folder.badge.gearshape")
+                    } else {
+                        Label("Import Paths", systemImage: "folder.badge.gearshape")
+                    }
+                }
+                .buttonStyle(.borderless)
                 Button {
                     isImporterPresented = true
                 } label: {
@@ -49,6 +60,12 @@ public struct SidebarView: View {
             allowsMultipleSelection: false
         ) { result in
             handleFileImport(result: result)
+        }
+        .sheet(isPresented: $isImportPathsSheetPresented) {
+            ImportPathsSettingsView(viewModel: di.resolve(ImportPathsViewModel.self)!)
+                .onDisappear {
+                    viewModel.refreshImportPathsCount()
+                }
         }
     }
     
@@ -118,6 +135,7 @@ public struct SidebarView: View {
                 await viewModel.importProtoFile(url: url)
             }
         case .failure(let error):
+            print("DEBUG: File import picker failed: \(error.localizedDescription)")
             viewModel.error = error.localizedDescription
         }
     }
@@ -243,6 +261,15 @@ private struct MethodRow: View {
 
 #if DEBUG
 struct SidebarView_Previews: PreviewProvider {
+    static var previewDI: AppDI {
+        let di = AppDI()
+        di.register(ImportPathsRepositoryProtocol.self) { UserDefaultsImportPathsRepository() }
+        di.register(ImportPathsViewModel.self, lifecycle: .transient) {
+            ImportPathsViewModel(importPathsRepository: di.resolve(ImportPathsRepositoryProtocol.self)!)
+        }
+        return di
+    }
+
     static var previews: some View {
         // Preview with empty state
         SidebarView(
@@ -254,6 +281,7 @@ struct SidebarView_Previews: PreviewProvider {
             ),
             onMethodSelected: { _, _, _ in }
         )
+        .environmentObject(previewDI)
         .previewDisplayName("Empty State")
         
         // Preview with data
@@ -296,6 +324,7 @@ struct SidebarView_Previews: PreviewProvider {
                 print("Selected: \(method.name) from \(service.name)")
             }
         )
+        .environmentObject(previewDI)
         .previewDisplayName("With Data")
         
         // Preview with loading state
@@ -312,6 +341,7 @@ struct SidebarView_Previews: PreviewProvider {
             }(),
             onMethodSelected: { _, _, _ in }
         )
+        .environmentObject(previewDI)
         .previewDisplayName("Loading")
         
         // Preview with error
@@ -328,6 +358,7 @@ struct SidebarView_Previews: PreviewProvider {
             }(),
             onMethodSelected: { _, _, _ in }
         )
+        .environmentObject(previewDI)
         .previewDisplayName("Error")
     }
 }

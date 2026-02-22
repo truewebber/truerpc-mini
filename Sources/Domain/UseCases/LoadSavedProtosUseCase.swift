@@ -22,8 +22,7 @@ public class LoadSavedProtosUseCase {
                 let proto = try await importProtoFileUseCase.execute(url: url, importPaths: importPaths)
                 loadedProtos.append(proto)
             } catch {
-                // Silently skip files that fail to load (file may have been deleted, moved, etc.)
-                // This matches BloomRPC behavior
+                print("DEBUG: LoadSavedProtos failed for \(url.path): \(error.localizedDescription)")
                 continue
             }
         }

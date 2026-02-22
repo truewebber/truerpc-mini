@@ -40,6 +40,33 @@ final class SidebarViewModelTests: XCTestCase {
         XCTAssertTrue(sut.protoFiles.isEmpty)
         XCTAssertNil(sut.error)
         XCTAssertFalse(sut.isLoading)
+        XCTAssertEqual(sut.importPathsCount, 0)
+    }
+
+    func test_init_setsImportPathsCountFromRepository() {
+        mockImportPathsRepository.importPaths = ["/a", "/b"]
+
+        sut = SidebarViewModel(
+            importProtoFileUseCase: mockUseCase,
+            importPathsRepository: mockImportPathsRepository,
+            protoPathsPersistence: mockProtoPathsPersistence,
+            loadSavedProtosUseCase: mockLoadSavedProtosUseCase
+        )
+
+        XCTAssertEqual(sut.importPathsCount, 2)
+    }
+
+    func test_refreshImportPathsCount_updatesFromRepository() {
+        mockImportPathsRepository.importPaths = ["/a"]
+
+        sut.refreshImportPathsCount()
+
+        XCTAssertEqual(sut.importPathsCount, 1)
+
+        mockImportPathsRepository.importPaths = ["/a", "/b", "/c"]
+        sut.refreshImportPathsCount()
+
+        XCTAssertEqual(sut.importPathsCount, 3)
     }
     
     // MARK: - Import Success Tests

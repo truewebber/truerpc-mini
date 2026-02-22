@@ -9,6 +9,7 @@ public final class SidebarViewModel: ObservableObject {
     @Published public var protoFiles: [ProtoFile] = []
     @Published public var error: String?
     @Published public var isLoading: Bool = false
+    @Published public private(set) var importPathsCount: Int = 0
     
     // MARK: - Dependencies
     
@@ -29,6 +30,11 @@ public final class SidebarViewModel: ObservableObject {
         self.importPathsRepository = importPathsRepository
         self.protoPathsPersistence = protoPathsPersistence
         self.loadSavedProtosUseCase = loadSavedProtosUseCase
+        self.importPathsCount = importPathsRepository.getImportPaths().count
+    }
+
+    public func refreshImportPathsCount() {
+        importPathsCount = importPathsRepository.getImportPaths().count
     }
     
     // MARK: - Public Methods
@@ -52,7 +58,8 @@ public final class SidebarViewModel: ObservableObject {
         let importPaths = getImportPathsWithWellKnownTypes()
         let loadedProtos = await loadSavedProtosUseCase.execute(urls: savedPaths, importPaths: importPaths)
         protoFiles.append(contentsOf: loadedProtos)
-        
+        print("DEBUG: loadSavedProtos added \(loadedProtos.count) proto(s): \(loadedProtos.map { $0.name }.joined(separator: ", "))")
+
         isLoading = false
     }
     
@@ -81,10 +88,9 @@ public final class SidebarViewModel: ObservableObject {
             
             if FileManager.default.fileExists(atPath: fileURL.path) {
                 do {
-                    // Import silently (no import paths needed for well-known types)
                     _ = try await importProtoFileUseCase.execute(url: fileURL, importPaths: [])
                 } catch {
-                    // Silently continue if a well-known type fails to load
+                    print("DEBUG: loadWellKnownTypes failed for \(filename): \(error.localizedDescription)")
                 }
             }
         }
@@ -113,13 +119,15 @@ public final class SidebarViewModel: ObservableObject {
             let importPaths = getImportPathsWithWellKnownTypes()
             let protoFile = try await importProtoFileUseCase.execute(url: url, importPaths: importPaths)
             protoFiles.append(protoFile)
-            
+            print("DEBUG: importProtoFile added '\(protoFile.name)' from \(url.path), total protoFiles: \(protoFiles.count)")
+
             // Save paths after successful import
             saveProtoPaths()
         } catch {
+            print("DEBUG: importProtoFile failed for \(url.path): \(error.localizedDescription)")
             self.error = error.localizedDescription
         }
-        
+
         isLoading = false
     }
     

@@ -26,8 +26,8 @@ targets:
       base:
         GENERATE_INFOPLIST_FILE: YES
         PRODUCT_BUNDLE_IDENTIFIER: com.truewebber.TrueRPCMini
-        MARKETING_VERSION: "0.2.0"
-        CURRENT_PROJECT_VERSION: "501"
+        MARKETING_VERSION: "0.3.0"
+        CURRENT_PROJECT_VERSION: "502"
         INFOPLIST_KEY_CFBundleDisplayName: "TrueRPC-mini"
         INFOPLIST_KEY_LSApplicationCategoryType: "public.app-category.developer-tools"
         DEVELOPMENT_TEAM: "57UWRPUUGM"

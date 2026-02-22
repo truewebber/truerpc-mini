@@ -29,10 +29,11 @@ public final class FileSystemProtoRepository: ProtoRepositoryProtocol {
             return protoFile
             
         case .failure(let error):
+            print("DEBUG: Proto parsing failed for \(url.path): \(error.localizedDescription)")
             throw ProtoRepositoryError.parsingFailed(error.localizedDescription)
         }
     }
-    
+
     public func loadProto(url: URL, importPaths: [String]) async throws -> ProtoFile {
         // Parse proto file using SwiftProtoParser with import path resolution
         let result = SwiftProtoParser.parseProtoFileWithImportsToDescriptors(
@@ -54,10 +55,11 @@ public final class FileSystemProtoRepository: ProtoRepositoryProtocol {
             return protoFile
             
         case .failure(let error):
+            print("DEBUG: Proto parsing failed for \(url.path): \(error.localizedDescription)")
             throw ProtoRepositoryError.parsingFailed(error.localizedDescription)
         }
     }
-    
+
     public func getLoadedProtos() -> [ProtoFile] {
         return loadedProtos
     }

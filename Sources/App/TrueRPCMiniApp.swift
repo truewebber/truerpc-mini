@@ -28,6 +28,10 @@ struct TrueRPCMiniApp: App {
         di.register(ImportPathsRepositoryProtocol.self) {
             UserDefaultsImportPathsRepository()
         }
+
+        di.register(ImportPathsViewModel.self, lifecycle: .transient) {
+            ImportPathsViewModel(importPathsRepository: di.resolve(ImportPathsRepositoryProtocol.self)!)
+        }
         
         di.register(ProtoPathsPersistenceProtocol.self) {
             UserDefaultsProtoPathsRepository()
