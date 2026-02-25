@@ -119,11 +119,20 @@ jobs:
           APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
         run: |
           set -euxo pipefail
-          xcrun notarytool submit "$DMG_NAME" \
+          # Increase upload timeout (helps with slow/large uploads)
+          defaults write com.apple.gke.notary.tool nt-upload-connection-timeout 300 2>/dev/null || true
+          # Submit (without --wait) — if this hangs, upload/connection is the issue
+          OUTPUT=$(xcrun notarytool submit "$DMG_NAME" \
             --apple-id "$APPLE_ID" \
             --password "$APPLE_APP_SPECIFIC_PASSWORD" \
-            --team-id "$APPLE_TEAM_ID" \
-            --wait
+            --team-id "$APPLE_TEAM_ID" 2>&1)
+          echo "$OUTPUT"
+          SUBMISSION=$(echo "$OUTPUT" | grep -oE '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}' | head -1)
+          # Wait for Apple to process (typically 1–5 min, can be 30+)
+          xcrun notarytool wait "$SUBMISSION" \
+            --apple-id "$APPLE_ID" \
+            --password "$APPLE_APP_SPECIFIC_PASSWORD" \
+            --team-id "$APPLE_TEAM_ID"
 
       # 7) Staple notarization ticket onto DMG
       - name: Staple
