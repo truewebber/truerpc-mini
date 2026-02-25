@@ -133,6 +133,14 @@ jobs:
             --apple-id "$APPLE_ID" \
             --password "$APPLE_APP_SPECIFIC_PASSWORD" \
             --team-id "$APPLE_TEAM_ID"
+          # Fail if not Accepted (notarytool wait exits 0 even on Invalid)
+          STATUS=$(xcrun notarytool info "$SUBMISSION" --apple-id "$APPLE_ID" --password "$APPLE_APP_SPECIFIC_PASSWORD" --team-id "$APPLE_TEAM_ID" 2>&1 | grep "status:" | awk '{print $2}')
+          if [ "$STATUS" != "Accepted" ]; then
+            echo "::error::Notarization failed with status: $STATUS"
+            echo "--- Notary log ---"
+            xcrun notarytool log "$SUBMISSION" --apple-id "$APPLE_ID" --password "$APPLE_APP_SPECIFIC_PASSWORD" --team-id "$APPLE_TEAM_ID" 2>&1 || true
+            exit 1
+          fi
 
       # 7) Staple notarization ticket onto DMG
       - name: Staple
