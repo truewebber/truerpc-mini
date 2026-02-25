@@ -110,13 +110,25 @@ jobs:
 
           codesign --verify --deep --strict --verbose=2 "$APP_PATH"
 
-      # 5) Package as DMG
+      # 5) Package as DMG (with Applications symlink and install instruction)
       - name: Package app (dmg)
         run: |
           set -euxo pipefail
           APP_PATH="build/Build/Products/Release/TrueRPCMini.app"
           DMG_NAME="TrueRPCMini-${{ github.ref_name }}.dmg"
-          hdiutil create -volname "TrueRPCMini" -srcfolder "$APP_PATH" -ov -format UDZO "$DMG_NAME"
+          DMG_SRC="dmg_src"
+          rm -rf "$DMG_SRC" && mkdir -p "$DMG_SRC"
+          cp -R "$APP_PATH" "$DMG_SRC/"
+          cp dmg-install-instructions.rtf "$DMG_SRC/"
+          brew install create-dmg
+          create-dmg \
+            --volname "TrueRPCMini" \
+            --window-size 540 380 \
+            --icon "TrueRPCMini.app" 120 150 \
+            --app-drop-link 400 150 \
+            --skip-jenkins \
+            "$DMG_NAME" \
+            "$DMG_SRC"
           echo "DMG_NAME=$DMG_NAME" >> "$GITHUB_ENV"
 
       # 6) Notarize DMG
