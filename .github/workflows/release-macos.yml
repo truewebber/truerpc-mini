@@ -1,37 +1,20 @@
 # Release macOS (signed + notarized)
 # Triggered on push of tags matching v*
 #
-# Required secrets (Settings → Secrets and variables → Actions):
+# Setup: Create environment "release" with Required reviewers (Settings → Environments)
+# to protect Apple credentials from contributor MRs.
 #
-# MACOS_CERT_P12_BASE64
-#   What: Base64-encoded P12 file with Developer ID Application certificate
-#   From: Keychain Access → Export cert as .p12 → base64 -i cert.p12 | pbcopy
-#   Example: MIIKXAIBAzCCCi4GCSqGSIb3DQEHAaCCCh8Eggob...
+# Environment "release" (Settings → Environments → release):
 #
-# MACOS_CERT_PASSWORD
-#   What: Password for the P12 file (set when exporting)
-#   From: You choose it when exporting from Keychain
-#   Example: mySecurePassword123
+# Secrets:
+#   MACOS_CERT_P12_BASE64   — base64-encoded P12 (Keychain → Export → base64 -i cert.p12)
+#   MACOS_CERT_PASSWORD     — P12 password
+#   APPLE_ID                — Apple ID email
+#   APPLE_APP_SPECIFIC_PASSWORD — App-specific password (appleid.apple.com)
 #
-# MACOS_CODESIGN_IDENTITY
-#   What: Full identity name for Developer ID Application
-#   From: security find-identity -v -p codesigning (look for "Developer ID Application")
-#   Example: Developer ID Application: Your Name (57UWRPUUGM)
-#
-# APPLE_ID
-#   What: Apple ID email (Apple Developer account)
-#   From: Your Apple Developer account
-#   Example: developer@example.com
-#
-# APPLE_APP_SPECIFIC_PASSWORD
-#   What: App-specific password for notarization (not your regular Apple ID password)
-#   From: https://appleid.apple.com → Sign-In and Security → App-Specific Passwords
-#   Example: abcd-efgh-ijkl-mnop
-#
-# APPLE_TEAM_ID
-#   What: Team ID from Apple Developer Program
-#   From: developer.apple.com/account → Membership details
-#   Example: 57UWRPUUGM
+# Variables:
+#   MACOS_CODESIGN_IDENTITY — "Developer ID Application: Name (TEAMID)" (security find-identity -v)
+#   APPLE_TEAM_ID           — Team ID from developer.apple.com
 
 name: Release macOS
 
@@ -46,6 +29,7 @@ permissions:
 jobs:
   build:
     runs-on: macos-latest
+    environment: release  # Requires approval before running (Settings → Environments → release → Required reviewers)
 
     steps:
       - uses: actions/checkout@v6
@@ -81,23 +65,32 @@ jobs:
           # Allow codesign to access the key without UI prompts
           security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
 
-      # 2) Build app (adhoc signing - we re-sign with Developer ID in next step)
+      # 2) Set version from tag and commit
+      - name: Set version
+        run: |
+          MARKETING_VERSION="${GITHUB_REF_NAME#v}"  # v0.3.0 → 0.3.0
+          CURRENT_PROJECT_VERSION="$(git rev-parse --short HEAD)"
+          echo "MARKETING_VERSION=$MARKETING_VERSION" >> "$GITHUB_ENV"
+          echo "CURRENT_PROJECT_VERSION=$CURRENT_PROJECT_VERSION" >> "$GITHUB_ENV"
+
+      # 3) Build app (adhoc signing - we re-sign with Developer ID in next step)
       - name: Build (Release)
         run: |
           set -euxo pipefail
-          # Override: project expects "Apple Development" but CI has only Developer ID
           xcodebuild \
             -project TrueRPCMini.xcodeproj \
             -scheme TrueRPCMini \
             -configuration Release \
             -derivedDataPath build \
             CODE_SIGN_IDENTITY="-" \
+            MARKETING_VERSION="$MARKETING_VERSION" \
+            CURRENT_PROJECT_VERSION="$CURRENT_PROJECT_VERSION" \
             build
 
-      # 3) Codesign .app (hardened runtime)
+      # 4) Codesign .app (hardened runtime)
       - name: Codesign app
         env:
-          CODESIGN_IDENTITY: ${{ secrets.MACOS_CODESIGN_IDENTITY }}
+          CODESIGN_IDENTITY: ${{ vars.MACOS_CODESIGN_IDENTITY }}
         run: |
           set -euxo pipefail
           APP_PATH="build/Build/Products/Release/TrueRPCMini.app"
@@ -109,7 +102,7 @@ jobs:
 
           codesign --verify --deep --strict --verbose=2 "$APP_PATH"
 
-      # 4) Package as DMG
+      # 5) Package as DMG
       - name: Package app (dmg)
         run: |
           set -euxo pipefail
@@ -118,12 +111,12 @@ jobs:
           hdiutil create -volname "TrueRPCMini" -srcfolder "$APP_PATH" -ov -format UDZO "$DMG_NAME"
           echo "DMG_NAME=$DMG_NAME" >> "$GITHUB_ENV"
 
-      # 5) Notarize DMG
+      # 6) Notarize DMG
       - name: Notarize (notarytool)
         env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
         run: |
           set -euxo pipefail
           xcrun notarytool submit "$DMG_NAME" \
@@ -132,13 +125,13 @@ jobs:
             --team-id "$APPLE_TEAM_ID" \
             --wait
 
-      # 6) Staple notarization ticket onto DMG
+      # 7) Staple notarization ticket onto DMG
       - name: Staple
         run: |
           set -euxo pipefail
           xcrun stapler staple "$DMG_NAME"
 
-      # 7) Create GitHub Release + upload DMG
+      # 8) Create GitHub Release + upload DMG
       - name: Create GitHub Release + upload assets
         uses: softprops/action-gh-release@v2
         with:
