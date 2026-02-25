@@ -27,7 +27,7 @@ permissions:
   contents: write
 
 jobs:
-  build:
+  Release new version:
     runs-on: macos-latest
     environment: release  # Requires approval before running (Settings → Environments → release → Required reviewers)
 
