@@ -34,6 +34,7 @@ targets:
       configs:
         Debug:
           CODE_SIGN_STYLE: Automatic
+          ENABLE_HARDENED_RUNTIME: YES
         Release:
           CODE_SIGN_STYLE: Manual
           CODE_SIGN_IDENTITY: "Apple Development"
@@ -43,6 +44,8 @@ targets:
       - package: SwiftProtoParser
       - package: GRPCCore
       - package: GRPCNIOTransportHTTP2
+      - package: Amplitude-Swift
+        product: AmplitudeSwift
   TrueRPCMiniTests:
     type: bundle.unit-test
     platform: macOS
@@ -66,3 +69,6 @@ packages:
   GRPCNIOTransportHTTP2:
     url: https://github.com/grpc/grpc-swift-nio-transport.git
     from: 2.0.0
+  Amplitude-Swift:
+    url: https://github.com/amplitude/Amplitude-Swift
+    from: "1.0"
