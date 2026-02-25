@@ -27,7 +27,7 @@ permissions:
   contents: write
 
 jobs:
-  Release new version:
+  release_new_version:
     runs-on: macos-latest
     environment: release
 
