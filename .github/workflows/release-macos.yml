@@ -29,7 +29,7 @@ permissions:
 jobs:
   Release new version:
     runs-on: macos-latest
-    environment: release  # Requires approval before running (Settings → Environments → release → Required reviewers)
+    environment: release
 
     steps:
       - uses: actions/checkout@v6
