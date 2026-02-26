@@ -6,6 +6,7 @@ import SwiftUI
 public final class ImportPathsViewModel: ObservableObject {
 
     @Published public private(set) var paths: [String] = []
+    @Published public var dismissRequested: Bool = false
 
     private let importPathsRepository: ImportPathsRepositoryProtocol
 
@@ -25,5 +26,9 @@ public final class ImportPathsViewModel: ObservableObject {
         guard index >= 0, index < paths.count else { return }
         paths.remove(at: index)
         importPathsRepository.saveImportPaths(paths)
+    }
+
+    public func requestDismiss() {
+        dismissRequested = true
     }
 }

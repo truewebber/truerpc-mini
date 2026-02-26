@@ -350,4 +350,57 @@ extension FileSystemProtoRepositoryTests {
             }
         }
     }
+    
+    func test_getMessageDescriptor_whenTypeIsCrossPackage_resolvesGoogleProtobufEmpty() async throws {
+        // Given - load google.protobuf.Empty (as from receiver.proto with import "google/protobuf/empty.proto")
+        let tempDir = FileManager.default.temporaryDirectory
+        let googleProtobufDir = tempDir.appendingPathComponent("google").appendingPathComponent("protobuf")
+        try FileManager.default.createDirectory(at: googleProtobufDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDir.appendingPathComponent("google")) }
+        
+        let emptyProtoContent = """
+        syntax = "proto3";
+        package google.protobuf;
+        message Empty {}
+        """
+        let emptyProtoURL = googleProtobufDir.appendingPathComponent("empty.proto")
+        try emptyProtoContent.write(to: emptyProtoURL, atomically: true, encoding: .utf8)
+        
+        _ = try await sut.loadProto(url: emptyProtoURL)
+        
+        // When
+        let descriptor = try sut.getMessageDescriptor(forType: ".google.protobuf.Empty")
+        
+        // Then - should resolve to google.protobuf.Empty
+        XCTAssertEqual(descriptor.name, "Empty")
+        XCTAssertEqual(descriptor.fields.count, 0)
+    }
+
+    func test_getMessageDescriptor_whenTypeHasWronglyPrefixedPackage_throwsError() async throws {
+        // Given - load google.protobuf.Empty
+        let tempDir = FileManager.default.temporaryDirectory
+        let googleProtobufDir = tempDir.appendingPathComponent("google").appendingPathComponent("protobuf")
+        try FileManager.default.createDirectory(at: googleProtobufDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDir.appendingPathComponent("google")) }
+
+        let emptyProtoContent = """
+        syntax = "proto3";
+        package google.protobuf;
+        message Empty {}
+        """
+        let emptyProtoURL = googleProtobufDir.appendingPathComponent("empty.proto")
+        try emptyProtoContent.write(to: emptyProtoURL, atomically: true, encoding: .utf8)
+
+        _ = try await sut.loadProto(url: emptyProtoURL)
+
+        // When/Then - wrong package prefix should not resolve
+        XCTAssertThrowsError(
+            try sut.getMessageDescriptor(forType: ".mattis.dev.v1.regionspy.google.protobuf.Empty")
+        ) { error in
+            guard case ProtoRepositoryError.messageTypeNotFound = error else {
+                XCTFail("Expected messageTypeNotFound error")
+                return
+            }
+        }
+    }
 }

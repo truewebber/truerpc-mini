@@ -70,7 +70,7 @@ public final class FileSystemProtoRepository: ProtoRepositoryProtocol {
         
         // Search through all loaded file descriptors
         for fileDescriptor in fileDescriptors {
-            // Try searching with the file's package
+            // Try exact match first
             if let descriptor = try? findMessageDescriptor(
                 in: fileDescriptor,
                 typeName: normalizedTypeName,
@@ -79,23 +79,6 @@ public final class FileSystemProtoRepository: ProtoRepositoryProtocol {
                 return descriptor
             }
             
-            // If not found, try stripping the first package component
-            // e.g., "example.google.protobuf.Empty" -> "google.protobuf.Empty"
-            if normalizedTypeName.contains(".") {
-                let components = normalizedTypeName.split(separator: ".")
-                if components.count > 1 {
-                    // Try removing first component
-                    let withoutFirstPackage = components.dropFirst().joined(separator: ".")
-                    
-                    if let descriptor = try? findMessageDescriptor(
-                        in: fileDescriptor,
-                        typeName: withoutFirstPackage,
-                        package: fileDescriptor.package
-                    ) {
-                        return descriptor
-                    }
-                }
-            }
         }
         
         throw ProtoRepositoryError.messageTypeNotFound(typeName)

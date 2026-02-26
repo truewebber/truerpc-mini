@@ -116,6 +116,7 @@ struct TrueRPCMiniApp: App {
                         appViewModel.openMethod(method: method, service: service, protoFile: protoFile)
                     }
                 )
+                .navigationSplitViewColumnWidth(min: 260, ideal: 320, max: 420)
                 .task {
                     // Load saved proto files on app startup
                     await sidebarViewModel.loadSavedProtos()

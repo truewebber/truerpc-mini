@@ -57,7 +57,9 @@ public final class SidebarViewModel: ObservableObject {
         
         let importPaths = getImportPathsWithWellKnownTypes()
         let loadedProtos = await loadSavedProtosUseCase.execute(urls: savedPaths, importPaths: importPaths)
-        protoFiles.append(contentsOf: loadedProtos)
+        for proto in loadedProtos {
+            addOrReplaceProtoFile(proto)
+        }
         print("DEBUG: loadSavedProtos added \(loadedProtos.count) proto(s): \(loadedProtos.map { $0.name }.joined(separator: ", "))")
 
         isLoading = false
@@ -118,7 +120,7 @@ public final class SidebarViewModel: ObservableObject {
         do {
             let importPaths = getImportPathsWithWellKnownTypes()
             let protoFile = try await importProtoFileUseCase.execute(url: url, importPaths: importPaths)
-            protoFiles.append(protoFile)
+            addOrReplaceProtoFile(protoFile)
             print("DEBUG: importProtoFile added '\(protoFile.name)' from \(url.path), total protoFiles: \(protoFiles.count)")
 
             // Save paths after successful import
@@ -137,5 +139,13 @@ public final class SidebarViewModel: ObservableObject {
         let paths = protoFiles.map { $0.path }
         print("DEBUG: saveProtoPaths() called with \(paths.count) paths")
         protoPathsPersistence.saveProtoPaths(paths)
+    }
+
+    private func addOrReplaceProtoFile(_ protoFile: ProtoFile) {
+        if let index = protoFiles.firstIndex(where: { $0.path == protoFile.path }) {
+            protoFiles[index] = protoFile
+        } else {
+            protoFiles.append(protoFile)
+        }
     }
 }

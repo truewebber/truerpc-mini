@@ -149,6 +149,45 @@ final class SidebarViewModelTests: XCTestCase {
         // Then
         XCTAssertEqual(sut.protoFiles.count, 2)
     }
+
+    func test_importProtoFile_whenSameFileImportedTwice_keepsSingleEntry() async {
+        // Given
+        let testURL = URL(fileURLWithPath: "/test/duplicate.proto")
+        let expectedProto = ProtoFile(
+            name: "duplicate.proto",
+            path: testURL,
+            services: []
+        )
+        mockUseCase.mockResultsByURL[testURL] = .success(expectedProto)
+
+        // When
+        await sut.importProtoFile(url: testURL)
+        await sut.importProtoFile(url: testURL)
+
+        // Then
+        XCTAssertEqual(sut.protoFiles.count, 1)
+        XCTAssertEqual(sut.protoFiles.first?.path, testURL)
+    }
+
+    func test_loadSavedProtos_whenAlreadyLoaded_doesNotDuplicate() async {
+        // Given
+        let testURL = URL(fileURLWithPath: "/test/saved.proto")
+        let existingProto = ProtoFile(
+            name: "saved.proto",
+            path: testURL,
+            services: []
+        )
+        sut.protoFiles = [existingProto]
+        mockProtoPathsPersistence.savedPaths = [testURL]
+        mockLoadSavedProtosUseCase.mockProtos = [existingProto]
+
+        // When
+        await sut.loadSavedProtos()
+
+        // Then
+        XCTAssertEqual(sut.protoFiles.count, 1)
+        XCTAssertEqual(sut.protoFiles.first?.path, testURL)
+    }
 }
 
 // MARK: - Mock ImportPaths Repository

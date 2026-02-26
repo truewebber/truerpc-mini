@@ -101,6 +101,20 @@ final class ImportPathsViewModelTests: XCTestCase {
         XCTAssertEqual(sut.paths, ["/a", "/b"])
         XCTAssertEqual(mockRepository.saveImportPathsCallCount, 0)
     }
+
+    // MARK: - Dismiss
+
+    func test_requestDismiss_setsDismissRequested() {
+        // Given
+        mockRepository.stubbedPaths = []
+        sut = ImportPathsViewModel(importPathsRepository: mockRepository)
+
+        // When
+        sut.requestDismiss()
+
+        // Then
+        XCTAssertTrue(sut.dismissRequested)
+    }
 }
 
 // MARK: - Mock

@@ -6,6 +6,7 @@ import UniformTypeIdentifiers
 public struct ImportPathsSettingsView: View {
     @ObservedObject var viewModel: ImportPathsViewModel
     @State private var isFolderPickerPresented = false
+    @Environment(\.dismiss) private var dismiss
 
     public init(viewModel: ImportPathsViewModel) {
         self.viewModel = viewModel
@@ -25,6 +26,11 @@ public struct ImportPathsSettingsView: View {
         ) { result in
             handleFolderImport(result: result)
         }
+        .onChange(of: viewModel.dismissRequested) { _, shouldDismiss in
+            guard shouldDismiss else { return }
+            dismiss()
+            viewModel.dismissRequested = false
+        }
     }
 
     private var headerView: some View {
@@ -38,6 +44,10 @@ public struct ImportPathsSettingsView: View {
                 Label("Add Folder", systemImage: "folder.badge.plus")
             }
             .buttonStyle(.borderedProminent)
+            Button("Close") {
+                viewModel.requestDismiss()
+            }
+            .keyboardShortcut(.cancelAction)
         }
         .padding()
     }
