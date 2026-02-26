@@ -110,7 +110,7 @@ jobs:
 
           codesign --verify --deep --strict --verbose=2 "$APP_PATH"
 
-      # 5) Package as DMG (with Applications symlink and install instruction)
+      # 5) Package as DMG
       - name: Package app (dmg)
         run: |
           set -euxo pipefail
@@ -119,14 +119,14 @@ jobs:
           DMG_SRC="dmg_src"
           rm -rf "$DMG_SRC" && mkdir -p "$DMG_SRC"
           cp -R "$APP_PATH" "$DMG_SRC/"
-          cp dmg-install-instructions.rtf "$DMG_SRC/"
           brew install create-dmg
           create-dmg \
             --volname "TrueRPCMini" \
             --window-size 540 380 \
+            --icon-size 100 \
             --icon "TrueRPCMini.app" 120 150 \
             --app-drop-link 400 150 \
-            --skip-jenkins \
+            --hide-extension "TrueRPCMini.app" \
             "$DMG_NAME" \
             "$DMG_SRC"
           echo "DMG_NAME=$DMG_NAME" >> "$GITHUB_ENV"
