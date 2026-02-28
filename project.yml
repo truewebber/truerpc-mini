@@ -2,6 +2,9 @@ name: TrueRPCMini
 options:
   bundleIdPrefix: com.truewebber
   generateEmptyDirectories: true
+  configFiles:
+    Debug: Config/Debug.xcconfig
+    Release: Config/Release.xcconfig
 schemes:
   TrueRPCMini:
     build:
@@ -30,6 +33,7 @@ targets:
         CURRENT_PROJECT_VERSION: "1"
         INFOPLIST_KEY_CFBundleDisplayName: "TrueRPC-mini"
         INFOPLIST_KEY_LSApplicationCategoryType: "public.app-category.developer-tools"
+        INFOPLIST_KEY_AmplitudeApiKey: $(AMPLITUDE_API_KEY)
         DEVELOPMENT_TEAM: "57UWRPUUGM"
       configs:
         Debug:

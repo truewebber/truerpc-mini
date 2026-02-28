@@ -98,6 +98,9 @@ iOSInjectionProject/
 Package.swift
 Package.resolved
 
+# Secrets (never commit real API keys)
+Config/Secrets.xcconfig
+
 # XcodeGen generates this
 TrueRPCMini.xcodeproj
 

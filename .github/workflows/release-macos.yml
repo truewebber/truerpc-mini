@@ -11,6 +11,7 @@
 #   MACOS_CERT_PASSWORD     — P12 password
 #   APPLE_ID                — Apple ID email
 #   APPLE_APP_SPECIFIC_PASSWORD — App-specific password (appleid.apple.com)
+#   AMPLITUDE_API_KEY       — Amplitude project API key (Analytics)
 #
 # Variables:
 #   MACOS_CODESIGN_IDENTITY — "Developer ID Application: Name (TEAMID)" (security find-identity -v)
@@ -34,7 +35,17 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      # 0) Generate Xcode project
+      # 0) Create Secrets.xcconfig from env (AMPLITUDE_API_KEY)
+      - name: Create Secrets.xcconfig
+        env:
+          AMPLITUDE_API_KEY: ${{ secrets.AMPLITUDE_API_KEY }}
+        run: |
+          mkdir -p Config
+          if [ -n "$AMPLITUDE_API_KEY" ]; then
+            echo "AMPLITUDE_API_KEY = $AMPLITUDE_API_KEY" > Config/Secrets.xcconfig
+          fi
+
+      # 1) Generate Xcode project
       - name: Generate Xcode project
         run: brew install xcodegen && xcodegen generate
 
