@@ -37,6 +37,7 @@ targets:
         DEVELOPMENT_TEAM: "57UWRPUUGM"
       configs:
         Debug:
+          SWIFT_ACTIVE_COMPILATION_CONDITIONS: DEBUG
           CODE_SIGN_STYLE: Automatic
           ENABLE_HARDENED_RUNTIME: YES
         Release:
@@ -61,6 +62,7 @@ targets:
         DEVELOPMENT_TEAM: "57UWRPUUGM"
       configs:
         Debug:
+          SWIFT_ACTIVE_COMPILATION_CONDITIONS: DEBUG
           CODE_SIGN_STYLE: Automatic
         Release:
           CODE_SIGN_STYLE: Automatic
