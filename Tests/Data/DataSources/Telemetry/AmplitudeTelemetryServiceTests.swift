@@ -65,6 +65,27 @@ final class AmplitudeTelemetryServiceTests: XCTestCase {
         XCTAssertLessThanOrEqual(methodName.count, 64)
     }
 
+    func test_isEnabledClosure_reflectsUserDefaultsAnalyticsOptOut() async {
+        let userDefaults = UserDefaults(suiteName: "test.amplitude.optout.integration")!
+        userDefaults.removePersistentDomain(forName: "test.amplitude.optout.integration")
+        defer { userDefaults.removePersistentDomain(forName: "test.amplitude.optout.integration") }
+
+        let spy = MockAnalyticsTracker()
+        let isEnabled: () -> Bool = { !userDefaults.analyticsOptOut }
+        let sut = AmplitudeTelemetryService(apiKey: "test-key", isEnabled: isEnabled, tracker: spy)
+
+        userDefaults.analyticsOptOut = true
+        await sut.track(.settingsOpened())
+        XCTAssertTrue(spy.trackedEventTypes.isEmpty, "When optOut=true, no events should fire")
+
+        spy.trackedEventTypes.removeAll()
+        spy.trackedEventProperties.removeAll()
+        userDefaults.analyticsOptOut = false
+        await sut.track(.appLaunched(appVersion: "1.0", osVersion: "15.0"))
+        XCTAssertEqual(spy.trackedEventTypes.count, 1)
+        XCTAssertEqual(spy.trackedEventTypes[0], "app_launched")
+    }
+
     func test_track_allFactoryEvents_successfullyTracked() async {
         let spy = MockAnalyticsTracker()
         let sut = AmplitudeTelemetryService(apiKey: "test-key", isEnabled: { true }, tracker: spy)

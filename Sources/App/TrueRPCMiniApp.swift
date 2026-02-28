@@ -2,6 +2,14 @@ import SwiftUI
 
 @main
 struct TrueRPCMiniApp: App {
+    private static func createReleaseTelemetryService() -> TelemetryServiceProtocol {
+        let apiKey = (Bundle.main.object(forInfoDictionaryKey: "AmplitudeApiKey") as? String ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return AmplitudeTelemetryService(
+            apiKey: apiKey,
+            isEnabled: { !UserDefaults.standard.analyticsOptOut }
+        )
+    }
     // MARK: - Properties
     
     /// Dependency Injection container
@@ -16,7 +24,7 @@ struct TrueRPCMiniApp: App {
     // MARK: - Initialization
     
     init() {
-        // Initialize DI container
+        UserDefaults.runAnalyticsOptOutMigration()
         let di = AppDI()
         self.di = di
         
@@ -49,6 +57,15 @@ struct TrueRPCMiniApp: App {
         
         di.register(FileManagerProtocol.self) {
             SystemFileManager()
+        }
+
+        
+        di.register(TelemetryServiceProtocol.self) {
+        #if DEBUG
+            OSLogTelemetryService()
+        #else
+            Self.createReleaseTelemetryService()
+        #endif
         }
         
         // Register Domain Layer dependencies
