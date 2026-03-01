@@ -34,9 +34,13 @@ jobs:
     environment: release
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
 
       # 0) Create Secrets.xcconfig from env (AMPLITUDE_API_KEY, SENTRY_DSN)
+      #
+      # xcconfig treats "//" as a comment, so the Sentry DSN full URL cannot be
+      # stored directly. We strip the "https://" scheme and write only the
+      # remainder; Info.plist reconstructs the full URL as https://$(SENTRY_DSN_REMAINDER).
       - name: Create Secrets.xcconfig
         env:
           AMPLITUDE_API_KEY: ${{ secrets.AMPLITUDE_API_KEY }}
@@ -45,7 +49,7 @@ jobs:
           mkdir -p Config
           {
             [ -n "$AMPLITUDE_API_KEY" ] && echo "AMPLITUDE_API_KEY = $AMPLITUDE_API_KEY"
-            [ -n "$SENTRY_DSN" ] && echo "SENTRY_DSN = $SENTRY_DSN"
+            [ -n "$SENTRY_DSN" ] && echo "SENTRY_DSN_REMAINDER = ${SENTRY_DSN#https://}"
           } > Config/Secrets.xcconfig
 
       # 1) Generate Xcode project
