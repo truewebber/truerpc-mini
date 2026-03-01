@@ -34,7 +34,7 @@ jobs:
     environment: release
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       # 0) Create Secrets.xcconfig from env (AMPLITUDE_API_KEY, SENTRY_DSN)
       #
