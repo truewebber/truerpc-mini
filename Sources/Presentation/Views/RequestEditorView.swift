@@ -285,7 +285,8 @@ struct RequestEditorView_Previews: PreviewProvider {
             editorTab: editorTab,
             generateMockDataUseCase: GenerateMockDataUseCase(mockDataGenerator: MockDataGenerator()),
             executeRequestUseCase: mockExecuteUseCase,
-            exportResponseUseCase: exportUseCase
+            exportResponseUseCase: exportUseCase,
+            logger: NullLogger()
         )
         
         viewModel.url = "localhost:50051"

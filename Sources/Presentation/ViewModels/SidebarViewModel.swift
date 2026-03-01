@@ -12,24 +12,27 @@ public final class SidebarViewModel: ObservableObject {
     @Published public private(set) var importPathsCount: Int = 0
     
     // MARK: - Dependencies
-    
+
     private let importProtoFileUseCase: ImportProtoFileUseCaseProtocol
     private let importPathsRepository: ImportPathsRepositoryProtocol
     private let protoPathsPersistence: ProtoPathsPersistenceProtocol
     private let loadSavedProtosUseCase: LoadSavedProtosUseCase
-    
+    private let logger: AppLogger
+
     // MARK: - Initialization
-    
+
     public init(
         importProtoFileUseCase: ImportProtoFileUseCaseProtocol,
         importPathsRepository: ImportPathsRepositoryProtocol,
         protoPathsPersistence: ProtoPathsPersistenceProtocol,
-        loadSavedProtosUseCase: LoadSavedProtosUseCase
+        loadSavedProtosUseCase: LoadSavedProtosUseCase,
+        logger: AppLogger
     ) {
         self.importProtoFileUseCase = importProtoFileUseCase
         self.importPathsRepository = importPathsRepository
         self.protoPathsPersistence = protoPathsPersistence
         self.loadSavedProtosUseCase = loadSavedProtosUseCase
+        self.logger = logger
         self.importPathsCount = importPathsRepository.getImportPaths().count
     }
 
@@ -42,25 +45,26 @@ public final class SidebarViewModel: ObservableObject {
     /// Loads saved proto files from persistent storage
     /// Called on app startup to restore previous session
     public func loadSavedProtos() async {
-        print("DEBUG: loadSavedProtos() called")
         isLoading = true
         error = nil
-        
-        // Load well-known types first
+
         await loadWellKnownTypes()
-        
+
         let savedPaths = protoPathsPersistence.getProtoPaths()
         guard !savedPaths.isEmpty else {
             isLoading = false
             return
         }
-        
+
         let importPaths = getImportPathsWithWellKnownTypes()
         let loadedProtos = await loadSavedProtosUseCase.execute(urls: savedPaths, importPaths: importPaths)
         for proto in loadedProtos {
             addOrReplaceProtoFile(proto)
         }
-        print("DEBUG: loadSavedProtos added \(loadedProtos.count) proto(s): \(loadedProtos.map { $0.name }.joined(separator: ", "))")
+        logger.info("Saved proto files loaded", metadata: [
+            "count": "\(loadedProtos.count)",
+            "files": loadedProtos.map { $0.name }.joined(separator: ",")
+        ])
 
         isLoading = false
     }
@@ -92,7 +96,10 @@ public final class SidebarViewModel: ObservableObject {
                 do {
                     _ = try await importProtoFileUseCase.execute(url: fileURL, importPaths: [])
                 } catch {
-                    print("DEBUG: loadWellKnownTypes failed for \(filename): \(error.localizedDescription)")
+                    logger.warning("Well-known type loading failed", metadata: [
+                        "file": filename,
+                        "error": error.localizedDescription
+                    ])
                 }
             }
         }
@@ -121,12 +128,18 @@ public final class SidebarViewModel: ObservableObject {
             let importPaths = getImportPathsWithWellKnownTypes()
             let protoFile = try await importProtoFileUseCase.execute(url: url, importPaths: importPaths)
             addOrReplaceProtoFile(protoFile)
-            print("DEBUG: importProtoFile added '\(protoFile.name)' from \(url.path), total protoFiles: \(protoFiles.count)")
+            logger.info("Proto file imported", metadata: [
+                "name": protoFile.name,
+                "path": url.path,
+                "total": "\(protoFiles.count)"
+            ])
 
-            // Save paths after successful import
             saveProtoPaths()
         } catch {
-            print("DEBUG: importProtoFile failed for \(url.path): \(error.localizedDescription)")
+            logger.error("Proto file import failed", metadata: [
+                "path": url.path,
+                "error": error.localizedDescription
+            ])
             self.error = error.localizedDescription
         }
 
@@ -137,8 +150,15 @@ public final class SidebarViewModel: ObservableObject {
     
     private func saveProtoPaths() {
         let paths = protoFiles.map { $0.path }
-        print("DEBUG: saveProtoPaths() called with \(paths.count) paths")
         protoPathsPersistence.saveProtoPaths(paths)
+    }
+
+    /// Logs the picker error and exposes it to the UI.
+    public func handlePickerError(_ error: Error) {
+        logger.error("File import picker failed", metadata: [
+            "error": error.localizedDescription
+        ])
+        self.error = error.localizedDescription
     }
 
     private func addOrReplaceProtoFile(_ protoFile: ProtoFile) {

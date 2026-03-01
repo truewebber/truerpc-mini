@@ -9,27 +9,31 @@ final class SidebarViewModelTests: XCTestCase {
     var mockImportPathsRepository: MockImportPathsRepository!
     var mockProtoPathsPersistence: MockProtoPathsPersistence!
     var mockLoadSavedProtosUseCase: MockLoadSavedProtosUseCase!
-    
+    var mockLogger: MockAppLogger!
+
     override func setUp() {
         super.setUp()
         mockUseCase = MockImportProtoFileUseCase()
         mockImportPathsRepository = MockImportPathsRepository()
         mockProtoPathsPersistence = MockProtoPathsPersistence()
         mockLoadSavedProtosUseCase = MockLoadSavedProtosUseCase()
+        mockLogger = MockAppLogger()
         sut = SidebarViewModel(
             importProtoFileUseCase: mockUseCase,
             importPathsRepository: mockImportPathsRepository,
             protoPathsPersistence: mockProtoPathsPersistence,
-            loadSavedProtosUseCase: mockLoadSavedProtosUseCase
+            loadSavedProtosUseCase: mockLoadSavedProtosUseCase,
+            logger: mockLogger
         )
     }
-    
+
     override func tearDown() {
         sut = nil
         mockUseCase = nil
         mockImportPathsRepository = nil
         mockProtoPathsPersistence = nil
         mockLoadSavedProtosUseCase = nil
+        mockLogger = nil
         super.tearDown()
     }
     
@@ -50,7 +54,8 @@ final class SidebarViewModelTests: XCTestCase {
             importProtoFileUseCase: mockUseCase,
             importPathsRepository: mockImportPathsRepository,
             protoPathsPersistence: mockProtoPathsPersistence,
-            loadSavedProtosUseCase: mockLoadSavedProtosUseCase
+            loadSavedProtosUseCase: mockLoadSavedProtosUseCase,
+            logger: mockLogger
         )
 
         XCTAssertEqual(sut.importPathsCount, 2)
@@ -120,6 +125,28 @@ final class SidebarViewModelTests: XCTestCase {
         XCTAssertFalse(sut.isLoading)
     }
     
+    func test_importProtoFile_whenError_logsError() async {
+        let testURL = URL(fileURLWithPath: "/test/broken.proto")
+        let error = NSError(domain: "test", code: 1, userInfo: [NSLocalizedDescriptionKey: "parse failed"])
+        mockUseCase.mockResultsByURL[testURL] = .failure(error)
+
+        await sut.importProtoFile(url: testURL)
+
+        XCTAssertEqual(mockLogger.errorMessages.count, 1)
+        XCTAssertEqual(mockLogger.errorMessages[0].metadata["path"], testURL.path)
+        XCTAssertEqual(mockLogger.errorMessages[0].metadata["error"], error.localizedDescription)
+    }
+
+    func test_handlePickerError_logsErrorAndSetsErrorMessage() {
+        let error = NSError(domain: "test", code: 2, userInfo: [NSLocalizedDescriptionKey: "picker failed"])
+
+        sut.handlePickerError(error)
+
+        XCTAssertEqual(mockLogger.errorMessages.count, 1)
+        XCTAssertEqual(mockLogger.errorMessages[0].metadata["error"], error.localizedDescription)
+        XCTAssertEqual(sut.error, error.localizedDescription)
+    }
+
     func test_importProtoFile_whenError_doesNotAddToList() async {
         // Given
         let testURL = URL(fileURLWithPath: "/test/invalid.proto")
@@ -227,8 +254,7 @@ class MockLoadSavedProtosUseCase: LoadSavedProtosUseCase {
     var mockProtos: [ProtoFile] = []
     
     init() {
-        // Initialize with dummy dependency
-        super.init(importProtoFileUseCase: MockImportProtoFileUseCase())
+        super.init(importProtoFileUseCase: MockImportProtoFileUseCase(), logger: MockAppLogger())
     }
     
     override func execute(urls: [URL], importPaths: [String]) async -> [ProtoFile] {

@@ -8,8 +8,11 @@ import SwiftProtoReflect
 public final class FileSystemProtoRepository: ProtoRepositoryProtocol {
     private var loadedProtos: [ProtoFile] = []
     private var fileDescriptors: [Google_Protobuf_FileDescriptorProto] = []
-    
-    public init() {}
+    private let logger: AppLogger
+
+    public init(logger: AppLogger) {
+        self.logger = logger
+    }
     
     public func loadProto(url: URL) async throws -> ProtoFile {
         // Parse proto file using SwiftProtoParser without import path resolution
@@ -29,7 +32,10 @@ public final class FileSystemProtoRepository: ProtoRepositoryProtocol {
             return protoFile
             
         case .failure(let error):
-            print("DEBUG: Proto parsing failed for \(url.path): \(error.localizedDescription)")
+            logger.error("Proto parsing failed", metadata: [
+                "file": url.path,
+                "error": error.localizedDescription
+            ])
             throw ProtoRepositoryError.parsingFailed(error.localizedDescription)
         }
     }
@@ -55,7 +61,10 @@ public final class FileSystemProtoRepository: ProtoRepositoryProtocol {
             return protoFile
             
         case .failure(let error):
-            print("DEBUG: Proto parsing failed for \(url.path): \(error.localizedDescription)")
+            logger.error("Proto parsing failed", metadata: [
+                "file": url.path,
+                "error": error.localizedDescription
+            ])
             throw ProtoRepositoryError.parsingFailed(error.localizedDescription)
         }
     }

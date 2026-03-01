@@ -7,9 +7,11 @@ import SwiftProtoReflect
 /// and grpc-swift-2 for transport
 public class GrpcSwiftDynamicClient: GrpcClientProtocol {
     private let protoRepository: ProtoRepositoryProtocol
-    
-    public init(protoRepository: ProtoRepositoryProtocol) {
+    private let logger: AppLogger
+
+    public init(protoRepository: ProtoRepositoryProtocol, logger: AppLogger) {
         self.protoRepository = protoRepository
+        self.logger = logger
     }
     
     /// Execute a unary gRPC request
@@ -84,13 +86,15 @@ public class GrpcSwiftDynamicClient: GrpcClientProtocol {
                 }
             }
         } catch let error as RPCError {
-            // Handle gRPC-specific errors
             let responseTime = Date().timeIntervalSince(startTime)
-            
-            // Extract metadata from error
             let trailers = convertMetadataToDict(error.metadata)
-            
-            // Create response with error status and metadata for debugging
+
+            logger.error("gRPC request failed", metadata: [
+                "code": error.code.description,
+                "message": error.message,
+                "url": request.url
+            ])
+
             let errorResponse = GrpcResponse(
                 jsonBody: error.message.isEmpty ? "{}" : #"{"error": "\#(error.message)"}"#,
                 responseTime: responseTime,
@@ -99,12 +103,12 @@ public class GrpcSwiftDynamicClient: GrpcClientProtocol {
                 trailers: trailers.isEmpty ? nil : trailers,
                 statusDetails: error.message
             )
-            
-            // We need to return the response with metadata, but also signal error
-            // Solution: Change GrpcClientError to carry response
             throw GrpcClientError.grpcError(error.code.description, response: errorResponse)
         } catch {
-            // Handle other errors
+            logger.error("gRPC request failed with unknown error", metadata: [
+                "error": error.localizedDescription,
+                "url": request.url
+            ])
             throw GrpcClientError.unknown(error.localizedDescription)
         }
     }

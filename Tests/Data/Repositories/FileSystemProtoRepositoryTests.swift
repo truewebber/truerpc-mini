@@ -2,16 +2,19 @@ import XCTest
 @testable import TrueRPCMini
 
 final class FileSystemProtoRepositoryTests: XCTestCase {
-    
+
     var sut: FileSystemProtoRepository!
-    
+    var mockLogger: MockAppLogger!
+
     override func setUp() {
         super.setUp()
-        sut = FileSystemProtoRepository()
+        mockLogger = MockAppLogger()
+        sut = FileSystemProtoRepository(logger: mockLogger)
     }
-    
+
     override func tearDown() {
         sut = nil
+        mockLogger = nil
         super.tearDown()
     }
     
@@ -374,6 +377,41 @@ extension FileSystemProtoRepositoryTests {
         // Then - should resolve to google.protobuf.Empty
         XCTAssertEqual(descriptor.name, "Empty")
         XCTAssertEqual(descriptor.fields.count, 0)
+    }
+
+    // MARK: - Logger error path
+
+    func test_loadProto_whenParsingFails_logsErrorWithFileAndErrorMetadata() async {
+        let invalidContent = "not valid proto"
+        let tempURL = try! createTempProtoFile(content: invalidContent, name: "bad.proto")
+        defer { try? FileManager.default.removeItem(at: tempURL) }
+
+        _ = try? await sut.loadProto(url: tempURL)
+
+        XCTAssertEqual(mockLogger.errorMessages.count, 1)
+        XCTAssertEqual(mockLogger.errorMessages[0].metadata["file"], tempURL.path)
+        XCTAssertNotNil(mockLogger.errorMessages[0].metadata["error"])
+    }
+
+    func test_loadProto_withImportPaths_whenParsingFails_logsError() async {
+        let invalidContent = "not valid proto"
+        let tempURL = try! createTempProtoFile(content: invalidContent, name: "bad2.proto")
+        defer { try? FileManager.default.removeItem(at: tempURL) }
+
+        _ = try? await sut.loadProto(url: tempURL, importPaths: [])
+
+        XCTAssertEqual(mockLogger.errorMessages.count, 1)
+        XCTAssertEqual(mockLogger.errorMessages[0].metadata["file"], tempURL.path)
+    }
+
+    func test_loadProto_whenSucceeds_doesNotLog() async throws {
+        let content = "syntax = \"proto3\";\nservice S {}"
+        let tempURL = try createTempProtoFile(content: content, name: "ok.proto")
+        defer { try? FileManager.default.removeItem(at: tempURL) }
+
+        _ = try await sut.loadProto(url: tempURL)
+
+        XCTAssertTrue(mockLogger.errorMessages.isEmpty)
     }
 
     func test_getMessageDescriptor_whenTypeHasWronglyPrefixedPackage_throwsError() async throws {

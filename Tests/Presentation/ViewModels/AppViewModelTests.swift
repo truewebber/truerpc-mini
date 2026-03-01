@@ -10,11 +10,11 @@ final class AppViewModelTests: XCTestCase {
     fileprivate var generateMockDataUseCase: GenerateMockDataUseCase!
     fileprivate var executeRequestUseCase: MockExecuteRequestUseCase!
     fileprivate var exportResponseUseCase: ExportResponseUseCase!
-    
+    fileprivate var mockLogger: MockAppLogger!
+
     override func setUp() {
         super.setUp()
-        
-        // Use real use cases (they're simple and have no dependencies)
+
         createTabUseCase = CreateEditorTabUseCase()
         generateMockDataUseCase = GenerateMockDataUseCase(
             mockDataGenerator: MockDataGenerator()
@@ -22,24 +22,25 @@ final class AppViewModelTests: XCTestCase {
         exportResponseUseCase = ExportResponseUseCase(
             fileManager: AppMockFileManager()
         )
-        
-        // Only mock the execute use case (requires network)
         executeRequestUseCase = MockExecuteRequestUseCase()
-        
+        mockLogger = MockAppLogger()
+
         sut = AppViewModel(
             createEditorTabUseCase: createTabUseCase,
             generateMockDataUseCase: generateMockDataUseCase,
             executeRequestUseCase: executeRequestUseCase,
-            exportResponseUseCase: exportResponseUseCase
+            exportResponseUseCase: exportResponseUseCase,
+            logger: mockLogger
         )
     }
-    
+
     override func tearDown() {
         sut = nil
         createTabUseCase = nil
         generateMockDataUseCase = nil
         executeRequestUseCase = nil
         exportResponseUseCase = nil
+        mockLogger = nil
         super.tearDown()
     }
     

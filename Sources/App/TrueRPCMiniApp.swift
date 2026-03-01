@@ -27,7 +27,7 @@ struct TrueRPCMiniApp: App {
         SentryBootstrapper.start(dsn: config.sentryDsn)
         let logger: any AppLogger = MultiplexLogger([
             OSLogger(category: "app"),
-            SentryLogger(minLevel: .error)
+            SentryLogger(minLevel: .warning)
         ])
         #endif
 
@@ -38,7 +38,7 @@ struct TrueRPCMiniApp: App {
 
         // Register Data Layer dependencies
         di.register(ProtoRepositoryProtocol.self) {
-            FileSystemProtoRepository()
+            FileSystemProtoRepository(logger: logger)
         }
         
         di.register(ImportPathsRepositoryProtocol.self) {
@@ -50,7 +50,7 @@ struct TrueRPCMiniApp: App {
         }
         
         di.register(ProtoPathsPersistenceProtocol.self) {
-            UserDefaultsProtoPathsRepository()
+            UserDefaultsProtoPathsRepository(logger: logger)
         }
         
         di.register(MockDataGeneratorProtocol.self) {
@@ -59,7 +59,8 @@ struct TrueRPCMiniApp: App {
         
         di.register(GrpcClientProtocol.self) {
             GrpcSwiftDynamicClient(
-                protoRepository: di.resolve(ProtoRepositoryProtocol.self)!
+                protoRepository: di.resolve(ProtoRepositoryProtocol.self)!,
+                logger: logger
             )
         }
         
@@ -87,7 +88,8 @@ struct TrueRPCMiniApp: App {
         
         di.register(LoadSavedProtosUseCase.self) {
             LoadSavedProtosUseCase(
-                importProtoFileUseCase: di.resolve(ImportProtoFileUseCaseProtocol.self)!
+                importProtoFileUseCase: di.resolve(ImportProtoFileUseCaseProtocol.self)!,
+                logger: logger
             )
         }
         
@@ -118,15 +120,17 @@ struct TrueRPCMiniApp: App {
             importProtoFileUseCase: di.resolve(ImportProtoFileUseCaseProtocol.self)!,
             importPathsRepository: di.resolve(ImportPathsRepositoryProtocol.self)!,
             protoPathsPersistence: di.resolve(ProtoPathsPersistenceProtocol.self)!,
-            loadSavedProtosUseCase: di.resolve(LoadSavedProtosUseCase.self)!
+            loadSavedProtosUseCase: di.resolve(LoadSavedProtosUseCase.self)!,
+            logger: logger
         )
-        
+
         // Create AppViewModel
         let appVM = AppViewModel(
             createEditorTabUseCase: di.resolve(CreateEditorTabUseCase.self)!,
             generateMockDataUseCase: di.resolve(GenerateMockDataUseCase.self)!,
             executeRequestUseCase: di.resolve(ExecuteUnaryRequestUseCaseProtocol.self)!,
-            exportResponseUseCase: di.resolve(ExportResponseUseCase.self)!
+            exportResponseUseCase: di.resolve(ExportResponseUseCase.self)!,
+            logger: logger
         )
         
         // Use _StateObject to initialize @StateObject properties

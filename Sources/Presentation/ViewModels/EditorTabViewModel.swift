@@ -25,19 +25,22 @@ public final class EditorTabViewModel: ObservableObject {
     private let generateMockDataUseCase: GenerateMockDataUseCase
     private let executeRequestUseCase: ExecuteUnaryRequestUseCaseProtocol
     public let exportResponseUseCase: ExportResponseUseCase
-    
+    private let logger: AppLogger
+
     // MARK: - Initialization
-    
+
     public init(
         editorTab: EditorTab,
         generateMockDataUseCase: GenerateMockDataUseCase,
         executeRequestUseCase: ExecuteUnaryRequestUseCaseProtocol,
-        exportResponseUseCase: ExportResponseUseCase
+        exportResponseUseCase: ExportResponseUseCase,
+        logger: AppLogger
     ) {
         self.editorTab = editorTab
         self.generateMockDataUseCase = generateMockDataUseCase
         self.executeRequestUseCase = executeRequestUseCase
         self.exportResponseUseCase = exportResponseUseCase
+        self.logger = logger
     }
     
     // MARK: - Public Methods
@@ -50,8 +53,10 @@ public final class EditorTabViewModel: ObservableObject {
             let mockJson = try await generateMockDataUseCase.execute(method: editorTab.method)
             requestJson = mockJson
         } catch {
-            // Silently fail for MVP - just leave empty JSON
-            print("DEBUG: Failed to generate mock data: \(error)")
+            logger.warning("Mock data generation failed", metadata: [
+                "method": editorTab.method.name,
+                "error": error.localizedDescription
+            ])
         }
         
         isLoading = false

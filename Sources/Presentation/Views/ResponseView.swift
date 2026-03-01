@@ -441,8 +441,8 @@ struct ResponseView_Previews: PreviewProvider {
                 ),
                 error: nil,
                 isExecuting: false,
-                onCopy: { print("Copy tapped") },
-                onExport: { print("Export tapped") }
+                onCopy: {},
+                onExport: {}
             )
             .frame(width: 400, height: 300)
             .previewDisplayName("Success Response")

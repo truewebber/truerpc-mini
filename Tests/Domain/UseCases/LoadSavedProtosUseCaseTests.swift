@@ -5,16 +5,19 @@ import XCTest
 final class LoadSavedProtosUseCaseTests: XCTestCase {
     var sut: LoadSavedProtosUseCase!
     var mockImportUseCase: MockImportProtoFileUseCase!
-    
+    var mockLogger: MockAppLogger!
+
     override func setUp() {
         super.setUp()
         mockImportUseCase = MockImportProtoFileUseCase()
-        sut = LoadSavedProtosUseCase(importProtoFileUseCase: mockImportUseCase)
+        mockLogger = MockAppLogger()
+        sut = LoadSavedProtosUseCase(importProtoFileUseCase: mockImportUseCase, logger: mockLogger)
     }
-    
+
     override func tearDown() {
         sut = nil
         mockImportUseCase = nil
+        mockLogger = nil
         super.tearDown()
     }
     
@@ -101,15 +104,50 @@ final class LoadSavedProtosUseCaseTests: XCTestCase {
         let url1 = URL(fileURLWithPath: "/path/to/proto1.proto")
         let url2 = URL(fileURLWithPath: "/path/to/proto2.proto")
         let urls = [url1, url2]
-        
+
         mockImportUseCase.mockResultsByURL[url1] = .failure(NSError(domain: "test", code: 404))
         mockImportUseCase.mockResultsByURL[url2] = .failure(NSError(domain: "test", code: 500))
-        
+
         // When
         let result = await sut.execute(urls: urls, importPaths: [])
-        
+
         // Then
         XCTAssertEqual(result.count, 0)
         XCTAssertEqual(mockImportUseCase.callCount, 2)
+    }
+
+    // MARK: - Logger error path
+
+    func test_execute_whenFileFails_logsErrorWithFileAndErrorMetadata() async {
+        let url = URL(fileURLWithPath: "/path/to/broken.proto")
+        let error = NSError(domain: "test", code: 42, userInfo: [NSLocalizedDescriptionKey: "parse error"])
+        mockImportUseCase.mockResultsByURL[url] = .failure(error)
+
+        _ = await sut.execute(urls: [url], importPaths: [])
+
+        XCTAssertEqual(mockLogger.errorMessages.count, 1)
+        XCTAssertEqual(mockLogger.errorMessages[0].metadata["file"], url.path)
+        XCTAssertEqual(mockLogger.errorMessages[0].metadata["error"], error.localizedDescription)
+    }
+
+    func test_execute_whenMultipleFilesFail_logsErrorForEach() async {
+        let url1 = URL(fileURLWithPath: "/a.proto")
+        let url2 = URL(fileURLWithPath: "/b.proto")
+        mockImportUseCase.mockResultsByURL[url1] = .failure(NSError(domain: "t", code: 1))
+        mockImportUseCase.mockResultsByURL[url2] = .failure(NSError(domain: "t", code: 2))
+
+        _ = await sut.execute(urls: [url1, url2], importPaths: [])
+
+        XCTAssertEqual(mockLogger.errorMessages.count, 2)
+    }
+
+    func test_execute_whenFileSucceeds_doesNotLog() async {
+        let url = URL(fileURLWithPath: "/good.proto")
+        let proto = ProtoFile(name: "good.proto", path: url, services: [])
+        mockImportUseCase.mockResultsByURL[url] = .success(proto)
+
+        _ = await sut.execute(urls: [url], importPaths: [])
+
+        XCTAssertTrue(mockLogger.errorMessages.isEmpty)
     }
 }

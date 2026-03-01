@@ -135,8 +135,7 @@ public struct SidebarView: View {
                 await viewModel.importProtoFile(url: url)
             }
         case .failure(let error):
-            print("DEBUG: File import picker failed: \(error.localizedDescription)")
-            viewModel.error = error.localizedDescription
+            viewModel.handlePickerError(error)
         }
     }
 }
@@ -277,7 +276,8 @@ struct SidebarView_Previews: PreviewProvider {
                 importProtoFileUseCase: PreviewMockUseCase(),
                 importPathsRepository: PreviewMockImportPathsRepository(),
                 protoPathsPersistence: PreviewMockProtoPathsPersistence(),
-                loadSavedProtosUseCase: PreviewMockLoadSavedProtosUseCase()
+                loadSavedProtosUseCase: PreviewMockLoadSavedProtosUseCase(),
+                logger: NullLogger()
             ),
             onMethodSelected: { _, _, _ in }
         )
@@ -291,7 +291,8 @@ struct SidebarView_Previews: PreviewProvider {
                     importProtoFileUseCase: PreviewMockUseCase(),
                     importPathsRepository: PreviewMockImportPathsRepository(),
                     protoPathsPersistence: PreviewMockProtoPathsPersistence(),
-                    loadSavedProtosUseCase: PreviewMockLoadSavedProtosUseCase()
+                    loadSavedProtosUseCase: PreviewMockLoadSavedProtosUseCase(),
+                    logger: NullLogger()
                 )
                 vm.protoFiles = [
                     ProtoFile(
@@ -320,8 +321,7 @@ struct SidebarView_Previews: PreviewProvider {
                 ]
                 return vm
             }(),
-            onMethodSelected: { method, service, protoFile in
-                print("Selected: \(method.name) from \(service.name)")
+            onMethodSelected: { _, _, _ in
             }
         )
         .environmentObject(previewDI)
@@ -334,7 +334,8 @@ struct SidebarView_Previews: PreviewProvider {
                     importProtoFileUseCase: PreviewMockUseCase(),
                     importPathsRepository: PreviewMockImportPathsRepository(),
                     protoPathsPersistence: PreviewMockProtoPathsPersistence(),
-                    loadSavedProtosUseCase: PreviewMockLoadSavedProtosUseCase()
+                    loadSavedProtosUseCase: PreviewMockLoadSavedProtosUseCase(),
+                    logger: NullLogger()
                 )
                 vm.isLoading = true
                 return vm
@@ -351,7 +352,8 @@ struct SidebarView_Previews: PreviewProvider {
                     importProtoFileUseCase: PreviewMockUseCase(),
                     importPathsRepository: PreviewMockImportPathsRepository(),
                     protoPathsPersistence: PreviewMockProtoPathsPersistence(),
-                    loadSavedProtosUseCase: PreviewMockLoadSavedProtosUseCase()
+                    loadSavedProtosUseCase: PreviewMockLoadSavedProtosUseCase(),
+                    logger: NullLogger()
                 )
                 vm.error = "Failed to load proto file"
                 return vm
@@ -395,7 +397,7 @@ private class PreviewMockProtoPathsPersistence: ProtoPathsPersistenceProtocol {
 
 private class PreviewMockLoadSavedProtosUseCase: LoadSavedProtosUseCase {
     init() {
-        super.init(importProtoFileUseCase: PreviewMockUseCase())
+        super.init(importProtoFileUseCase: PreviewMockUseCase(), logger: NullLogger())
     }
     
     override func execute(urls: [URL], importPaths: [String]) async -> [ProtoFile] {

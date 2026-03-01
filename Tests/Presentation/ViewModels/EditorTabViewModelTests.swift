@@ -8,17 +8,19 @@ final class EditorTabViewModelTests: XCTestCase {
     var mockGenerateMockDataUseCase: MockGenerateMockDataUseCase!
     var mockExecuteRequestUseCase: MockExecuteUnaryRequestUseCase!
     var mockExportResponseUseCase: MockExportResponseUseCase!
+    var mockLogger: MockAppLogger!
     var testMethod: TrueRPCMini.Method!
     var testService: Service!
     var testProtoFile: ProtoFile!
     var testEditorTab: EditorTab!
-    
+
     override func setUp() {
         super.setUp()
         mockGenerateMockDataUseCase = MockGenerateMockDataUseCase()
         mockExecuteRequestUseCase = MockExecuteUnaryRequestUseCase()
         mockExportResponseUseCase = MockExportResponseUseCase()
-        
+        mockLogger = MockAppLogger()
+
         testMethod = TrueRPCMini.Method(
             name: "GetUser",
             serviceName: "UserService",
@@ -38,19 +40,21 @@ final class EditorTabViewModelTests: XCTestCase {
             protoFile: testProtoFile,
             method: testMethod
         )
-        
+
         sut = EditorTabViewModel(
             editorTab: testEditorTab,
             generateMockDataUseCase: mockGenerateMockDataUseCase,
             executeRequestUseCase: mockExecuteRequestUseCase,
-            exportResponseUseCase: mockExportResponseUseCase
+            exportResponseUseCase: mockExportResponseUseCase,
+            logger: mockLogger
         )
     }
-    
+
     override func tearDown() {
         sut = nil
         mockGenerateMockDataUseCase = nil
         mockExecuteRequestUseCase = nil
+        mockLogger = nil
         testMethod = nil
         testService = nil
         testProtoFile = nil
@@ -103,6 +107,24 @@ final class EditorTabViewModelTests: XCTestCase {
         XCTAssertFalse(sut.isLoading) // Should be false after completion
     }
     
+    func test_loadMockData_whenFails_logsWarning() async {
+        mockGenerateMockDataUseCase.shouldThrow = true
+
+        await sut.loadMockData()
+
+        XCTAssertEqual(mockLogger.warningMessages.count, 1)
+        XCTAssertNotNil(mockLogger.warningMessages[0].metadata["error"])
+        XCTAssertEqual(mockLogger.warningMessages[0].metadata["method"], testMethod.name)
+    }
+
+    func test_loadMockData_whenSucceeds_doesNotLog() async {
+        mockGenerateMockDataUseCase.mockJSON = "{}"
+
+        await sut.loadMockData()
+
+        XCTAssertTrue(mockLogger.warningMessages.isEmpty)
+    }
+
     // MARK: - Update JSON
     
     func test_updateJson_updatesRequestJson() {
@@ -291,7 +313,8 @@ final class EditorTabViewModelTests: XCTestCase {
             editorTab: testEditorTab,
             generateMockDataUseCase: mockGenerateMockDataUseCase,
             executeRequestUseCase: mockExecuteRequestUseCase,
-            exportResponseUseCase: mockExportUseCase
+            exportResponseUseCase: mockExportUseCase,
+            logger: mockLogger
         )
         sutWithExport.response = testResponse
         
@@ -314,7 +337,8 @@ final class EditorTabViewModelTests: XCTestCase {
             editorTab: testEditorTab,
             generateMockDataUseCase: mockGenerateMockDataUseCase,
             executeRequestUseCase: mockExecuteRequestUseCase,
-            exportResponseUseCase: mockExportUseCase
+            exportResponseUseCase: mockExportUseCase,
+            logger: mockLogger
         )
         sutWithExport.response = nil
         
@@ -333,13 +357,17 @@ final class EditorTabViewModelTests: XCTestCase {
 class MockGenerateMockDataUseCase: GenerateMockDataUseCase {
     var mockJSON: String = "{}"
     var executeCallCount = 0
-    
+    var shouldThrow = false
+
     init() {
         super.init(mockDataGenerator: MockDataGenerator())
     }
-    
+
     override func execute(method: TrueRPCMini.Method) async throws -> String {
         executeCallCount += 1
+        if shouldThrow {
+            throw NSError(domain: "mock", code: 0, userInfo: [NSLocalizedDescriptionKey: "mock generation failed"])
+        }
         return mockJSON
     }
 }

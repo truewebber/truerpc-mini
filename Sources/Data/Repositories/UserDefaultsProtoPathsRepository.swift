@@ -4,29 +4,31 @@ import Foundation
 public final class UserDefaultsProtoPathsRepository: ProtoPathsPersistenceProtocol {
     private let userDefaults: UserDefaults
     private let key: String
-    
+    private let logger: AppLogger
+
     public init(
         userDefaults: UserDefaults = .standard,
-        key: String = "com.truewebber.TrueRPCMini.protoPaths"
+        key: String = "com.truewebber.TrueRPCMini.protoPaths",
+        logger: AppLogger
     ) {
         self.userDefaults = userDefaults
         self.key = key
+        self.logger = logger
     }
-    
+
     public func saveProtoPaths(_ paths: [URL]) {
         let pathStrings = paths.map { $0.path }
         userDefaults.set(pathStrings, forKey: key)
         userDefaults.synchronize()
-        print("DEBUG: Saved \(pathStrings.count) proto paths: \(pathStrings)")
+        logger.debug("Proto paths saved", metadata: ["count": "\(pathStrings.count)"])
     }
-    
+
     public func getProtoPaths() -> [URL] {
         guard let pathStrings = userDefaults.stringArray(forKey: key) else {
-            print("DEBUG: No saved proto paths found")
             return []
         }
-        
-        print("DEBUG: Loaded \(pathStrings.count) proto paths: \(pathStrings)")
+
+        logger.debug("Proto paths loaded", metadata: ["count": "\(pathStrings.count)"])
         return pathStrings.map { URL(fileURLWithPath: $0) }
     }
 }

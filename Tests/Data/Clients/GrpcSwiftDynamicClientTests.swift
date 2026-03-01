@@ -7,33 +7,33 @@ final class GrpcSwiftDynamicClientTests: XCTestCase {
     
     var sut: GrpcSwiftDynamicClient!
     fileprivate var mockRepository: MockProtoRepository!
+    var mockLogger: MockAppLogger!
     var fileDescriptor: FileDescriptor!
     var messageDescriptor: MessageDescriptor!
-    
+
     override func setUp() {
         super.setUp()
-        
-        // Create file descriptor
+
         fileDescriptor = FileDescriptor(name: "test.proto", package: "test")
-        
-        // Create message descriptor for Person
+
         var tempDescriptor = MessageDescriptor(name: "Person", parent: fileDescriptor)
         let nameField = FieldDescriptor(name: "name", number: 1, type: .string)
         let ageField = FieldDescriptor(name: "age", number: 2, type: .int32)
         tempDescriptor.addField(nameField)
         tempDescriptor.addField(ageField)
         messageDescriptor = tempDescriptor
-        
-        // Create mock repository
+
         mockRepository = MockProtoRepository()
         mockRepository.stubbedMessageDescriptor = messageDescriptor
-        
-        sut = GrpcSwiftDynamicClient(protoRepository: mockRepository)
+        mockLogger = MockAppLogger()
+
+        sut = GrpcSwiftDynamicClient(protoRepository: mockRepository, logger: mockLogger)
     }
-    
+
     override func tearDown() {
         sut = nil
         mockRepository = nil
+        mockLogger = nil
         messageDescriptor = nil
         fileDescriptor = nil
         super.tearDown()
@@ -77,7 +77,7 @@ final class GrpcSwiftDynamicClientTests: XCTestCase {
     
     func test_messageToJSON_withValidMessage_returnsJSONString() throws {
         // Given
-        var message = try MessageFactory().createMessage(from: messageDescriptor)
+        var message = MessageFactory().createMessage(from: messageDescriptor)
         try message.set("Bob", forField: "name")
         try message.set(Int32(25), forField: "age")
         
@@ -97,7 +97,7 @@ final class GrpcSwiftDynamicClientTests: XCTestCase {
     func test_messageToJSON_withEmptyMessage_returnsEmptyObject() throws {
         // Given
         let emptyDescriptor = MessageDescriptor(name: "Empty", parent: fileDescriptor)
-        let message = try MessageFactory().createMessage(from: emptyDescriptor)
+        let message = MessageFactory().createMessage(from: emptyDescriptor)
         
         // When
         let jsonString = try sut.messageToJSON(message)
