@@ -2,9 +2,9 @@ name: TrueRPCMini
 options:
   bundleIdPrefix: com.truewebber
   generateEmptyDirectories: true
-  configFiles:
-    Debug: Config/Debug.xcconfig
-    Release: Config/Release.xcconfig
+configFiles:
+  Debug: Config/Debug.xcconfig
+  Release: Config/Release.xcconfig
 schemes:
   TrueRPCMini:
     build:

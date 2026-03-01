@@ -363,6 +363,41 @@ final class GrpcSwiftDynamicClientTests: XCTestCase {
         }
     }
     
+    func test_executeUnary_withInvalidJSON_logsSerializationError() async {
+        // Given
+        let method = TrueRPCMini.Method(
+            name: "TestMethod",
+            serviceName: "TestService",
+            inputType: ".test.Request",
+            outputType: ".test.Response"
+        )
+        let request = RequestDraft(
+            jsonBody: "{invalid json",
+            url: "localhost:50051",
+            method: method
+        )
+        mockRepository.stubbedMessageDescriptor = messageDescriptor
+        
+        // When
+        do {
+            _ = try await sut.executeUnary(request: request, method: method)
+            XCTFail("Should throw error")
+        } catch {
+            // Expected
+        }
+        
+        // Then - serialization error logged with full metadata
+        let serializationErrors = mockLogger.errorMessages.filter { $0.message == "Request serialization failed" }
+        XCTAssertEqual(serializationErrors.count, 1)
+        let logEntry = serializationErrors[0]
+        XCTAssertEqual(logEntry.metadata["service"], "TestService")
+        XCTAssertEqual(logEntry.metadata["method"], "TestMethod")
+        XCTAssertNotNil(logEntry.metadata["error"])
+        XCTAssertEqual(logEntry.metadata["field_count"], "2") // messageDescriptor has name and age fields
+        XCTAssertEqual(logEntry.metadata["missing_field"], "none")
+        XCTAssertEqual(logEntry.metadata["type_mismatch"], "none")
+    }
+    
     func test_executeUnary_withInvalidServerAddress_throwsError() async {
         // Given
         let method = TrueRPCMini.Method(

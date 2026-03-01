@@ -18,7 +18,7 @@ struct TrueRPCMiniApp: App {
     // MARK: - Initialization
     
     init() {
-        UserDefaults.runAnalyticsOptOutMigration()
+        UserDefaults.runAnalyticsMigration()
 
         let config = Config.fromBundle
 
@@ -82,7 +82,7 @@ struct TrueRPCMiniApp: App {
         #else
             AmplitudeTelemetryService(
                 apiKey: config.amplitudeKey,
-                isEnabled: { !UserDefaults.standard.analyticsOptOut },
+                isEnabled: { UserDefaults.standard.analyticsIsEnabled },
                 responseHandler: LoggingTrackerResponseHandler(logger: logger)
             )
         #endif
@@ -112,7 +112,8 @@ struct TrueRPCMiniApp: App {
         
         di.register(ExecuteUnaryRequestUseCaseProtocol.self) {
             ExecuteUnaryRequestUseCase(
-                grpcClient: di.resolve(GrpcClientProtocol.self)!
+                grpcClient: di.resolve(GrpcClientProtocol.self)!,
+                telemetry: di.resolve(TelemetryServiceProtocol.self)!
             )
         }
         

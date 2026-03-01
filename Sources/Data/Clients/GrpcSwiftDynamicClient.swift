@@ -24,9 +24,22 @@ public class GrpcSwiftDynamicClient: GrpcClientProtocol {
         // 1. Get message descriptors from proto repository
         let inputDescriptor = try protoRepository.getMessageDescriptor(forType: method.inputType)
         let outputDescriptor = try protoRepository.getMessageDescriptor(forType: method.outputType)
-        
+
         // 2. Parse JSON to DynamicMessage
-        let inputMessage = try parseJSON(request.jsonBody, using: inputDescriptor)
+        let inputMessage: DynamicMessage
+        do {
+            inputMessage = try parseJSON(request.jsonBody, using: inputDescriptor)
+        } catch {
+            logger.error("Request serialization failed", metadata: [
+                "service": method.serviceName,
+                "method": method.name,
+                "field_count": String(inputDescriptor.fields.count),
+                "error": error.localizedDescription,
+                "missing_field": "none",
+                "type_mismatch": "none",
+            ])
+            throw error
+        }
         
         // 3. Parse URL to extract host and port
         let (host, port) = try parseServerAddress(request.url)
@@ -68,13 +81,31 @@ public class GrpcSwiftDynamicClient: GrpcClientProtocol {
                     options: .defaults
                 ) { response in
                     // 9. Convert response message to JSON
-                    let responseJSON = try self.messageToJSON(response.message)
+                    let responseJSON: String
+                    do {
+                        responseJSON = try self.messageToJSON(response.message)
+                    } catch {
+                        let responseBytes: Int
+                        if let binaryData = try? BinarySerializer().serialize(response.message) {
+                            responseBytes = binaryData.count
+                        } else {
+                            responseBytes = 0
+                        }
+                        self.logger.error("Response deserialization failed", metadata: [
+                            "service": method.serviceName,
+                            "method": method.name,
+                            "error": error.localizedDescription,
+                            "expected_type": method.outputType,
+                            "response_size_bytes": String(responseBytes),
+                        ])
+                        throw error
+                    }
                     let responseTime = Date().timeIntervalSince(startTime)
-                    
+
                     // 10. Extract metadata from response
                     let headers = self.convertMetadataToDict(response.metadata)
                     let trailers = self.convertMetadataToDict(response.trailingMetadata)
-                    
+
                     return GrpcResponse(
                         jsonBody: responseJSON,
                         responseTime: responseTime,

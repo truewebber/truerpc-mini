@@ -262,31 +262,4 @@ final class TelemetryEventTests: XCTestCase {
         XCTAssertEqual(event.properties.count, 1)
     }
 
-    // MARK: - analytics_opt_out
-
-    func test_analyticsOptOut_setsCorrectName() {
-        let event = TelemetryEvent.analyticsOptOut()
-
-        XCTAssertEqual(event.name, "analytics_opt_out")
-    }
-
-    func test_analyticsOptOut_hasNoProperties() {
-        let event = TelemetryEvent.analyticsOptOut()
-
-        XCTAssertTrue(event.properties.isEmpty)
-    }
-
-    // MARK: - analytics_opt_in
-
-    func test_analyticsOptIn_setsCorrectName() {
-        let event = TelemetryEvent.analyticsOptIn()
-
-        XCTAssertEqual(event.name, "analytics_opt_in")
-    }
-
-    func test_analyticsOptIn_hasNoProperties() {
-        let event = TelemetryEvent.analyticsOptIn()
-
-        XCTAssertTrue(event.properties.isEmpty)
-    }
 }

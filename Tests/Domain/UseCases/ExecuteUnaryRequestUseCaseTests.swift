@@ -5,16 +5,19 @@ import struct TrueRPCMini.Method
 final class ExecuteUnaryRequestUseCaseTests: XCTestCase {
     
     var mockGrpcClient: MockGrpcClient!
+    var mockTelemetry: MockTelemetryService!
     var sut: ExecuteUnaryRequestUseCase!
     
     override func setUp() {
         super.setUp()
         mockGrpcClient = MockGrpcClient()
-        sut = ExecuteUnaryRequestUseCase(grpcClient: mockGrpcClient)
+        mockTelemetry = MockTelemetryService()
+        sut = ExecuteUnaryRequestUseCase(grpcClient: mockGrpcClient, telemetry: mockTelemetry)
     }
     
     override func tearDown() {
         mockGrpcClient = nil
+        mockTelemetry = nil
         sut = nil
         super.tearDown()
     }
@@ -167,6 +170,267 @@ final class ExecuteUnaryRequestUseCaseTests: XCTestCase {
         }
     }
     
+    // MARK: - Telemetry Events
+
+    func test_execute_whenRequestSucceeds_tracksRequestSentEvent() async throws {
+        // Given
+        let method = Method(
+            name: "SayHello",
+            serviceName: "GreetService",
+            inputType: "HelloRequest",
+            outputType: "HelloResponse"
+        )
+        let request = RequestDraft(
+            jsonBody: #"{"name": "World"}"#,
+            url: "localhost:50051",
+            method: method
+        )
+        mockGrpcClient.stubbedResponse = GrpcResponse(
+            jsonBody: #"{"message": "Hello"}"#,
+            responseTime: 0.1,
+            statusCode: 0,
+            statusMessage: "OK"
+        )
+
+        // When
+        _ = try await sut.execute(request: request, method: method)
+
+        // Then
+        let sentEvent = mockTelemetry.trackedEvents.first { $0.name == "request_sent" }
+        XCTAssertNotNil(sentEvent)
+        XCTAssertEqual(sentEvent?.properties["service_name"], "GreetService")
+        XCTAssertEqual(sentEvent?.properties["method_name"], "SayHello")
+    }
+
+    func test_execute_whenRequestSucceeds_tracksRequestSucceededEvent() async throws {
+        // Given
+        let method = Method(
+            name: "SayHello",
+            serviceName: "GreetService",
+            inputType: "HelloRequest",
+            outputType: "HelloResponse"
+        )
+        let request = RequestDraft(
+            jsonBody: #"{"name": "World"}"#,
+            url: "localhost:50051",
+            method: method
+        )
+        mockGrpcClient.stubbedResponse = GrpcResponse(
+            jsonBody: #"{"message": "Hello"}"#,
+            responseTime: 0.5,
+            statusCode: 0,
+            statusMessage: "OK"
+        )
+
+        // When
+        _ = try await sut.execute(request: request, method: method)
+
+        // Then
+        let succeededEvent = mockTelemetry.trackedEvents.first { $0.name == "request_succeeded" }
+        XCTAssertNotNil(succeededEvent)
+        XCTAssertEqual(succeededEvent?.properties["service_name"], "GreetService")
+        XCTAssertEqual(succeededEvent?.properties["method_name"], "SayHello")
+        XCTAssertEqual(succeededEvent?.properties["duration_ms"], "500")
+    }
+
+    func test_execute_tracksEventsInOrder_sentBeforeSucceeded() async throws {
+        // Given
+        let method = Method(
+            name: "SayHello",
+            serviceName: "GreetService",
+            inputType: "HelloRequest",
+            outputType: "HelloResponse"
+        )
+        let request = RequestDraft(
+            jsonBody: #"{"name": "World"}"#,
+            url: "localhost:50051",
+            method: method
+        )
+        mockGrpcClient.stubbedResponse = GrpcResponse(
+            jsonBody: #"{"message": "Hello"}"#,
+            responseTime: 0.1,
+            statusCode: 0,
+            statusMessage: "OK"
+        )
+
+        // When
+        _ = try await sut.execute(request: request, method: method)
+
+        // Then
+        XCTAssertEqual(mockTelemetry.trackedEvents.count, 2)
+        XCTAssertEqual(mockTelemetry.trackedEvents[0].name, "request_sent")
+        XCTAssertEqual(mockTelemetry.trackedEvents[1].name, "request_succeeded")
+    }
+
+    func test_execute_whenClientThrowsGrpcError_tracksRequestFailedEvent() async {
+        // Given
+        let method = Method(
+            name: "SayHello",
+            serviceName: "GreetService",
+            inputType: "HelloRequest",
+            outputType: "HelloResponse"
+        )
+        let request = RequestDraft(
+            jsonBody: #"{"name": "World"}"#,
+            url: "localhost:50051",
+            method: method
+        )
+        let errorResponse = GrpcResponse(
+            jsonBody: "{}",
+            responseTime: 0.1,
+            statusCode: 14,
+            statusMessage: "UNAVAILABLE"
+        )
+        mockGrpcClient.shouldThrowError = .grpcError("UNAVAILABLE", response: errorResponse)
+
+        // When
+        do {
+            _ = try await sut.execute(request: request, method: method)
+            XCTFail("Expected error to be thrown")
+        } catch {}
+
+        // Then
+        let failedEvent = mockTelemetry.trackedEvents.first { $0.name == "request_failed" }
+        XCTAssertNotNil(failedEvent)
+        XCTAssertEqual(failedEvent?.properties["service_name"], "GreetService")
+        XCTAssertEqual(failedEvent?.properties["method_name"], "SayHello")
+        XCTAssertEqual(failedEvent?.properties["error_code"], "UNAVAILABLE")
+    }
+
+    func test_execute_whenClientThrowsTimeout_tracksRequestFailedWithDeadlineExceeded() async {
+        // Given
+        let method = Method(
+            name: "SayHello",
+            serviceName: "GreetService",
+            inputType: "HelloRequest",
+            outputType: "HelloResponse"
+        )
+        let request = RequestDraft(
+            jsonBody: #"{"name": "World"}"#,
+            url: "localhost:50051",
+            method: method
+        )
+        mockGrpcClient.shouldThrowError = .timeout
+
+        // When
+        do {
+            _ = try await sut.execute(request: request, method: method)
+            XCTFail("Expected error to be thrown")
+        } catch {}
+
+        // Then
+        let failedEvent = mockTelemetry.trackedEvents.first { $0.name == "request_failed" }
+        XCTAssertNotNil(failedEvent)
+        XCTAssertEqual(failedEvent?.properties["error_code"], "DEADLINE_EXCEEDED")
+    }
+
+    func test_execute_whenClientThrowsUnavailable_tracksRequestFailedWithUnavailable() async {
+        // Given
+        let method = Method(
+            name: "SayHello",
+            serviceName: "GreetService",
+            inputType: "HelloRequest",
+            outputType: "HelloResponse"
+        )
+        let request = RequestDraft(
+            jsonBody: #"{"name": "World"}"#,
+            url: "localhost:50051",
+            method: method
+        )
+        mockGrpcClient.shouldThrowError = .unavailable
+
+        // When
+        do {
+            _ = try await sut.execute(request: request, method: method)
+            XCTFail("Expected error to be thrown")
+        } catch {}
+
+        // Then
+        let failedEvent = mockTelemetry.trackedEvents.first { $0.name == "request_failed" }
+        XCTAssertNotNil(failedEvent)
+        XCTAssertEqual(failedEvent?.properties["error_code"], "UNAVAILABLE")
+    }
+
+    func test_execute_whenClientThrowsNetworkError_tracksRequestFailedWithUnavailable() async {
+        // Given
+        let method = Method(
+            name: "SayHello",
+            serviceName: "GreetService",
+            inputType: "HelloRequest",
+            outputType: "HelloResponse"
+        )
+        let request = RequestDraft(
+            jsonBody: #"{"name": "World"}"#,
+            url: "localhost:50051",
+            method: method
+        )
+        mockGrpcClient.shouldThrowError = .networkError("Connection refused")
+
+        // When
+        do {
+            _ = try await sut.execute(request: request, method: method)
+            XCTFail("Expected error to be thrown")
+        } catch {}
+
+        // Then
+        let failedEvent = mockTelemetry.trackedEvents.first { $0.name == "request_failed" }
+        XCTAssertNotNil(failedEvent)
+        XCTAssertEqual(failedEvent?.properties["error_code"], "UNAVAILABLE")
+    }
+
+    func test_execute_whenClientThrowsUnknownError_tracksRequestFailedWithUnknown() async {
+        // Given
+        let method = Method(
+            name: "SayHello",
+            serviceName: "GreetService",
+            inputType: "HelloRequest",
+            outputType: "HelloResponse"
+        )
+        let request = RequestDraft(
+            jsonBody: #"{"name": "World"}"#,
+            url: "localhost:50051",
+            method: method
+        )
+        mockGrpcClient.shouldThrowError = .unknown("Something went wrong")
+
+        // When
+        do {
+            _ = try await sut.execute(request: request, method: method)
+            XCTFail("Expected error to be thrown")
+        } catch {}
+
+        // Then
+        let failedEvent = mockTelemetry.trackedEvents.first { $0.name == "request_failed" }
+        XCTAssertNotNil(failedEvent)
+        XCTAssertEqual(failedEvent?.properties["error_code"], "UNKNOWN")
+    }
+
+    func test_execute_withInvalidJSON_doesNotFireAnyTelemetryEvents() async {
+        // Given - JSON validation fails before network call
+        let method = Method(
+            name: "SayHello",
+            serviceName: "GreetService",
+            inputType: "HelloRequest",
+            outputType: "HelloResponse"
+        )
+        let request = RequestDraft(
+            jsonBody: "{invalid json",
+            url: "localhost:50051",
+            method: method
+        )
+
+        // When
+        do {
+            _ = try await sut.execute(request: request, method: method)
+            XCTFail("Expected error to be thrown")
+        } catch {}
+
+        // Then - no telemetry events fired for local validation failures
+        XCTAssertTrue(mockTelemetry.trackedEvents.isEmpty)
+    }
+
+    // MARK: - Other Tests
+
     func test_execute_withEmptyJSON_callsGrpcClientWithEmptyBody() async throws {
         // Given
         let method = Method(

@@ -22,20 +22,6 @@ final class AmplitudeTelemetryServiceTests: XCTestCase {
         XCTAssertEqual(spy.trackedEventProperties[0]?["os_version"] as? String, "15.0")
     }
 
-    func test_track_whenDisabled_doesNotCallTracker() async {
-        let spy = MockAnalyticsTracker()
-        let sut = AmplitudeTelemetryService(
-            apiKey: "test-key",
-            isEnabled: { false },
-            responseHandler: MockTrackerResponseHandler(),
-            tracker: spy
-        )
-
-        await sut.track(.settingsOpened())
-
-        XCTAssertTrue(spy.trackedEventTypes.isEmpty)
-    }
-
     // MARK: - sanitize
 
     func test_sanitize_stripsUnknownKeys() async {
@@ -96,13 +82,13 @@ final class AmplitudeTelemetryServiceTests: XCTestCase {
 
     // MARK: - isEnabled closure
 
-    func test_isEnabledClosure_reflectsUserDefaultsAnalyticsOptOut() async {
-        let userDefaults = UserDefaults(suiteName: "test.amplitude.optout.integration")!
-        userDefaults.removePersistentDomain(forName: "test.amplitude.optout.integration")
-        defer { userDefaults.removePersistentDomain(forName: "test.amplitude.optout.integration") }
+    func test_isEnabledClosure_reflectsUserDefaultsAnalyticsIsEnabled() async {
+        let userDefaults = UserDefaults(suiteName: "test.amplitude.analytics.integration")!
+        userDefaults.removePersistentDomain(forName: "test.amplitude.analytics.integration")
+        defer { userDefaults.removePersistentDomain(forName: "test.amplitude.analytics.integration") }
 
         let spy = MockAnalyticsTracker()
-        let isEnabled: () -> Bool = { !userDefaults.analyticsOptOut }
+        let isEnabled: () -> Bool = { userDefaults.analyticsIsEnabled }
         let sut = AmplitudeTelemetryService(
             apiKey: "test-key",
             isEnabled: isEnabled,
@@ -110,13 +96,13 @@ final class AmplitudeTelemetryServiceTests: XCTestCase {
             tracker: spy
         )
 
-        userDefaults.analyticsOptOut = true
+        userDefaults.analyticsIsEnabled = false
         await sut.track(.settingsOpened())
-        XCTAssertTrue(spy.trackedEventTypes.isEmpty, "When optOut=true, no events should fire")
+        XCTAssertTrue(spy.trackedEventTypes.isEmpty, "When analyticsIsEnabled=false, no events should fire")
 
         spy.trackedEventTypes.removeAll()
         spy.trackedEventProperties.removeAll()
-        userDefaults.analyticsOptOut = false
+        userDefaults.analyticsIsEnabled = true
         await sut.track(.appLaunched(appVersion: "1.0", osVersion: "15.0"))
         XCTAssertEqual(spy.trackedEventTypes.count, 1)
         XCTAssertEqual(spy.trackedEventTypes[0], "app_launched")

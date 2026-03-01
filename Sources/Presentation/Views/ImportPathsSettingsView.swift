@@ -57,17 +57,14 @@ public struct ImportPathsSettingsView: View {
     }
 
     private var contentView: some View {
-        VStack(spacing: 0) {
-            Group {
-                if viewModel.paths.isEmpty {
-                    emptyStateView
-                } else {
-                    pathsListView
-                }
+        Group {
+            if viewModel.paths.isEmpty {
+                emptyStateView
+            } else {
+                pathsListView
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            analyticsSection
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private var emptyStateView: some View {
@@ -107,26 +104,6 @@ public struct ImportPathsSettingsView: View {
             }
         }
         .listStyle(.inset)
-    }
-
-    private var analyticsSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Divider()
-            Toggle(isOn: Binding(
-                get: { settingsViewModel.isAnalyticsEnabled },
-                set: { settingsViewModel.setAnalyticsEnabled($0) }
-            )) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Send usage analytics")
-                        .font(.body)
-                    Text("Helps improve the app. No personal data is collected.")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
-            }
-            .padding(.horizontal)
-            .padding(.vertical, 8)
-        }
     }
 
     private func handleFolderImport(result: Result<[URL], Error>) {

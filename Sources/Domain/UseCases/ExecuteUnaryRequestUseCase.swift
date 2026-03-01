@@ -1,42 +1,77 @@
 import Foundation
 
-/// Use case for executing unary gRPC requests
-/// Validates input and delegates to gRPC client
+/// Use case for executing unary gRPC requests.
+/// Validates input, fires telemetry events at lifecycle points, and delegates to gRPC client.
 public protocol ExecuteUnaryRequestUseCaseProtocol {
     func execute(request: RequestDraft, method: TrueRPCMini.Method) async throws -> GrpcResponse
 }
 
 public class ExecuteUnaryRequestUseCase: ExecuteUnaryRequestUseCaseProtocol {
     private let grpcClient: GrpcClientProtocol
-    
-    public init(grpcClient: GrpcClientProtocol) {
+    private let telemetry: TelemetryServiceProtocol
+
+    public init(grpcClient: GrpcClientProtocol, telemetry: TelemetryServiceProtocol) {
         self.grpcClient = grpcClient
+        self.telemetry = telemetry
     }
-    
+
     public func execute(request: RequestDraft, method: TrueRPCMini.Method) async throws -> GrpcResponse {
-        // Normalize smart quotes to regular quotes
         let normalizedJson = normalizeSmartQuotes(request.jsonBody)
-        
-        // Validate JSON syntax
+
         guard let jsonData = normalizedJson.data(using: .utf8),
               let _ = try? JSONSerialization.jsonObject(with: jsonData) else {
             throw GrpcClientError.invalidJSON("Invalid JSON syntax")
         }
-        
-        // Create normalized request with metadata preserved
+
         let normalizedRequest = RequestDraft(
             jsonBody: normalizedJson,
             url: request.url,
             method: request.method,
             metadata: request.metadata
         )
-        
-        // Execute request via gRPC client
-        return try await grpcClient.executeUnary(request: normalizedRequest, method: method)
+
+        await telemetry.track(.requestSent(serviceName: method.serviceName, methodName: method.name))
+
+        do {
+            let response = try await grpcClient.executeUnary(request: normalizedRequest, method: method)
+            let durationMs = Int(response.responseTime * 1000)
+            await telemetry.track(.requestSucceeded(
+                serviceName: method.serviceName,
+                methodName: method.name,
+                durationMs: durationMs
+            ))
+            return response
+        } catch let error as GrpcClientError {
+            await telemetry.track(.requestFailed(
+                serviceName: method.serviceName,
+                methodName: method.name,
+                errorCode: grpcStatusCode(from: error)
+            ))
+            throw error
+        } catch {
+            await telemetry.track(.requestFailed(
+                serviceName: method.serviceName,
+                methodName: method.name,
+                errorCode: "UNKNOWN"
+            ))
+            throw error
+        }
     }
-    
-    /// Normalizes smart quotes and other typographic characters to plain ASCII
-    /// This handles macOS TextEditor's automatic quote substitution
+
+    private func grpcStatusCode(from error: GrpcClientError) -> String {
+        switch error {
+        case .grpcError(let code, _): return code
+        case .unavailable: return "UNAVAILABLE"
+        case .timeout: return "DEADLINE_EXCEEDED"
+        case .networkError: return "UNAVAILABLE"
+        case .invalidJSON: return "INVALID_ARGUMENT"
+        case .invalidResponse: return "INTERNAL"
+        case .unknown: return "UNKNOWN"
+        }
+    }
+
+    /// Normalizes smart quotes and other typographic characters to plain ASCII.
+    /// This handles macOS TextEditor's automatic quote substitution.
     private func normalizeSmartQuotes(_ text: String) -> String {
         return text
             .replacingOccurrences(of: "\u{201C}", with: "\"") // Left double quote
