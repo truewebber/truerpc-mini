@@ -23,12 +23,28 @@ final class AmplitudeTelemetryService: TelemetryServiceProtocol {
     private let tracker: AnalyticsTrackerProtocol
     private let isEnabled: () -> Bool
 
-    init(apiKey: String, isEnabled: @escaping () -> Bool, tracker: AnalyticsTrackerProtocol? = nil) {
+    init(
+        apiKey: String,
+        isEnabled: @escaping () -> Bool,
+        responseHandler: TrackerResponseHandlerProtocol,
+        tracker: AnalyticsTrackerProtocol? = nil
+    ) {
         self.isEnabled = isEnabled
-        self.tracker = tracker ?? Amplitude(configuration: Configuration(
-            apiKey: apiKey,
-            minTimeBetweenSessionsMillis: AmplitudeTelemetryService.sessionTimeoutMs
-        ))
+        if let tracker {
+            self.tracker = tracker
+        } else {
+            self.tracker = Amplitude(configuration: Configuration(
+                apiKey: apiKey,
+                callback: { event, code, message in
+                    responseHandler.handleResponse(
+                        eventType: event.eventType,
+                        code: code,
+                        message: message
+                    )
+                },
+                minTimeBetweenSessionsMillis: AmplitudeTelemetryService.sessionTimeoutMs
+            ))
+        }
     }
 
     func track(_ event: TelemetryEvent) async {

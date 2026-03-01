@@ -3,9 +3,16 @@ import XCTest
 
 final class AmplitudeTelemetryServiceTests: XCTestCase {
 
+    // MARK: - track
+
     func test_track_whenEnabled_callsTrackerWithSanitizedEvent() async {
         let spy = MockAnalyticsTracker()
-        let sut = AmplitudeTelemetryService(apiKey: "test-key", isEnabled: { true }, tracker: spy)
+        let sut = AmplitudeTelemetryService(
+            apiKey: "test-key",
+            isEnabled: { true },
+            responseHandler: MockTrackerResponseHandler(),
+            tracker: spy
+        )
 
         await sut.track(.appLaunched(appVersion: "1.0.0", osVersion: "15.0"))
 
@@ -17,16 +24,28 @@ final class AmplitudeTelemetryServiceTests: XCTestCase {
 
     func test_track_whenDisabled_doesNotCallTracker() async {
         let spy = MockAnalyticsTracker()
-        let sut = AmplitudeTelemetryService(apiKey: "test-key", isEnabled: { false }, tracker: spy)
+        let sut = AmplitudeTelemetryService(
+            apiKey: "test-key",
+            isEnabled: { false },
+            responseHandler: MockTrackerResponseHandler(),
+            tracker: spy
+        )
 
         await sut.track(.settingsOpened())
 
         XCTAssertTrue(spy.trackedEventTypes.isEmpty)
     }
 
+    // MARK: - sanitize
+
     func test_sanitize_stripsUnknownKeys() async {
         let spy = MockAnalyticsTracker()
-        let sut = AmplitudeTelemetryService(apiKey: "test-key", isEnabled: { true }, tracker: spy)
+        let sut = AmplitudeTelemetryService(
+            apiKey: "test-key",
+            isEnabled: { true },
+            responseHandler: MockTrackerResponseHandler(),
+            tracker: spy
+        )
         let event = TelemetryEvent(name: "test_event", properties: [
             "app_version": "1.0",
             "unknown_key": "should_be_dropped",
@@ -43,7 +62,12 @@ final class AmplitudeTelemetryServiceTests: XCTestCase {
 
     func test_sanitize_truncatesServiceNameTo64Chars() async {
         let spy = MockAnalyticsTracker()
-        let sut = AmplitudeTelemetryService(apiKey: "test-key", isEnabled: { true }, tracker: spy)
+        let sut = AmplitudeTelemetryService(
+            apiKey: "test-key",
+            isEnabled: { true },
+            responseHandler: MockTrackerResponseHandler(),
+            tracker: spy
+        )
         let longName = String(repeating: "a", count: 100)
 
         await sut.track(.requestSent(serviceName: longName, methodName: "M"))
@@ -55,7 +79,12 @@ final class AmplitudeTelemetryServiceTests: XCTestCase {
 
     func test_sanitize_truncatesMethodNameTo64Chars() async {
         let spy = MockAnalyticsTracker()
-        let sut = AmplitudeTelemetryService(apiKey: "test-key", isEnabled: { true }, tracker: spy)
+        let sut = AmplitudeTelemetryService(
+            apiKey: "test-key",
+            isEnabled: { true },
+            responseHandler: MockTrackerResponseHandler(),
+            tracker: spy
+        )
         let longName = String(repeating: "b", count: 80)
 
         await sut.track(.requestSent(serviceName: "S", methodName: longName))
@@ -65,6 +94,8 @@ final class AmplitudeTelemetryServiceTests: XCTestCase {
         XCTAssertLessThanOrEqual(methodName.count, 64)
     }
 
+    // MARK: - isEnabled closure
+
     func test_isEnabledClosure_reflectsUserDefaultsAnalyticsOptOut() async {
         let userDefaults = UserDefaults(suiteName: "test.amplitude.optout.integration")!
         userDefaults.removePersistentDomain(forName: "test.amplitude.optout.integration")
@@ -72,7 +103,12 @@ final class AmplitudeTelemetryServiceTests: XCTestCase {
 
         let spy = MockAnalyticsTracker()
         let isEnabled: () -> Bool = { !userDefaults.analyticsOptOut }
-        let sut = AmplitudeTelemetryService(apiKey: "test-key", isEnabled: isEnabled, tracker: spy)
+        let sut = AmplitudeTelemetryService(
+            apiKey: "test-key",
+            isEnabled: isEnabled,
+            responseHandler: MockTrackerResponseHandler(),
+            tracker: spy
+        )
 
         userDefaults.analyticsOptOut = true
         await sut.track(.settingsOpened())
@@ -86,6 +122,8 @@ final class AmplitudeTelemetryServiceTests: XCTestCase {
         XCTAssertEqual(spy.trackedEventTypes[0], "app_launched")
     }
 
+    // MARK: - sessionTimeoutMs
+
     func test_sessionTimeoutMs_is30Minutes() {
         XCTAssertEqual(
             AmplitudeTelemetryService.sessionTimeoutMs,
@@ -94,9 +132,16 @@ final class AmplitudeTelemetryServiceTests: XCTestCase {
         )
     }
 
+    // MARK: - all factory events
+
     func test_track_allFactoryEvents_successfullyTracked() async {
         let spy = MockAnalyticsTracker()
-        let sut = AmplitudeTelemetryService(apiKey: "test-key", isEnabled: { true }, tracker: spy)
+        let sut = AmplitudeTelemetryService(
+            apiKey: "test-key",
+            isEnabled: { true },
+            responseHandler: MockTrackerResponseHandler(),
+            tracker: spy
+        )
 
         await sut.track(.appLaunched(appVersion: "1.0.0", osVersion: "15.0"))
         await sut.track(.appBackgrounded())
@@ -118,6 +163,8 @@ final class AmplitudeTelemetryServiceTests: XCTestCase {
     }
 }
 
+// MARK: - Mocks
+
 private final class MockAnalyticsTracker: AnalyticsTrackerProtocol {
     var trackedEventTypes: [String] = []
     var trackedEventProperties: [[String: Any]?] = []
@@ -126,4 +173,8 @@ private final class MockAnalyticsTracker: AnalyticsTrackerProtocol {
         trackedEventTypes.append(eventType)
         trackedEventProperties.append(eventProperties)
     }
+}
+
+private final class MockTrackerResponseHandler: TrackerResponseHandlerProtocol {
+    func handleResponse(eventType: String, code: Int, message: String) {}
 }

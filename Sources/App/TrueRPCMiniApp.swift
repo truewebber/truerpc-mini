@@ -78,7 +78,8 @@ struct TrueRPCMiniApp: App {
         #else
             AmplitudeTelemetryService(
                 apiKey: config.amplitudeKey,
-                isEnabled: { !UserDefaults.standard.analyticsOptOut }
+                isEnabled: { !UserDefaults.standard.analyticsOptOut },
+                responseHandler: LoggingTrackerResponseHandler(logger: logger)
             )
         #endif
         }
