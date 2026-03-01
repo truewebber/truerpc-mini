@@ -34,6 +34,7 @@ targets:
         INFOPLIST_KEY_CFBundleDisplayName: "TrueRPC-mini"
         INFOPLIST_KEY_LSApplicationCategoryType: "public.app-category.developer-tools"
         INFOPLIST_KEY_AmplitudeApiKey: $(AMPLITUDE_API_KEY)
+        INFOPLIST_KEY_SentryDsn: $(SENTRY_DSN)
         DEVELOPMENT_TEAM: "57UWRPUUGM"
       configs:
         Debug:
@@ -51,6 +52,8 @@ targets:
       - package: GRPCNIOTransportHTTP2
       - package: Amplitude-Swift
         product: AmplitudeSwift
+      - package: Sentry
+        product: Sentry
   TrueRPCMiniTests:
     type: bundle.unit-test
     platform: macOS
@@ -84,3 +87,6 @@ packages:
   Amplitude-Swift:
     url: https://github.com/amplitude/Amplitude-Swift
     from: "1.0"
+  Sentry:
+    url: https://github.com/getsentry/sentry-cocoa
+    from: "8.55.0"

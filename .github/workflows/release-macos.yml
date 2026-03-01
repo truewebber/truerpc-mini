@@ -12,6 +12,7 @@
 #   APPLE_ID                — Apple ID email
 #   APPLE_APP_SPECIFIC_PASSWORD — App-specific password (appleid.apple.com)
 #   AMPLITUDE_API_KEY       — Amplitude project API key (Analytics)
+#   SENTRY_DSN              — Sentry project DSN (sentry.io → Settings → Projects → Client Keys)
 #
 # Variables:
 #   MACOS_CODESIGN_IDENTITY — "Developer ID Application: Name (TEAMID)" (security find-identity -v)
@@ -35,15 +36,17 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      # 0) Create Secrets.xcconfig from env (AMPLITUDE_API_KEY)
+      # 0) Create Secrets.xcconfig from env (AMPLITUDE_API_KEY, SENTRY_DSN)
       - name: Create Secrets.xcconfig
         env:
           AMPLITUDE_API_KEY: ${{ secrets.AMPLITUDE_API_KEY }}
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
         run: |
           mkdir -p Config
-          if [ -n "$AMPLITUDE_API_KEY" ]; then
-            echo "AMPLITUDE_API_KEY = $AMPLITUDE_API_KEY" > Config/Secrets.xcconfig
-          fi
+          {
+            [ -n "$AMPLITUDE_API_KEY" ] && echo "AMPLITUDE_API_KEY = $AMPLITUDE_API_KEY"
+            [ -n "$SENTRY_DSN" ] && echo "SENTRY_DSN = $SENTRY_DSN"
+          } > Config/Secrets.xcconfig
 
       # 1) Generate Xcode project
       - name: Generate Xcode project
