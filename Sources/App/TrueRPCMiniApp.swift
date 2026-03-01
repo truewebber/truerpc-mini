@@ -12,6 +12,8 @@ struct TrueRPCMiniApp: App {
     
     /// App coordinator ViewModel
     @StateObject private var appViewModel: AppViewModel
+
+    @Environment(\.scenePhase) private var scenePhase
     
     // MARK: - Initialization
     
@@ -130,8 +132,10 @@ struct TrueRPCMiniApp: App {
             generateMockDataUseCase: di.resolve(GenerateMockDataUseCase.self)!,
             executeRequestUseCase: di.resolve(ExecuteUnaryRequestUseCaseProtocol.self)!,
             exportResponseUseCase: di.resolve(ExportResponseUseCase.self)!,
+            telemetry: di.resolve(TelemetryServiceProtocol.self)!,
             logger: logger
         )
+        appVM.onLaunched()
         
         // Use _StateObject to initialize @StateObject properties
         _sidebarViewModel = StateObject(wrappedValue: sidebarVM)
@@ -163,6 +167,9 @@ struct TrueRPCMiniApp: App {
             }
             .frame(minWidth: 900, minHeight: 600)
             .environmentObject(di)
+        }
+        .onChange(of: scenePhase) { _, newPhase in
+            appViewModel.onScenePhaseChanged(to: newPhase)
         }
     }
     

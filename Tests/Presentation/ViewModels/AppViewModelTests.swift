@@ -1,4 +1,5 @@
 import XCTest
+import SwiftUI
 @testable import TrueRPCMini
 
 /// Tests for AppViewModel - main app coordinator
@@ -11,6 +12,7 @@ final class AppViewModelTests: XCTestCase {
     fileprivate var executeRequestUseCase: MockExecuteRequestUseCase!
     fileprivate var exportResponseUseCase: ExportResponseUseCase!
     fileprivate var mockLogger: MockAppLogger!
+    fileprivate var mockTelemetry: MockTelemetryService!
 
     override func setUp() {
         super.setUp()
@@ -24,12 +26,14 @@ final class AppViewModelTests: XCTestCase {
         )
         executeRequestUseCase = MockExecuteRequestUseCase()
         mockLogger = MockAppLogger()
+        mockTelemetry = MockTelemetryService()
 
         sut = AppViewModel(
             createEditorTabUseCase: createTabUseCase,
             generateMockDataUseCase: generateMockDataUseCase,
             executeRequestUseCase: executeRequestUseCase,
             exportResponseUseCase: exportResponseUseCase,
+            telemetry: mockTelemetry,
             logger: mockLogger
         )
     }
@@ -40,6 +44,7 @@ final class AppViewModelTests: XCTestCase {
         generateMockDataUseCase = nil
         executeRequestUseCase = nil
         exportResponseUseCase = nil
+        mockTelemetry = nil
         mockLogger = nil
         super.tearDown()
     }
@@ -131,6 +136,87 @@ final class AppViewModelTests: XCTestCase {
         XCTAssertEqual(tabVM.url, "localhost:9090")
     }
     
+    // MARK: - Lifecycle: onLaunched
+
+    func test_onLaunched_tracksAppLaunchedEvent() async {
+        sut.onLaunched()
+        await waitForEvent(named: "app_launched")
+
+        let names = mockTelemetry.trackedEvents.map(\.name)
+        XCTAssertTrue(names.contains("app_launched"), "onLaunched() must track 'app_launched' event")
+    }
+
+    func test_onLaunched_includesAppVersionProperty() async {
+        sut.onLaunched()
+        await waitForEvent(named: "app_launched")
+
+        let event = mockTelemetry.trackedEvents.first { $0.name == "app_launched" }
+        XCTAssertNotNil(event?.properties["app_version"], "app_launched event must include 'app_version'")
+    }
+
+    func test_onLaunched_includesOsVersionProperty() async {
+        sut.onLaunched()
+        await waitForEvent(named: "app_launched")
+
+        let event = mockTelemetry.trackedEvents.first { $0.name == "app_launched" }
+        XCTAssertNotNil(event?.properties["os_version"], "app_launched event must include 'os_version'")
+    }
+
+    func test_onLaunched_calledOnce_tracksExactlyOneEvent() async {
+        sut.onLaunched()
+        await waitForEvent(named: "app_launched")
+
+        let launchedEvents = mockTelemetry.trackedEvents.filter { $0.name == "app_launched" }
+        XCTAssertEqual(launchedEvents.count, 1, "Exactly one app_launched event should be tracked per call")
+    }
+
+    // MARK: - Lifecycle: onScenePhaseChanged
+
+    func test_onScenePhaseChanged_whenBackground_tracksAppBackgroundedEvent() async {
+        sut.onScenePhaseChanged(to: .background)
+        await waitForEvent(named: "app_backgrounded")
+
+        let names = mockTelemetry.trackedEvents.map(\.name)
+        XCTAssertTrue(names.contains("app_backgrounded"), "Scene phase .background must track 'app_backgrounded'")
+    }
+
+    func test_onScenePhaseChanged_whenActive_tracksAppForegroundedEvent() async {
+        sut.onScenePhaseChanged(to: .active)
+        await waitForEvent(named: "app_foregrounded")
+
+        let names = mockTelemetry.trackedEvents.map(\.name)
+        XCTAssertTrue(names.contains("app_foregrounded"), "Scene phase .active must track 'app_foregrounded'")
+    }
+
+    func test_onScenePhaseChanged_whenInactive_doesNotTrackEvent() async {
+        sut.onScenePhaseChanged(to: .inactive)
+        // Yield a few times to confirm no event is enqueued
+        for _ in 0..<5 { await Task.yield() }
+
+        XCTAssertTrue(mockTelemetry.trackedEvents.isEmpty, "Scene phase .inactive must not track any event")
+    }
+
+    func test_onScenePhaseChanged_background_thenActive_tracksBothEvents() async {
+        sut.onScenePhaseChanged(to: .background)
+        sut.onScenePhaseChanged(to: .active)
+        await waitForEvent(named: "app_backgrounded")
+        await waitForEvent(named: "app_foregrounded")
+
+        let names = mockTelemetry.trackedEvents.map(\.name)
+        XCTAssertTrue(names.contains("app_backgrounded"))
+        XCTAssertTrue(names.contains("app_foregrounded"))
+    }
+
+    // MARK: - Helpers
+
+    /// Polls until the given event name appears in trackedEvents (up to ~1 second).
+    private func waitForEvent(named name: String) async {
+        for _ in 0..<1000 {
+            if mockTelemetry.trackedEvents.contains(where: { $0.name == name }) { return }
+            await Task.yield()
+        }
+    }
+
     func test_openMethod_multipleCalls_replacesSelectedTab() {
         // Given
         let method1 = TrueRPCMini.Method(

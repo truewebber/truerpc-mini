@@ -16,12 +16,19 @@ private let allowedPropertyKeys: Set<String> = [
 private let maxPropertyLength = 64
 
 final class AmplitudeTelemetryService: TelemetryServiceProtocol {
+    /// 30 minutes of inactivity ends the session.
+    /// Prevents idle macOS desktop sessions from inflating session duration metrics.
+    static let sessionTimeoutMs = 30 * 60 * 1000
+
     private let tracker: AnalyticsTrackerProtocol
     private let isEnabled: () -> Bool
 
     init(apiKey: String, isEnabled: @escaping () -> Bool, tracker: AnalyticsTrackerProtocol? = nil) {
         self.isEnabled = isEnabled
-        self.tracker = tracker ?? Amplitude(configuration: Configuration(apiKey: apiKey))
+        self.tracker = tracker ?? Amplitude(configuration: Configuration(
+            apiKey: apiKey,
+            minTimeBetweenSessionsMillis: AmplitudeTelemetryService.sessionTimeoutMs
+        ))
     }
 
     func track(_ event: TelemetryEvent) async {

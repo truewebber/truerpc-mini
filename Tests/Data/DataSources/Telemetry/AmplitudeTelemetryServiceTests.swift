@@ -86,6 +86,14 @@ final class AmplitudeTelemetryServiceTests: XCTestCase {
         XCTAssertEqual(spy.trackedEventTypes[0], "app_launched")
     }
 
+    func test_sessionTimeoutMs_is30Minutes() {
+        XCTAssertEqual(
+            AmplitudeTelemetryService.sessionTimeoutMs,
+            30 * 60 * 1000,
+            "Session timeout must be 30 minutes so idle desktop sessions don't inflate duration"
+        )
+    }
+
     func test_track_allFactoryEvents_successfullyTracked() async {
         let spy = MockAnalyticsTracker()
         let sut = AmplitudeTelemetryService(apiKey: "test-key", isEnabled: { true }, tracker: spy)

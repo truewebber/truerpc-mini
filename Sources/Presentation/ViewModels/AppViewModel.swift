@@ -14,6 +14,7 @@ public final class AppViewModel: ObservableObject {
     private let generateMockDataUseCase: GenerateMockDataUseCase
     private let executeRequestUseCase: ExecuteUnaryRequestUseCaseProtocol
     private let exportResponseUseCase: ExportResponseUseCase
+    private let telemetry: TelemetryServiceProtocol
     private let logger: AppLogger
 
     // MARK: - Initialization
@@ -23,13 +24,41 @@ public final class AppViewModel: ObservableObject {
         generateMockDataUseCase: GenerateMockDataUseCase,
         executeRequestUseCase: ExecuteUnaryRequestUseCaseProtocol,
         exportResponseUseCase: ExportResponseUseCase,
+        telemetry: TelemetryServiceProtocol,
         logger: AppLogger
     ) {
         self.createEditorTabUseCase = createEditorTabUseCase
         self.generateMockDataUseCase = generateMockDataUseCase
         self.executeRequestUseCase = executeRequestUseCase
         self.exportResponseUseCase = exportResponseUseCase
+        self.telemetry = telemetry
         self.logger = logger
+    }
+    
+    // MARK: - Lifecycle
+
+    /// Must be called once at app launch. Tracks the `app_launched` event with version info.
+    public func onLaunched() {
+        let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "unknown"
+        let osVersion = ProcessInfo.processInfo.operatingSystemVersionString
+        Task {
+            await telemetry.track(.appLaunched(appVersion: appVersion, osVersion: osVersion))
+        }
+    }
+
+    /// Must be called on every SwiftUI scene phase change.
+    /// Tracks `app_backgrounded` on `.background` and `app_foregrounded` on `.active`.
+    public func onScenePhaseChanged(to phase: ScenePhase) {
+        switch phase {
+        case .background:
+            Task { await telemetry.track(.appBackgrounded()) }
+        case .active:
+            Task { await telemetry.track(.appForegrounded()) }
+        case .inactive:
+            break
+        @unknown default:
+            break
+        }
     }
     
     // MARK: - Public Methods
