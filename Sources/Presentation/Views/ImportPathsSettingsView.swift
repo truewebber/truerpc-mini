@@ -1,15 +1,16 @@
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// Settings view for managing proto import paths
-/// Used to resolve dependencies when loading .proto files
+/// Settings view for managing proto import paths and analytics preferences.
 public struct ImportPathsSettingsView: View {
     @ObservedObject var viewModel: ImportPathsViewModel
+    @ObservedObject var settingsViewModel: SettingsViewModel
     @State private var isFolderPickerPresented = false
     @Environment(\.dismiss) private var dismiss
 
-    public init(viewModel: ImportPathsViewModel) {
+    public init(viewModel: ImportPathsViewModel, settingsViewModel: SettingsViewModel) {
         self.viewModel = viewModel
+        self.settingsViewModel = settingsViewModel
     }
 
     public var body: some View {
@@ -30,6 +31,9 @@ public struct ImportPathsSettingsView: View {
             guard shouldDismiss else { return }
             dismiss()
             viewModel.dismissRequested = false
+        }
+        .onAppear {
+            settingsViewModel.onAppear()
         }
     }
 
@@ -53,14 +57,17 @@ public struct ImportPathsSettingsView: View {
     }
 
     private var contentView: some View {
-        Group {
-            if viewModel.paths.isEmpty {
-                emptyStateView
-            } else {
-                pathsListView
+        VStack(spacing: 0) {
+            Group {
+                if viewModel.paths.isEmpty {
+                    emptyStateView
+                } else {
+                    pathsListView
+                }
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            analyticsSection
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private var emptyStateView: some View {
@@ -102,6 +109,26 @@ public struct ImportPathsSettingsView: View {
         .listStyle(.inset)
     }
 
+    private var analyticsSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Divider()
+            Toggle(isOn: Binding(
+                get: { settingsViewModel.isAnalyticsEnabled },
+                set: { settingsViewModel.setAnalyticsEnabled($0) }
+            )) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Send usage analytics")
+                        .font(.body)
+                    Text("Helps improve the app. No personal data is collected.")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+            }
+            .padding(.horizontal)
+            .padding(.vertical, 8)
+        }
+    }
+
     private func handleFolderImport(result: Result<[URL], Error>) {
         switch result {
         case .success(let urls):
@@ -116,9 +143,16 @@ public struct ImportPathsSettingsView: View {
 #if DEBUG
 struct ImportPathsSettingsView_Previews: PreviewProvider {
     static var previews: some View {
-        ImportPathsSettingsView(viewModel: ImportPathsViewModel(importPathsRepository: PreviewImportPathsRepository()))
-            .frame(width: 450, height: 350)
+        ImportPathsSettingsView(
+            viewModel: ImportPathsViewModel(importPathsRepository: PreviewImportPathsRepository()),
+            settingsViewModel: SettingsViewModel(telemetry: PreviewNullTelemetry())
+        )
+        .frame(width: 450, height: 400)
     }
+}
+
+private final class PreviewNullTelemetry: TelemetryServiceProtocol {
+    func track(_ event: TelemetryEvent) async {}
 }
 
 private class PreviewImportPathsRepository: ImportPathsRepositoryProtocol {

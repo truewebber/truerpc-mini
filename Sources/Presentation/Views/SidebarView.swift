@@ -7,13 +7,16 @@ public struct SidebarView: View {
     @State private var isImporterPresented = false
     @State private var isImportPathsSheetPresented = false
     let onMethodSelected: (Method, Service, ProtoFile) -> Void
+    let onSettingsOpened: () -> Void
 
     public init(
         viewModel: SidebarViewModel,
-        onMethodSelected: @escaping (Method, Service, ProtoFile) -> Void
+        onMethodSelected: @escaping (Method, Service, ProtoFile) -> Void,
+        onSettingsOpened: @escaping () -> Void = {}
     ) {
         _viewModel = StateObject(wrappedValue: viewModel)
         self.onMethodSelected = onMethodSelected
+        self.onSettingsOpened = onSettingsOpened
     }
 
     public var body: some View {
@@ -62,10 +65,16 @@ public struct SidebarView: View {
             handleFileImport(result: result)
         }
         .sheet(isPresented: $isImportPathsSheetPresented) {
-            ImportPathsSettingsView(viewModel: di.resolve(ImportPathsViewModel.self)!)
-                .onDisappear {
-                    viewModel.refreshImportPathsCount()
-                }
+            ImportPathsSettingsView(
+                viewModel: di.resolve(ImportPathsViewModel.self)!,
+                settingsViewModel: di.resolve(SettingsViewModel.self)!
+            )
+            .onDisappear {
+                viewModel.refreshImportPathsCount()
+            }
+        }
+        .onChange(of: isImportPathsSheetPresented) { _, isPresented in
+            if isPresented { onSettingsOpened() }
         }
     }
     

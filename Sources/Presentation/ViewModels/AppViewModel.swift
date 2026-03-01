@@ -61,8 +61,20 @@ public final class AppViewModel: ObservableObject {
         }
     }
     
+    // MARK: - Navigation Telemetry
+
+    /// Called when the user navigates to the protos sidebar section.
+    public func onProtosTabSelected() {
+        Task { await telemetry.track(.tabSwitched(tabName: "protos")) }
+    }
+
+    /// Called when the user opens the Settings sheet.
+    public func onSettingsOpened() {
+        Task { await telemetry.track(.tabSwitched(tabName: "settings")) }
+    }
+
     // MARK: - Public Methods
-    
+
     /// Opens an editor tab for the selected method
     public func openMethod(method: Method, service: Service, protoFile: ProtoFile) {
         let editorTab = createEditorTabUseCase.execute(method: method, service: service, protoFile: protoFile)
@@ -74,5 +86,9 @@ public final class AppViewModel: ObservableObject {
             logger: logger
         )
         selectedEditorTab = tabViewModel
+        Task {
+            await telemetry.track(.tabSwitched(tabName: "request"))
+            await telemetry.track(.requestFormOpened(hasProto: true))
+        }
     }
 }

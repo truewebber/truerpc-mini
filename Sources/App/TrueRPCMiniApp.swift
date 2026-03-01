@@ -50,6 +50,10 @@ struct TrueRPCMiniApp: App {
         di.register(ImportPathsViewModel.self, lifecycle: .transient) {
             ImportPathsViewModel(importPathsRepository: di.resolve(ImportPathsRepositoryProtocol.self)!)
         }
+
+        di.register(SettingsViewModel.self) {
+            SettingsViewModel(telemetry: di.resolve(TelemetryServiceProtocol.self)!)
+        }
         
         di.register(ProtoPathsPersistenceProtocol.self) {
             UserDefaultsProtoPathsRepository(logger: logger)
@@ -153,6 +157,9 @@ struct TrueRPCMiniApp: App {
                     viewModel: sidebarViewModel,
                     onMethodSelected: { method, service, protoFile in
                         appViewModel.openMethod(method: method, service: service, protoFile: protoFile)
+                    },
+                    onSettingsOpened: {
+                        appViewModel.onSettingsOpened()
                     }
                 )
                 .navigationSplitViewColumnWidth(min: 260, ideal: 320, max: 420)

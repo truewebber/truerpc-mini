@@ -85,4 +85,16 @@ public extension TelemetryEvent {
     static func settingsOpened() -> TelemetryEvent {
         TelemetryEvent(name: "settings_opened", properties: [:])
     }
+
+    static func requestFormOpened(hasProto: Bool) -> TelemetryEvent {
+        TelemetryEvent(name: "request_form_opened", properties: ["has_proto": hasProto ? "true" : "false"])
+    }
+
+    static func analyticsOptOut() -> TelemetryEvent {
+        TelemetryEvent(name: "analytics_opt_out", properties: [:])
+    }
+
+    static func analyticsOptIn() -> TelemetryEvent {
+        TelemetryEvent(name: "analytics_opt_in", properties: [:])
+    }
 }

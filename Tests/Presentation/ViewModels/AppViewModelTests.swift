@@ -217,6 +217,73 @@ final class AppViewModelTests: XCTestCase {
         }
     }
 
+    // MARK: - openMethod telemetry
+
+    func test_openMethod_tracksTabSwitchedRequestEvent() async {
+        // Given
+        let method = TrueRPCMini.Method(
+            name: "GetUser",
+            serviceName: "UserService",
+            inputType: ".test.GetUserRequest",
+            outputType: ".test.User"
+        )
+        let service = Service(name: "UserService", methods: [method])
+        let protoFile = ProtoFile(name: "test.proto", path: URL(fileURLWithPath: "/test/test.proto"), services: [service])
+
+        // When
+        sut.openMethod(method: method, service: service, protoFile: protoFile)
+        await waitForEvent(named: "tab_switched")
+
+        // Then
+        let event = mockTelemetry.trackedEvents.first { $0.name == "tab_switched" }
+        XCTAssertEqual(event?.properties["tab_name"], "request")
+    }
+
+    func test_openMethod_tracksRequestFormOpenedEvent() async {
+        // Given
+        let method = TrueRPCMini.Method(
+            name: "GetUser",
+            serviceName: "UserService",
+            inputType: ".test.GetUserRequest",
+            outputType: ".test.User"
+        )
+        let service = Service(name: "UserService", methods: [method])
+        let protoFile = ProtoFile(name: "test.proto", path: URL(fileURLWithPath: "/test/test.proto"), services: [service])
+
+        // When
+        sut.openMethod(method: method, service: service, protoFile: protoFile)
+        await waitForEvent(named: "request_form_opened")
+
+        // Then
+        let event = mockTelemetry.trackedEvents.first { $0.name == "request_form_opened" }
+        XCTAssertNotNil(event)
+        XCTAssertEqual(event?.properties["has_proto"], "true")
+    }
+
+    // MARK: - onProtosTabSelected
+
+    func test_onProtosTabSelected_tracksTabSwitchedWithProtosTabName() async {
+        // When
+        sut.onProtosTabSelected()
+        await waitForEvent(named: "tab_switched")
+
+        // Then
+        let event = mockTelemetry.trackedEvents.first { $0.name == "tab_switched" }
+        XCTAssertEqual(event?.properties["tab_name"], "protos")
+    }
+
+    // MARK: - onSettingsOpened
+
+    func test_onSettingsOpened_tracksTabSwitchedWithSettingsTabName() async {
+        // When
+        sut.onSettingsOpened()
+        await waitForEvent(named: "tab_switched")
+
+        // Then
+        let event = mockTelemetry.trackedEvents.first { $0.name == "tab_switched" }
+        XCTAssertEqual(event?.properties["tab_name"], "settings")
+    }
+
     func test_openMethod_multipleCalls_replacesSelectedTab() {
         // Given
         let method1 = TrueRPCMini.Method(
