@@ -27,14 +27,12 @@ targets:
         type: folder
     settings:
       base:
-        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_FILE: Sources/Info.plist
         PRODUCT_BUNDLE_IDENTIFIER: com.truewebber.TrueRPCMini
         MARKETING_VERSION: "0.0.1"
         CURRENT_PROJECT_VERSION: "1"
         INFOPLIST_KEY_CFBundleDisplayName: "TrueRPC-mini"
         INFOPLIST_KEY_LSApplicationCategoryType: "public.app-category.developer-tools"
-        INFOPLIST_KEY_AmplitudeApiKey: $(AMPLITUDE_API_KEY)
-        INFOPLIST_KEY_SentryDsn: $(SENTRY_DSN)
         DEVELOPMENT_TEAM: "57UWRPUUGM"
       configs:
         Debug:

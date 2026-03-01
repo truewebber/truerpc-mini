@@ -26,20 +26,21 @@ final class ConfigTests: XCTestCase {
 
     // MARK: - fromBundle reads from Info.plist
 
-    func test_config_fromBundle_amplitudeKey_whenAbsent_returnsEmptyString() {
-        // In the test bundle AmplitudeApiKey is not set — expects empty string fallback.
-        XCTAssertEqual(Config.fromBundle.amplitudeKey, "")
+    func test_config_fromBundle_amplitudeKey_returnsNonEmptyString() {
+        // Debug.xcconfig sets AMPLITUDE_API_KEY = dummy, which is injected
+        // into Info.plist at build time — never empty.
+        XCTAssertFalse(Config.fromBundle.amplitudeKey.isEmpty)
     }
 
-    func test_config_fromBundle_sentryDsn_whenAbsent_returnsEmptyString() {
-        // In the test bundle SentryDsn is not set — expects empty string fallback.
-        XCTAssertEqual(Config.fromBundle.sentryDsn, "")
+    func test_config_fromBundle_sentryDsn_startsWithHttpsScheme() {
+        // Info.plist reconstructs the URL as https://$(SENTRY_DSN_REMAINDER).
+        // Debug.xcconfig sets SENTRY_DSN_REMAINDER = dummy-remainder.
+        XCTAssertTrue(Config.fromBundle.sentryDsn.hasPrefix("https://"))
     }
 
     func test_config_fromBundle_trims_whitespace() {
         // Keys from xcconfig sometimes carry trailing newlines on certain
         // Xcode versions — fromBundle must trim before returning.
-        // We verify this indirectly: the returned string has no leading/trailing whitespace.
         let key = Config.fromBundle.amplitudeKey
         XCTAssertEqual(key, key.trimmingCharacters(in: .whitespacesAndNewlines))
     }

@@ -2,8 +2,12 @@ import Foundation
 
 /// Reads build-time secrets from the app's Info.plist.
 ///
-/// Keys are injected via xcconfig (`Secrets.xcconfig`) and surfaced through
-/// `INFOPLIST_KEY_*` build settings — never hardcoded in source.
+/// Keys are injected via `Secrets.xcconfig` and written into `Sources/Info.plist`
+/// using `$(VARIABLE)` substitution at build time — never hardcoded in source.
+///
+/// Note: xcconfig treats `//` as a comment, so the Sentry DSN is split:
+/// `SENTRY_DSN_REMAINDER` stores everything after `https://`, and `Info.plist`
+/// reconstructs the full URL as `https://$(SENTRY_DSN_REMAINDER)`.
 struct Config {
     let amplitudeKey: String
     let sentryDsn: String

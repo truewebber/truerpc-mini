@@ -1,2 +1,2 @@
 AMPLITUDE_API_KEY = dummy
-SENTRY_DSN = dummy
+SENTRY_DSN_REMAINDER = dummy-remainder
