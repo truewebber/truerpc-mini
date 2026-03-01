@@ -2,14 +2,6 @@ import SwiftUI
 
 @main
 struct TrueRPCMiniApp: App {
-    private static func createReleaseTelemetryService() -> TelemetryServiceProtocol {
-        let apiKey = (Bundle.main.object(forInfoDictionaryKey: "AmplitudeApiKey") as? String ?? "")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        return AmplitudeTelemetryService(
-            apiKey: apiKey,
-            isEnabled: { !UserDefaults.standard.analyticsOptOut }
-        )
-    }
     // MARK: - Properties
     
     /// Dependency Injection container
@@ -25,9 +17,25 @@ struct TrueRPCMiniApp: App {
     
     init() {
         UserDefaults.runAnalyticsOptOutMigration()
+
+        let config = Config.fromBundle
+
+        // === LOGGING ===
+        #if DEBUG
+        let logger: any AppLogger = OSLogger(category: "app")
+        #else
+        SentryBootstrapper.start(dsn: config.sentryDsn)
+        let logger: any AppLogger = MultiplexLogger([
+            OSLogger(category: "app"),
+            SentryLogger(minLevel: .error)
+        ])
+        #endif
+
         let di = AppDI()
         self.di = di
-        
+
+        di.register(AppLogger.self) { logger }
+
         // Register Data Layer dependencies
         di.register(ProtoRepositoryProtocol.self) {
             FileSystemProtoRepository()
@@ -60,11 +68,15 @@ struct TrueRPCMiniApp: App {
         }
 
         
+        // === TELEMETRY ===
         di.register(TelemetryServiceProtocol.self) {
         #if DEBUG
             OSLogTelemetryService()
         #else
-            Self.createReleaseTelemetryService()
+            AmplitudeTelemetryService(
+                apiKey: config.amplitudeKey,
+                isEnabled: { !UserDefaults.standard.analyticsOptOut }
+            )
         #endif
         }
         
