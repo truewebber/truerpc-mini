@@ -42,6 +42,10 @@ public extension TelemetryEvent {
         TelemetryEvent(name: "proto_removed", properties: [:])
     }
 
+    static func protoLoadFailed(source: String) -> TelemetryEvent {
+        TelemetryEvent(name: "proto_load_failed", properties: ["source": source])
+    }
+
     static func requestSent(serviceName: String, methodName: String) -> TelemetryEvent {
         TelemetryEvent(
             name: "request_sent",

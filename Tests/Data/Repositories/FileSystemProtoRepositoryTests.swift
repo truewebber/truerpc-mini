@@ -381,7 +381,7 @@ extension FileSystemProtoRepositoryTests {
 
     // MARK: - Logger error path
 
-    func test_loadProto_whenParsingFails_logsErrorWithFileAndErrorMetadata() async {
+    func test_loadProto_whenParsingFails_logsErrorWithFileName() async {
         let invalidContent = "not valid proto"
         let tempURL = try! createTempProtoFile(content: invalidContent, name: "bad.proto")
         defer { try? FileManager.default.removeItem(at: tempURL) }
@@ -389,19 +389,56 @@ extension FileSystemProtoRepositoryTests {
         _ = try? await sut.loadProto(url: tempURL)
 
         XCTAssertEqual(mockLogger.errorMessages.count, 1)
-        XCTAssertEqual(mockLogger.errorMessages[0].metadata["file"], tempURL.path)
+        XCTAssertEqual(mockLogger.errorMessages[0].metadata["file"], "bad.proto")
         XCTAssertNotNil(mockLogger.errorMessages[0].metadata["error"])
     }
 
-    func test_loadProto_withImportPaths_whenParsingFails_logsError() async {
+    func test_loadProto_whenParsingFails_logsErrorWithDependenciesCount() async {
+        let invalidContent = "not valid proto"
+        let tempURL = try! createTempProtoFile(content: invalidContent, name: "bad_deps.proto")
+        defer { try? FileManager.default.removeItem(at: tempURL) }
+
+        _ = try? await sut.loadProto(url: tempURL)
+
+        XCTAssertEqual(mockLogger.errorMessages[0].metadata["dependencies_count"], "0")
+    }
+
+    func test_loadProto_whenParsingFails_logsMissingImports() async {
+        let invalidContent = "not valid proto"
+        let tempURL = try! createTempProtoFile(content: invalidContent, name: "bad_imports.proto")
+        defer { try? FileManager.default.removeItem(at: tempURL) }
+
+        _ = try? await sut.loadProto(url: tempURL)
+
+        XCTAssertNotNil(mockLogger.errorMessages[0].metadata["missing_imports"])
+    }
+
+    func test_loadProto_withImportPaths_whenParsingFails_logsDependenciesCount() async {
         let invalidContent = "not valid proto"
         let tempURL = try! createTempProtoFile(content: invalidContent, name: "bad2.proto")
+        defer { try? FileManager.default.removeItem(at: tempURL) }
+
+        _ = try? await sut.loadProto(url: tempURL, importPaths: ["/path/a", "/path/b"])
+
+        XCTAssertEqual(mockLogger.errorMessages.count, 1)
+        XCTAssertEqual(mockLogger.errorMessages[0].metadata["file"], "bad2.proto")
+        XCTAssertEqual(mockLogger.errorMessages[0].metadata["dependencies_count"], "2")
+    }
+
+    func test_loadProto_withImportPaths_whenDependencyMissing_logsMissingImport() async {
+        let contentWithImport = """
+        syntax = "proto3";
+        import "missing/dep.proto";
+        message Foo {}
+        """
+        let tempURL = try! createTempProtoFile(content: contentWithImport, name: "dep_missing.proto")
         defer { try? FileManager.default.removeItem(at: tempURL) }
 
         _ = try? await sut.loadProto(url: tempURL, importPaths: [])
 
         XCTAssertEqual(mockLogger.errorMessages.count, 1)
-        XCTAssertEqual(mockLogger.errorMessages[0].metadata["file"], tempURL.path)
+        let missingImports = mockLogger.errorMessages[0].metadata["missing_imports"] ?? ""
+        XCTAssertTrue(missingImports.contains("missing/dep.proto"))
     }
 
     func test_loadProto_whenSucceeds_doesNotLog() async throws {
@@ -412,6 +449,17 @@ extension FileSystemProtoRepositoryTests {
         _ = try await sut.loadProto(url: tempURL)
 
         XCTAssertTrue(mockLogger.errorMessages.isEmpty)
+    }
+
+    func test_loadProto_whenParsingFails_doesNotLeakFullPathInFileMetadata() async {
+        let invalidContent = "not valid proto"
+        let tempURL = try! createTempProtoFile(content: invalidContent, name: "leaktest.proto")
+        defer { try? FileManager.default.removeItem(at: tempURL) }
+
+        _ = try? await sut.loadProto(url: tempURL)
+
+        let fileMetadata = mockLogger.errorMessages[0].metadata["file"] ?? ""
+        XCTAssertFalse(fileMetadata.contains("/"), "file metadata should be filename only, not a path")
     }
 
     func test_getMessageDescriptor_whenTypeHasWronglyPrefixedPackage_throwsError() async throws {

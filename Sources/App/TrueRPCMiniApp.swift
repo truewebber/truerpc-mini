@@ -124,7 +124,8 @@ struct TrueRPCMiniApp: App {
             importPathsRepository: di.resolve(ImportPathsRepositoryProtocol.self)!,
             protoPathsPersistence: di.resolve(ProtoPathsPersistenceProtocol.self)!,
             loadSavedProtosUseCase: di.resolve(LoadSavedProtosUseCase.self)!,
-            logger: logger
+            logger: logger,
+            telemetry: di.resolve(TelemetryServiceProtocol.self)!
         )
 
         // Create AppViewModel

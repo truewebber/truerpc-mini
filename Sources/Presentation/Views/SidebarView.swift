@@ -120,6 +120,19 @@ public struct SidebarView: View {
                     protoFile: protoFile,
                     onMethodSelected: onMethodSelected
                 )
+                .contextMenu {
+                    Button(role: .destructive) {
+                        Task { await viewModel.removeProtoFile(protoFile) }
+                    } label: {
+                        Label("Remove", systemImage: "trash")
+                    }
+                }
+            }
+            .onDelete { indexSet in
+                indexSet.forEach { index in
+                    let proto = viewModel.protoFiles[index]
+                    Task { await viewModel.removeProtoFile(proto) }
+                }
             }
         }
         .listStyle(.sidebar)
@@ -277,7 +290,8 @@ struct SidebarView_Previews: PreviewProvider {
                 importPathsRepository: PreviewMockImportPathsRepository(),
                 protoPathsPersistence: PreviewMockProtoPathsPersistence(),
                 loadSavedProtosUseCase: PreviewMockLoadSavedProtosUseCase(),
-                logger: NullLogger()
+                logger: NullLogger(),
+                telemetry: PreviewNullTelemetry()
             ),
             onMethodSelected: { _, _, _ in }
         )
@@ -292,7 +306,8 @@ struct SidebarView_Previews: PreviewProvider {
                     importPathsRepository: PreviewMockImportPathsRepository(),
                     protoPathsPersistence: PreviewMockProtoPathsPersistence(),
                     loadSavedProtosUseCase: PreviewMockLoadSavedProtosUseCase(),
-                    logger: NullLogger()
+                    logger: NullLogger(),
+                    telemetry: PreviewNullTelemetry()
                 )
                 vm.protoFiles = [
                     ProtoFile(
@@ -335,7 +350,8 @@ struct SidebarView_Previews: PreviewProvider {
                     importPathsRepository: PreviewMockImportPathsRepository(),
                     protoPathsPersistence: PreviewMockProtoPathsPersistence(),
                     loadSavedProtosUseCase: PreviewMockLoadSavedProtosUseCase(),
-                    logger: NullLogger()
+                    logger: NullLogger(),
+                    telemetry: PreviewNullTelemetry()
                 )
                 vm.isLoading = true
                 return vm
@@ -353,7 +369,8 @@ struct SidebarView_Previews: PreviewProvider {
                     importPathsRepository: PreviewMockImportPathsRepository(),
                     protoPathsPersistence: PreviewMockProtoPathsPersistence(),
                     loadSavedProtosUseCase: PreviewMockLoadSavedProtosUseCase(),
-                    logger: NullLogger()
+                    logger: NullLogger(),
+                    telemetry: PreviewNullTelemetry()
                 )
                 vm.error = "Failed to load proto file"
                 return vm
@@ -403,6 +420,10 @@ private class PreviewMockLoadSavedProtosUseCase: LoadSavedProtosUseCase {
     override func execute(urls: [URL], importPaths: [String]) async -> [ProtoFile] {
         return []
     }
+}
+
+private final class PreviewNullTelemetry: TelemetryServiceProtocol {
+    func track(_ event: TelemetryEvent) async {}
 }
 #endif
 

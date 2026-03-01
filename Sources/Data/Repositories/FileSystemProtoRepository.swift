@@ -3,6 +3,21 @@ import SwiftProtoParser
 import SwiftProtobuf
 import SwiftProtoReflect
 
+// MARK: - ProtoParseError helpers
+
+private extension Error {
+    /// Extracts unresolved import information from a dependency resolution error.
+    ///
+    /// Returns the resolver's error description, which contains the missing import path.
+    var missingImport: String? {
+        guard let parseError = self as? ProtoParseError else { return nil }
+        if case .dependencyResolutionError(let message, _) = parseError {
+            return message
+        }
+        return nil
+    }
+}
+
 /// Repository for loading proto files from the file system
 /// Implements ProtoRepositoryProtocol from Domain layer
 public final class FileSystemProtoRepository: ProtoRepositoryProtocol {
@@ -33,8 +48,10 @@ public final class FileSystemProtoRepository: ProtoRepositoryProtocol {
             
         case .failure(let error):
             logger.error("Proto parsing failed", metadata: [
-                "file": url.path,
-                "error": error.localizedDescription
+                "file": url.lastPathComponent,
+                "error": error.localizedDescription,
+                "dependencies_count": "0",
+                "missing_imports": error.missingImport ?? "",
             ])
             throw ProtoRepositoryError.parsingFailed(error.localizedDescription)
         }
@@ -62,8 +79,10 @@ public final class FileSystemProtoRepository: ProtoRepositoryProtocol {
             
         case .failure(let error):
             logger.error("Proto parsing failed", metadata: [
-                "file": url.path,
-                "error": error.localizedDescription
+                "file": url.lastPathComponent,
+                "error": error.localizedDescription,
+                "dependencies_count": String(importPaths.count),
+                "missing_imports": error.missingImport ?? "",
             ])
             throw ProtoRepositoryError.parsingFailed(error.localizedDescription)
         }

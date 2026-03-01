@@ -18,6 +18,7 @@ public final class SidebarViewModel: ObservableObject {
     private let protoPathsPersistence: ProtoPathsPersistenceProtocol
     private let loadSavedProtosUseCase: LoadSavedProtosUseCase
     private let logger: AppLogger
+    private let telemetry: TelemetryServiceProtocol
 
     // MARK: - Initialization
 
@@ -26,13 +27,15 @@ public final class SidebarViewModel: ObservableObject {
         importPathsRepository: ImportPathsRepositoryProtocol,
         protoPathsPersistence: ProtoPathsPersistenceProtocol,
         loadSavedProtosUseCase: LoadSavedProtosUseCase,
-        logger: AppLogger
+        logger: AppLogger,
+        telemetry: TelemetryServiceProtocol
     ) {
         self.importProtoFileUseCase = importProtoFileUseCase
         self.importPathsRepository = importPathsRepository
         self.protoPathsPersistence = protoPathsPersistence
         self.loadSavedProtosUseCase = loadSavedProtosUseCase
         self.logger = logger
+        self.telemetry = telemetry
         self.importPathsCount = importPathsRepository.getImportPaths().count
     }
 
@@ -133,6 +136,7 @@ public final class SidebarViewModel: ObservableObject {
                 "path": url.path,
                 "total": "\(protoFiles.count)"
             ])
+            await telemetry.track(.protoAdded(source: "file"))
 
             saveProtoPaths()
         } catch {
@@ -140,10 +144,18 @@ public final class SidebarViewModel: ObservableObject {
                 "path": url.path,
                 "error": error.localizedDescription
             ])
+            await telemetry.track(.protoLoadFailed(source: "file"))
             self.error = error.localizedDescription
         }
 
         isLoading = false
+    }
+
+    /// Removes a proto file from the list, persists the updated set, and fires telemetry
+    public func removeProtoFile(_ protoFile: ProtoFile) async {
+        protoFiles.removeAll { $0.id == protoFile.id }
+        saveProtoPaths()
+        await telemetry.track(.protoRemoved())
     }
     
     // MARK: - Private Methods

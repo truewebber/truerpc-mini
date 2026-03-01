@@ -10,6 +10,7 @@ final class SidebarViewModelTests: XCTestCase {
     var mockProtoPathsPersistence: MockProtoPathsPersistence!
     var mockLoadSavedProtosUseCase: MockLoadSavedProtosUseCase!
     var mockLogger: MockAppLogger!
+    var mockTelemetry: MockTelemetryService!
 
     override func setUp() {
         super.setUp()
@@ -18,12 +19,14 @@ final class SidebarViewModelTests: XCTestCase {
         mockProtoPathsPersistence = MockProtoPathsPersistence()
         mockLoadSavedProtosUseCase = MockLoadSavedProtosUseCase()
         mockLogger = MockAppLogger()
+        mockTelemetry = MockTelemetryService()
         sut = SidebarViewModel(
             importProtoFileUseCase: mockUseCase,
             importPathsRepository: mockImportPathsRepository,
             protoPathsPersistence: mockProtoPathsPersistence,
             loadSavedProtosUseCase: mockLoadSavedProtosUseCase,
-            logger: mockLogger
+            logger: mockLogger,
+            telemetry: mockTelemetry
         )
     }
 
@@ -34,6 +37,7 @@ final class SidebarViewModelTests: XCTestCase {
         mockProtoPathsPersistence = nil
         mockLoadSavedProtosUseCase = nil
         mockLogger = nil
+        mockTelemetry = nil
         super.tearDown()
     }
     
@@ -55,7 +59,8 @@ final class SidebarViewModelTests: XCTestCase {
             importPathsRepository: mockImportPathsRepository,
             protoPathsPersistence: mockProtoPathsPersistence,
             loadSavedProtosUseCase: mockLoadSavedProtosUseCase,
-            logger: mockLogger
+            logger: mockLogger,
+            telemetry: mockTelemetry
         )
 
         XCTAssertEqual(sut.importPathsCount, 2)
@@ -195,6 +200,97 @@ final class SidebarViewModelTests: XCTestCase {
         XCTAssertEqual(sut.protoFiles.count, 1)
         XCTAssertEqual(sut.protoFiles.first?.path, testURL)
     }
+
+    // MARK: - Telemetry Tests
+
+    func test_importProtoFile_whenSuccess_tracksProtoAddedEvent() async {
+        let testURL = URL(fileURLWithPath: "/test/service.proto")
+        mockUseCase.mockResultsByURL[testURL] = .success(ProtoFile(name: "service.proto", path: testURL, services: []))
+
+        await sut.importProtoFile(url: testURL)
+
+        XCTAssertEqual(mockTelemetry.trackedEvents.count, 1)
+        XCTAssertEqual(mockTelemetry.trackedEvents[0].name, "proto_added")
+        XCTAssertEqual(mockTelemetry.trackedEvents[0].properties["source"], "file")
+    }
+
+    func test_importProtoFile_whenError_tracksProtoLoadFailedEvent() async {
+        let testURL = URL(fileURLWithPath: "/test/broken.proto")
+        mockUseCase.mockResultsByURL[testURL] = .failure(TestError.importFailed)
+
+        await sut.importProtoFile(url: testURL)
+
+        XCTAssertEqual(mockTelemetry.trackedEvents.count, 1)
+        XCTAssertEqual(mockTelemetry.trackedEvents[0].name, "proto_load_failed")
+        XCTAssertEqual(mockTelemetry.trackedEvents[0].properties["source"], "file")
+    }
+
+    func test_importProtoFile_whenSuccess_doesNotTrackProtoLoadFailed() async {
+        let testURL = URL(fileURLWithPath: "/test/ok.proto")
+        mockUseCase.mockResultsByURL[testURL] = .success(ProtoFile(name: "ok.proto", path: testURL, services: []))
+
+        await sut.importProtoFile(url: testURL)
+
+        XCTAssertFalse(mockTelemetry.trackedEvents.contains { $0.name == "proto_load_failed" })
+    }
+
+    func test_importProtoFile_whenError_doesNotTrackProtoAdded() async {
+        let testURL = URL(fileURLWithPath: "/test/bad.proto")
+        mockUseCase.mockResultsByURL[testURL] = .failure(TestError.importFailed)
+
+        await sut.importProtoFile(url: testURL)
+
+        XCTAssertFalse(mockTelemetry.trackedEvents.contains { $0.name == "proto_added" })
+    }
+
+    func test_removeProtoFile_tracksProtoRemovedEvent() async {
+        let testURL = URL(fileURLWithPath: "/test/removable.proto")
+        let proto = ProtoFile(name: "removable.proto", path: testURL, services: [])
+        mockUseCase.mockResultsByURL[testURL] = .success(proto)
+        await sut.importProtoFile(url: testURL)
+        mockTelemetry.reset()
+
+        await sut.removeProtoFile(proto)
+
+        let events = mockTelemetry.trackedEvents
+        XCTAssertEqual(events.count, 1)
+        XCTAssertEqual(events[0].name, "proto_removed")
+    }
+
+    func test_removeProtoFile_removesFromList() async {
+        let testURL = URL(fileURLWithPath: "/test/removable2.proto")
+        let proto = ProtoFile(name: "removable2.proto", path: testURL, services: [])
+        mockUseCase.mockResultsByURL[testURL] = .success(proto)
+        await sut.importProtoFile(url: testURL)
+        XCTAssertEqual(sut.protoFiles.count, 1)
+
+        await sut.removeProtoFile(proto)
+
+        XCTAssertTrue(sut.protoFiles.isEmpty)
+    }
+
+    func test_removeProtoFile_persistsUpdatedPaths() async {
+        let testURL = URL(fileURLWithPath: "/test/removable3.proto")
+        let proto = ProtoFile(name: "removable3.proto", path: testURL, services: [])
+        mockUseCase.mockResultsByURL[testURL] = .success(proto)
+        await sut.importProtoFile(url: testURL)
+
+        await sut.removeProtoFile(proto)
+
+        XCTAssertTrue(mockProtoPathsPersistence.savedPaths.isEmpty)
+    }
+
+    func test_importProtoFile_trackEventPropertiesContainNoFilePath() async {
+        let testURL = URL(fileURLWithPath: "/private/secrets/service.proto")
+        mockUseCase.mockResultsByURL[testURL] = .success(ProtoFile(name: "service.proto", path: testURL, services: []))
+
+        await sut.importProtoFile(url: testURL)
+
+        let event = mockTelemetry.trackedEvents[0]
+        XCTAssertFalse(event.properties.values.contains { $0.contains("/private/secrets") })
+    }
+
+    // MARK: - Load Saved Protos Tests
 
     func test_loadSavedProtos_whenAlreadyLoaded_doesNotDuplicate() async {
         // Given

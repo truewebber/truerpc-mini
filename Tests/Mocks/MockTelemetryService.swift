@@ -10,4 +10,8 @@ public final class MockTelemetryService: TelemetryServiceProtocol {
     public func track(_ event: TelemetryEvent) async {
         trackedEvents.append(event)
     }
+
+    public func reset() {
+        trackedEvents = []
+    }
 }
