@@ -40,9 +40,12 @@ public final class FileSystemProtoRepository: ProtoRepositoryProtocol {
 
         switch result {
         case .success(let descriptorSet):
-            // Store ALL descriptors (main + transitive deps), deduplicated by filename.
+            // Store ALL descriptors (main + transitive deps), upserted by filename so that
+            // re-loading a modified file replaces the stale descriptor in the registry.
             for descriptor in descriptorSet.file {
-                if !fileDescriptors.contains(where: { $0.name == descriptor.name }) {
+                if let idx = fileDescriptors.firstIndex(where: { $0.name == descriptor.name }) {
+                    fileDescriptors[idx] = descriptor
+                } else {
                     fileDescriptors.append(descriptor)
                 }
             }

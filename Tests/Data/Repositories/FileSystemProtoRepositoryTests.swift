@@ -534,3 +534,138 @@ extension FileSystemProtoRepositoryTests {
         }
     }
 }
+
+// MARK: - Descriptor Deduplication Tests (TRMN-151)
+
+extension FileSystemProtoRepositoryTests {
+
+    func test_loadProto_whenSameFileLoadedTwice_updatesDescriptor() async throws {
+        // Given - load v1 with one field
+        let v1Content = """
+        syntax = "proto3";
+        package dedup;
+
+        message DeduplicatedMessage {
+            string field_one = 1;
+        }
+
+        service DeduplicatedService {
+            rpc Get(DeduplicatedMessage) returns (DeduplicatedMessage);
+        }
+        """
+        let tempURL = try createTempProtoFile(content: v1Content, name: "dedup_test.proto")
+        defer { try? FileManager.default.removeItem(at: tempURL) }
+
+        _ = try await sut.loadProto(url: tempURL)
+
+        // When - overwrite the file with v2 (two fields) and load again
+        let v2Content = """
+        syntax = "proto3";
+        package dedup;
+
+        message DeduplicatedMessage {
+            string field_one = 1;
+            string field_two = 2;
+        }
+
+        service DeduplicatedService {
+            rpc Get(DeduplicatedMessage) returns (DeduplicatedMessage);
+        }
+        """
+        try v2Content.write(to: tempURL, atomically: true, encoding: .utf8)
+        _ = try await sut.loadProto(url: tempURL)
+
+        // Then - descriptor must reflect v2 (two fields, not one)
+        let descriptor = try sut.getMessageDescriptor(forType: ".dedup.DeduplicatedMessage")
+        XCTAssertEqual(descriptor.fields.count, 2, "Descriptor should be updated after re-loading the same file")
+    }
+
+    func test_loadProto_whenSameFileLoadedWithChangedMessage_newDescriptorIsUsed() async throws {
+        // Given - initial schema: message has no fields
+        let v1Content = """
+        syntax = "proto3";
+        package changed;
+
+        message ChangedMessage {}
+
+        service ChangedService {
+            rpc Do(ChangedMessage) returns (ChangedMessage);
+        }
+        """
+        let tempURL = try createTempProtoFile(content: v1Content, name: "changed_test.proto")
+        defer { try? FileManager.default.removeItem(at: tempURL) }
+
+        _ = try await sut.loadProto(url: tempURL)
+
+        let descriptorBefore = try sut.getMessageDescriptor(forType: ".changed.ChangedMessage")
+        XCTAssertEqual(descriptorBefore.fields.count, 0)
+
+        // When - schema evolves to add three new fields
+        let v2Content = """
+        syntax = "proto3";
+        package changed;
+
+        message ChangedMessage {
+            string name = 1;
+            int32 age = 2;
+            bool active = 3;
+        }
+
+        service ChangedService {
+            rpc Do(ChangedMessage) returns (ChangedMessage);
+        }
+        """
+        try v2Content.write(to: tempURL, atomically: true, encoding: .utf8)
+        _ = try await sut.loadProto(url: tempURL)
+
+        // Then - getMessageDescriptor must return the new schema
+        let descriptorAfter = try sut.getMessageDescriptor(forType: ".changed.ChangedMessage")
+        XCTAssertEqual(descriptorAfter.fields.count, 3, "getMessageDescriptor must reflect the updated schema")
+    }
+
+    func test_loadProto_whenDifferentFiles_bothDescriptorsStored() async throws {
+        // Given - two independent proto files
+        let fileAContent = """
+        syntax = "proto3";
+        package filea;
+
+        message MessageA {
+            string value = 1;
+        }
+
+        service ServiceA {
+            rpc DoA(MessageA) returns (MessageA);
+        }
+        """
+        let fileBContent = """
+        syntax = "proto3";
+        package fileb;
+
+        message MessageB {
+            int32 count = 1;
+            bool flag = 2;
+        }
+
+        service ServiceB {
+            rpc DoB(MessageB) returns (MessageB);
+        }
+        """
+        let urlA = try createTempProtoFile(content: fileAContent, name: "file_a.proto")
+        let urlB = try createTempProtoFile(content: fileBContent, name: "file_b.proto")
+        defer {
+            try? FileManager.default.removeItem(at: urlA)
+            try? FileManager.default.removeItem(at: urlB)
+        }
+
+        // When - load both
+        _ = try await sut.loadProto(url: urlA)
+        _ = try await sut.loadProto(url: urlB)
+
+        // Then - both descriptors must be accessible
+        let descriptorA = try sut.getMessageDescriptor(forType: ".filea.MessageA")
+        let descriptorB = try sut.getMessageDescriptor(forType: ".fileb.MessageB")
+
+        XCTAssertEqual(descriptorA.fields.count, 1)
+        XCTAssertEqual(descriptorB.fields.count, 2)
+    }
+}
