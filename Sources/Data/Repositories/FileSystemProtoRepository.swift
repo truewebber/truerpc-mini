@@ -30,53 +30,37 @@ public final class FileSystemProtoRepository: ProtoRepositoryProtocol {
     }
     
     public func loadProto(url: URL) async throws -> ProtoFile {
-        // Parse proto file using SwiftProtoParser without import path resolution
-        let result = SwiftProtoParser.parseProtoToDescriptors(url.path)
-        
-        switch result {
-        case .success(let fileDescriptor):
-            // Store file descriptor for later use
-            fileDescriptors.append(fileDescriptor)
-            
-            // Map to Domain entity
-            let protoFile = mapToProtoFile(fileDescriptor: fileDescriptor, url: url)
-            
-            // Store loaded proto
-            loadedProtos.append(protoFile)
-            
-            return protoFile
-            
-        case .failure(let error):
-            logger.error("Proto parsing failed", metadata: [
-                "file": url.lastPathComponent,
-                "error": error.localizedDescription,
-                "dependencies_count": "0",
-                "missing_imports": error.missingImport ?? "",
-            ])
-            throw ProtoRepositoryError.parsingFailed(error.localizedDescription)
-        }
+        return try await loadProto(url: url, importPaths: [])
     }
 
     public func loadProto(url: URL, importPaths: [String]) async throws -> ProtoFile {
-        // Parse proto file using SwiftProtoParser with import path resolution
-        let result = SwiftProtoParser.parseProtoFileWithImportsToDescriptors(
-            url.path,
-            importPaths: importPaths
-        )
-        
+        // parseFile returns a FileDescriptorSet with all transitive dependencies in
+        // topological order (dependencies first, requested file last).
+        let result = SwiftProtoParser.parseFile(url.path, importPaths: importPaths)
+
         switch result {
-        case .success(let fileDescriptor):
-            // Store file descriptor for later use
-            fileDescriptors.append(fileDescriptor)
-            
-            // Map to Domain entity
-            let protoFile = mapToProtoFile(fileDescriptor: fileDescriptor, url: url)
-            
-            // Store loaded proto
+        case .success(let descriptorSet):
+            // Store ALL descriptors (main + transitive deps), deduplicated by filename.
+            for descriptor in descriptorSet.file {
+                if !fileDescriptors.contains(where: { $0.name == descriptor.name }) {
+                    fileDescriptors.append(descriptor)
+                }
+            }
+
+            // The main file is identifiable by filename; topological order places it
+            // last, so fall back to the last element if the name match fails.
+            let mainFileName = url.lastPathComponent
+            guard let mainDescriptor =
+                descriptorSet.file.last(where: { $0.name == mainFileName })
+                ?? descriptorSet.file.last
+            else {
+                throw ProtoRepositoryError.parsingFailed("No descriptor returned for \(mainFileName)")
+            }
+
+            let protoFile = mapToProtoFile(fileDescriptor: mainDescriptor, url: url)
             loadedProtos.append(protoFile)
-            
             return protoFile
-            
+
         case .failure(let error):
             logger.error("Proto parsing failed", metadata: [
                 "file": url.lastPathComponent,

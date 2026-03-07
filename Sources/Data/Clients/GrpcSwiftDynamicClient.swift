@@ -22,8 +22,20 @@ public class GrpcSwiftDynamicClient: GrpcClientProtocol {
         let startTime = Date()
         
         // 1. Get message descriptors from proto repository
-        let inputDescriptor = try protoRepository.getMessageDescriptor(forType: method.inputType)
-        let outputDescriptor = try protoRepository.getMessageDescriptor(forType: method.outputType)
+        let inputDescriptor: MessageDescriptor
+        let outputDescriptor: MessageDescriptor
+        do {
+            inputDescriptor = try protoRepository.getMessageDescriptor(forType: method.inputType)
+            outputDescriptor = try protoRepository.getMessageDescriptor(forType: method.outputType)
+        } catch {
+            logger.error("Proto message descriptor not found", metadata: [
+                "inputType": method.inputType,
+                "service": method.serviceName,
+                "method": method.name,
+                "error": error.localizedDescription,
+            ])
+            throw error
+        }
 
         // 2. Parse JSON to DynamicMessage
         let inputMessage: DynamicMessage

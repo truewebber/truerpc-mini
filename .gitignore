@@ -107,7 +107,8 @@ TrueRPCMini.xcodeproj
 # Cursor AI
 .cursor/
 
-# IDE - VSCode
+# IDE
+.idea
 .vscode
 *.code-workspace
 

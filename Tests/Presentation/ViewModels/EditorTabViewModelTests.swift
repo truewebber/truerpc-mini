@@ -380,11 +380,21 @@ class MockExecuteUnaryRequestUseCase: ExecuteUnaryRequestUseCaseProtocol {
     var shouldThrowError: GrpcClientError?
     var shouldThrow: Bool = false
     var errorToThrow: GrpcClientError?
+    var protoErrorToThrow: ProtoRepositoryError?
+    var arbitraryErrorToThrow: Error?
     
     func execute(request: RequestDraft, method: TrueRPCMini.Method) async throws -> GrpcResponse {
         executeCalled = true
         capturedRequest = request
         capturedMethod = method
+        
+        if let error = protoErrorToThrow {
+            throw error
+        }
+        
+        if let error = arbitraryErrorToThrow {
+            throw error
+        }
         
         if shouldThrow, let error = errorToThrow {
             throw error
@@ -535,6 +545,46 @@ extension EditorTabViewModelTests {
         XCTAssertNotNil(sut.error, "Error should be set for non-object metadata")
         // Metadata error should prevent request execution
         XCTAssertFalse(mockExecuteRequestUseCase.executeCalled)
+    }
+    
+    func test_executeRequest_whenProtoRepositoryError_logsError() async {
+        // Given
+        sut.requestJson = "{}"
+        sut.url = "localhost:50051"
+        mockExecuteRequestUseCase.protoErrorToThrow = .messageTypeNotFound(".test.Request")
+        
+        // When
+        await sut.executeRequest()
+        
+        // Then
+        XCTAssertNotNil(sut.error)
+        XCTAssertEqual(mockLogger.errorMessages.count, 1)
+        let logEntry = mockLogger.errorMessages[0]
+        XCTAssertEqual(logEntry.metadata["method"], testMethod.name)
+        XCTAssertEqual(logEntry.metadata["service"], testMethod.serviceName)
+        XCTAssertNotNil(logEntry.metadata["error"])
+    }
+    
+    func test_executeRequest_whenUnknownError_logsError() async {
+        // Given
+        sut.requestJson = "{}"
+        sut.url = "localhost:50051"
+        mockExecuteRequestUseCase.arbitraryErrorToThrow = NSError(
+            domain: "test",
+            code: 99,
+            userInfo: [NSLocalizedDescriptionKey: "Something unexpected"]
+        )
+        
+        // When
+        await sut.executeRequest()
+        
+        // Then
+        XCTAssertNotNil(sut.error)
+        XCTAssertEqual(mockLogger.errorMessages.count, 1)
+        let logEntry = mockLogger.errorMessages[0]
+        XCTAssertEqual(logEntry.metadata["method"], testMethod.name)
+        XCTAssertEqual(logEntry.metadata["service"], testMethod.serviceName)
+        XCTAssertNotNil(logEntry.metadata["error"])
     }
     
     func test_executeRequest_withGrpcError_setsErrorAndResponse() async {

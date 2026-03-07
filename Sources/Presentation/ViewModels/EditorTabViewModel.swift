@@ -124,10 +124,18 @@ public final class EditorTabViewModel: ObservableObject {
             }
             error = formatError(grpcError)
         } catch let protoError as ProtoRepositoryError {
-            // Handle proto repository errors
+            logger.error("Proto repository error during request execution", metadata: [
+                "method": editorTab.method.name,
+                "service": editorTab.method.serviceName,
+                "error": protoError.localizedDescription,
+            ])
             error = protoError.localizedDescription
         } catch let otherError {
-            // Handle other errors
+            logger.error("Unexpected error during request execution", metadata: [
+                "method": editorTab.method.name,
+                "service": editorTab.method.serviceName,
+                "error": otherError.localizedDescription,
+            ])
             error = "Request failed: \(otherError.localizedDescription)"
         }
         

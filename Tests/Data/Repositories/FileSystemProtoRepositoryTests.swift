@@ -462,6 +462,50 @@ extension FileSystemProtoRepositoryTests {
         XCTAssertFalse(fileMetadata.contains("/"), "file metadata should be filename only, not a path")
     }
 
+    func test_loadProto_withImportedMessageType_getMessageDescriptor_findsImportedType() async throws {
+        // Given - two proto files where service.proto imports messages.proto
+        let testDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("repo_test_\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: testDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: testDir) }
+
+        let messageProtoContent = """
+        syntax = "proto3";
+        package imported;
+
+        message ImportedRequest {
+            string id = 1;
+        }
+
+        message ImportedResponse {
+            string result = 1;
+        }
+        """
+        let messageProtoURL = testDir.appendingPathComponent("messages.proto")
+        try messageProtoContent.write(to: messageProtoURL, atomically: true, encoding: .utf8)
+
+        let serviceProtoContent = """
+        syntax = "proto3";
+        package imported;
+
+        import "messages.proto";
+
+        service ImportedService {
+            rpc DoWork (ImportedRequest) returns (ImportedResponse);
+        }
+        """
+        let serviceProtoURL = testDir.appendingPathComponent("service.proto")
+        try serviceProtoContent.write(to: serviceProtoURL, atomically: true, encoding: .utf8)
+
+        // When - load service.proto with testDir as import path
+        _ = try await sut.loadProto(url: serviceProtoURL, importPaths: [testDir.path])
+
+        // Then - must find message type from imported file, not just from the main file
+        let descriptor = try sut.getMessageDescriptor(forType: ".imported.ImportedRequest")
+        XCTAssertEqual(descriptor.name, "ImportedRequest")
+        XCTAssertEqual(descriptor.fields.count, 1)
+    }
+
     func test_getMessageDescriptor_whenTypeHasWronglyPrefixedPackage_throwsError() async throws {
         // Given - load google.protobuf.Empty
         let tempDir = FileManager.default.temporaryDirectory

@@ -337,6 +337,39 @@ final class GrpcSwiftDynamicClientTests: XCTestCase {
         }
     }
     
+    func test_executeUnary_whenRepositoryThrows_logsError() async {
+        // Given
+        let method = TrueRPCMini.Method(
+            name: "TestMethod",
+            serviceName: "TestService",
+            inputType: ".test.NonExistent",
+            outputType: ".test.Response"
+        )
+        let request = RequestDraft(
+            jsonBody: "{}",
+            url: "localhost:50051",
+            method: method
+        )
+        mockRepository.shouldThrow = true
+        
+        // When
+        do {
+            _ = try await sut.executeUnary(request: request, method: method)
+            XCTFail("Should throw error")
+        } catch {
+            // Expected
+        }
+        
+        // Then - error must be logged with context
+        XCTAssertEqual(mockLogger.errorMessages.count, 1)
+        let logEntry = mockLogger.errorMessages[0]
+        XCTAssertEqual(logEntry.message, "Proto message descriptor not found")
+        XCTAssertEqual(logEntry.metadata["inputType"], ".test.NonExistent")
+        XCTAssertEqual(logEntry.metadata["service"], "TestService")
+        XCTAssertEqual(logEntry.metadata["method"], "TestMethod")
+        XCTAssertNotNil(logEntry.metadata["error"])
+    }
+    
     func test_executeUnary_withInvalidJSON_throwsError() async {
         // Given
         let method = TrueRPCMini.Method(
