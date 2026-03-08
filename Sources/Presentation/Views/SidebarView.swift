@@ -294,6 +294,7 @@ private struct MethodRow: View {
             SidebarView(
                 viewModel: SidebarViewModel(
                     importProtoFileUseCase: PreviewMockUseCase(),
+                    refreshProtoFileUseCase: PreviewMockRefreshUseCase(),
                     importPathsRepository: PreviewMockImportPathsRepository(),
                     protoPathsPersistence: PreviewMockProtoPathsPersistence(),
                     loadSavedProtosUseCase: PreviewMockLoadSavedProtosUseCase(),
@@ -308,6 +309,7 @@ private struct MethodRow: View {
                 viewModel: {
                     let vm = SidebarViewModel(
                         importProtoFileUseCase: PreviewMockUseCase(),
+                        refreshProtoFileUseCase: PreviewMockRefreshUseCase(),
                         importPathsRepository: PreviewMockImportPathsRepository(),
                         protoPathsPersistence: PreviewMockProtoPathsPersistence(),
                         loadSavedProtosUseCase: PreviewMockLoadSavedProtosUseCase(),
@@ -346,6 +348,7 @@ private struct MethodRow: View {
                 viewModel: {
                     let vm = SidebarViewModel(
                         importProtoFileUseCase: PreviewMockUseCase(),
+                        refreshProtoFileUseCase: PreviewMockRefreshUseCase(),
                         importPathsRepository: PreviewMockImportPathsRepository(),
                         protoPathsPersistence: PreviewMockProtoPathsPersistence(),
                         loadSavedProtosUseCase: PreviewMockLoadSavedProtosUseCase(),
@@ -363,6 +366,7 @@ private struct MethodRow: View {
                 viewModel: {
                     let vm = SidebarViewModel(
                         importProtoFileUseCase: PreviewMockUseCase(),
+                        refreshProtoFileUseCase: PreviewMockRefreshUseCase(),
                         importPathsRepository: PreviewMockImportPathsRepository(),
                         protoPathsPersistence: PreviewMockProtoPathsPersistence(),
                         loadSavedProtosUseCase: PreviewMockLoadSavedProtosUseCase(),
@@ -419,5 +423,11 @@ private struct MethodRow: View {
 
     private final class PreviewNullTelemetry: TelemetryServiceProtocol {
         func track(_: TelemetryEvent) {}
+    }
+
+    private class PreviewMockRefreshUseCase: RefreshProtoFileUseCaseProtocol {
+        func execute(protoFile: ProtoFile, importPaths _: [String]) throws -> ProtoFile {
+            protoFile
+        }
     }
 #endif

@@ -14,6 +14,7 @@ public final class SidebarViewModel: ObservableObject {
     // MARK: - Dependencies
 
     private let importProtoFileUseCase: ImportProtoFileUseCaseProtocol
+    private let refreshProtoFileUseCase: RefreshProtoFileUseCaseProtocol
     private let importPathsRepository: ImportPathsRepositoryProtocol
     private let protoPathsPersistence: ProtoPathsPersistenceProtocol
     private let loadSavedProtosUseCase: LoadSavedProtosUseCase
@@ -24,6 +25,7 @@ public final class SidebarViewModel: ObservableObject {
 
     public init(
         importProtoFileUseCase: ImportProtoFileUseCaseProtocol,
+        refreshProtoFileUseCase: RefreshProtoFileUseCaseProtocol,
         importPathsRepository: ImportPathsRepositoryProtocol,
         protoPathsPersistence: ProtoPathsPersistenceProtocol,
         loadSavedProtosUseCase: LoadSavedProtosUseCase,
@@ -31,6 +33,7 @@ public final class SidebarViewModel: ObservableObject {
         telemetry: TelemetryServiceProtocol)
     {
         self.importProtoFileUseCase = importProtoFileUseCase
+        self.refreshProtoFileUseCase = refreshProtoFileUseCase
         self.importPathsRepository = importPathsRepository
         self.protoPathsPersistence = protoPathsPersistence
         self.loadSavedProtosUseCase = loadSavedProtosUseCase
@@ -156,6 +159,27 @@ public final class SidebarViewModel: ObservableObject {
         protoFiles.removeAll { $0.id == protoFile.id }
         saveProtoPaths()
         await telemetry.track(.protoRemoved())
+    }
+
+    /// Re-parses an already-loaded proto file and replaces the stale entry in `protoFiles`
+    public func refreshProtoFile(_ protoFile: ProtoFile) async {
+        error = nil
+
+        let importPaths = getImportPathsWithWellKnownTypes()
+
+        do {
+            let updated = try await refreshProtoFileUseCase.execute(
+                protoFile: protoFile,
+                importPaths: importPaths)
+            addOrReplaceProtoFile(updated)
+            await telemetry.track(.protoRefreshed())
+        } catch {
+            logger.error("Proto file refresh failed", metadata: [
+                "name": protoFile.name,
+                "error": error.localizedDescription,
+            ])
+            self.error = error.localizedDescription
+        }
     }
 
     // MARK: - Private Methods

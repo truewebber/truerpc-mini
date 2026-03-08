@@ -90,6 +90,10 @@ struct TrueRPCMiniApp: App {
             ImportProtoFileUseCase(repository: di.resolve(ProtoRepositoryProtocol.self)!)
         }
 
+        di.register(RefreshProtoFileUseCaseProtocol.self) {
+            RefreshProtoFileUseCase(repository: di.resolve(ProtoRepositoryProtocol.self)!)
+        }
+
         di.register(LoadSavedProtosUseCase.self) {
             LoadSavedProtosUseCase(
                 importProtoFileUseCase: di.resolve(ImportProtoFileUseCaseProtocol.self)!,
@@ -119,6 +123,7 @@ struct TrueRPCMiniApp: App {
         // Create SidebarViewModel once
         let sidebarVM = SidebarViewModel(
             importProtoFileUseCase: di.resolve(ImportProtoFileUseCaseProtocol.self)!,
+            refreshProtoFileUseCase: di.resolve(RefreshProtoFileUseCaseProtocol.self)!,
             importPathsRepository: di.resolve(ImportPathsRepositoryProtocol.self)!,
             protoPathsPersistence: di.resolve(ProtoPathsPersistenceProtocol.self)!,
             loadSavedProtosUseCase: di.resolve(LoadSavedProtosUseCase.self)!,

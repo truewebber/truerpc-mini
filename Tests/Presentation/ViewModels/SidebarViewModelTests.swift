@@ -5,6 +5,7 @@ import XCTest
 final class SidebarViewModelTests: XCTestCase {
     var sut: SidebarViewModel!
     var mockUseCase: MockImportProtoFileUseCase!
+    var mockRefreshUseCase: MockRefreshProtoFileUseCase!
     var mockImportPathsRepository: MockImportPathsRepository!
     var mockProtoPathsPersistence: MockProtoPathsPersistence!
     var mockLoadSavedProtosUseCase: MockLoadSavedProtosUseCase!
@@ -14,6 +15,7 @@ final class SidebarViewModelTests: XCTestCase {
     override func setUp() {
         super.setUp()
         mockUseCase = MockImportProtoFileUseCase()
+        mockRefreshUseCase = MockRefreshProtoFileUseCase()
         mockImportPathsRepository = MockImportPathsRepository()
         mockProtoPathsPersistence = MockProtoPathsPersistence()
         mockLoadSavedProtosUseCase = MockLoadSavedProtosUseCase()
@@ -21,6 +23,7 @@ final class SidebarViewModelTests: XCTestCase {
         mockTelemetry = MockTelemetryService()
         sut = SidebarViewModel(
             importProtoFileUseCase: mockUseCase,
+            refreshProtoFileUseCase: mockRefreshUseCase,
             importPathsRepository: mockImportPathsRepository,
             protoPathsPersistence: mockProtoPathsPersistence,
             loadSavedProtosUseCase: mockLoadSavedProtosUseCase,
@@ -31,6 +34,7 @@ final class SidebarViewModelTests: XCTestCase {
     override func tearDown() {
         sut = nil
         mockUseCase = nil
+        mockRefreshUseCase = nil
         mockImportPathsRepository = nil
         mockProtoPathsPersistence = nil
         mockLoadSavedProtosUseCase = nil
@@ -54,6 +58,7 @@ final class SidebarViewModelTests: XCTestCase {
 
         sut = SidebarViewModel(
             importProtoFileUseCase: mockUseCase,
+            refreshProtoFileUseCase: mockRefreshUseCase,
             importPathsRepository: mockImportPathsRepository,
             protoPathsPersistence: mockProtoPathsPersistence,
             loadSavedProtosUseCase: mockLoadSavedProtosUseCase,
@@ -286,6 +291,49 @@ final class SidebarViewModelTests: XCTestCase {
     }
 
     // MARK: - Load Saved Protos Tests
+
+    // MARK: - Refresh Proto File Tests (TRMN-153)
+
+    func test_refreshProtoFile_whenSucceeds_replacesProtoFileInList() async {
+        let url = URL(fileURLWithPath: "/test/refresh.proto")
+        let oldProto = ProtoFile(name: "old.proto", path: url, services: [])
+        let newProto = ProtoFile(name: "new.proto", path: url, services: [])
+        sut.protoFiles = [oldProto]
+        mockRefreshUseCase.mockResultsByPath[url] = .success(newProto)
+
+        await sut.refreshProtoFile(oldProto)
+
+        XCTAssertEqual(sut.protoFiles.count, 1)
+        XCTAssertEqual(sut.protoFiles[0].name, "new.proto")
+        XCTAssertNil(sut.error)
+    }
+
+    func test_refreshProtoFile_whenFails_keepsOldProtoFileAndShowsError() async {
+        let url = URL(fileURLWithPath: "/test/broken.proto")
+        let oldProto = ProtoFile(name: "broken.proto", path: url, services: [])
+        let expectedError = NSError(domain: "test", code: 1, userInfo: [NSLocalizedDescriptionKey: "parse failed"])
+        sut.protoFiles = [oldProto]
+        mockRefreshUseCase.mockResultsByPath[url] = .failure(expectedError)
+
+        await sut.refreshProtoFile(oldProto)
+
+        XCTAssertEqual(sut.protoFiles.count, 1)
+        XCTAssertEqual(sut.protoFiles[0].name, "broken.proto")
+        XCTAssertEqual(sut.error, expectedError.localizedDescription)
+    }
+
+    func test_refreshProtoFile_tracksRefreshedTelemetryEvent() async {
+        let url = URL(fileURLWithPath: "/test/track.proto")
+        let proto = ProtoFile(name: "track.proto", path: url, services: [])
+        let updated = ProtoFile(name: "track.proto", path: url, services: [])
+        sut.protoFiles = [proto]
+        mockRefreshUseCase.mockResultsByPath[url] = .success(updated)
+
+        await sut.refreshProtoFile(proto)
+
+        XCTAssertEqual(mockTelemetry.trackedEvents.count, 1)
+        XCTAssertEqual(mockTelemetry.trackedEvents[0].name, "proto_refreshed")
+    }
 
     func test_loadSavedProtos_whenAlreadyLoaded_doesNotDuplicate() async {
         // Given
