@@ -126,8 +126,15 @@ public struct SidebarView: View {
             ForEach(viewModel.protoFiles, id: \.path) { protoFile in
                 ProtoFileRow(
                     protoFile: protoFile,
-                    onMethodSelected: onMethodSelected)
+                    onMethodSelected: onMethodSelected,
+                    onRefresh: { await viewModel.refreshProtoFile(protoFile) })
                     .contextMenu {
+                        Button {
+                            Task { await viewModel.refreshProtoFile(protoFile) }
+                        } label: {
+                            Label("Refresh", systemImage: "arrow.clockwise")
+                        }
+                        Divider()
                         Button(role: .destructive) {
                             Task { await viewModel.removeProtoFile(protoFile) }
                         } label: {
@@ -168,7 +175,10 @@ public struct SidebarView: View {
 private struct ProtoFileRow: View {
     let protoFile: ProtoFile
     let onMethodSelected: (Method, Service, ProtoFile) -> Void
+    let onRefresh: () async -> Void
     @State private var isExpanded = true
+    @State private var isHovered = false
+    @State private var isRefreshing = false
 
     var body: some View {
         DisclosureGroup(isExpanded: $isExpanded) {
@@ -186,14 +196,40 @@ private struct ProtoFileRow: View {
                 }
             }
         } label: {
-            Label {
-                Text(protoFile.name)
-                    .font(.body)
-            } icon: {
-                Image(systemName: "doc.text.fill")
-                    .foregroundColor(.blue)
+            HStack {
+                Label {
+                    Text(protoFile.name)
+                        .font(.body)
+                } icon: {
+                    Image(systemName: "doc.text.fill")
+                        .foregroundColor(.blue)
+                }
+
+                Spacer()
+
+                if isHovered || isRefreshing {
+                    Button {
+                        guard !isRefreshing else { return }
+                        isRefreshing = true
+                        Task {
+                            await onRefresh()
+                            isRefreshing = false
+                        }
+                    } label: {
+                        if isRefreshing {
+                            ProgressView()
+                                .controlSize(.small)
+                        } else {
+                            Image(systemName: "arrow.clockwise")
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                    .buttonStyle(.borderless)
+                    .disabled(isRefreshing)
+                }
             }
         }
+        .onHover { isHovered = $0 }
     }
 }
 
