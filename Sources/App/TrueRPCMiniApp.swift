@@ -94,6 +94,10 @@ struct TrueRPCMiniApp: App {
             RefreshProtoFileUseCase(repository: di.resolve(ProtoRepositoryProtocol.self)!)
         }
 
+        di.register(ProtoFileWatcherProtocol.self) {
+            FSEventsProtoFileWatcher()
+        }
+
         di.register(LoadSavedProtosUseCase.self) {
             LoadSavedProtosUseCase(
                 importProtoFileUseCase: di.resolve(ImportProtoFileUseCaseProtocol.self)!,
@@ -124,6 +128,7 @@ struct TrueRPCMiniApp: App {
         let sidebarVM = SidebarViewModel(
             importProtoFileUseCase: di.resolve(ImportProtoFileUseCaseProtocol.self)!,
             refreshProtoFileUseCase: di.resolve(RefreshProtoFileUseCaseProtocol.self)!,
+            watcher: di.resolve(ProtoFileWatcherProtocol.self)!,
             importPathsRepository: di.resolve(ImportPathsRepositoryProtocol.self)!,
             protoPathsPersistence: di.resolve(ProtoPathsPersistenceProtocol.self)!,
             loadSavedProtosUseCase: di.resolve(LoadSavedProtosUseCase.self)!,

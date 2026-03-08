@@ -6,6 +6,7 @@ final class SidebarViewModelTests: XCTestCase {
     var sut: SidebarViewModel!
     var mockUseCase: MockImportProtoFileUseCase!
     var mockRefreshUseCase: MockRefreshProtoFileUseCase!
+    var mockWatcher: MockProtoFileWatcher!
     var mockImportPathsRepository: MockImportPathsRepository!
     var mockProtoPathsPersistence: MockProtoPathsPersistence!
     var mockLoadSavedProtosUseCase: MockLoadSavedProtosUseCase!
@@ -16,6 +17,7 @@ final class SidebarViewModelTests: XCTestCase {
         super.setUp()
         mockUseCase = MockImportProtoFileUseCase()
         mockRefreshUseCase = MockRefreshProtoFileUseCase()
+        mockWatcher = MockProtoFileWatcher()
         mockImportPathsRepository = MockImportPathsRepository()
         mockProtoPathsPersistence = MockProtoPathsPersistence()
         mockLoadSavedProtosUseCase = MockLoadSavedProtosUseCase()
@@ -24,6 +26,7 @@ final class SidebarViewModelTests: XCTestCase {
         sut = SidebarViewModel(
             importProtoFileUseCase: mockUseCase,
             refreshProtoFileUseCase: mockRefreshUseCase,
+            watcher: mockWatcher,
             importPathsRepository: mockImportPathsRepository,
             protoPathsPersistence: mockProtoPathsPersistence,
             loadSavedProtosUseCase: mockLoadSavedProtosUseCase,
@@ -35,6 +38,7 @@ final class SidebarViewModelTests: XCTestCase {
         sut = nil
         mockUseCase = nil
         mockRefreshUseCase = nil
+        mockWatcher = nil
         mockImportPathsRepository = nil
         mockProtoPathsPersistence = nil
         mockLoadSavedProtosUseCase = nil
@@ -59,6 +63,7 @@ final class SidebarViewModelTests: XCTestCase {
         sut = SidebarViewModel(
             importProtoFileUseCase: mockUseCase,
             refreshProtoFileUseCase: mockRefreshUseCase,
+            watcher: mockWatcher,
             importPathsRepository: mockImportPathsRepository,
             protoPathsPersistence: mockProtoPathsPersistence,
             loadSavedProtosUseCase: mockLoadSavedProtosUseCase,
@@ -333,6 +338,44 @@ final class SidebarViewModelTests: XCTestCase {
 
         XCTAssertEqual(mockTelemetry.trackedEvents.count, 1)
         XCTAssertEqual(mockTelemetry.trackedEvents[0].name, "proto_refreshed")
+    }
+
+    // MARK: - Watcher Lifecycle Tests (TRMN-158)
+
+    func test_importProtoFile_whenSucceeds_startsWatchingFile() async {
+        let testURL = URL(fileURLWithPath: "/test/watch.proto")
+        let proto = ProtoFile(name: "watch.proto", path: testURL, services: [])
+        mockUseCase.mockResultsByURL[testURL] = .success(proto)
+
+        await sut.importProtoFile(url: testURL)
+
+        XCTAssertEqual(mockWatcher.startWatchingCalls.count, 1)
+        XCTAssertEqual(mockWatcher.startWatchingCalls.first?.path, testURL)
+    }
+
+    func test_removeProtoFile_stopsWatchingFile() async {
+        let testURL = URL(fileURLWithPath: "/test/remove_watch.proto")
+        let proto = ProtoFile(name: "remove_watch.proto", path: testURL, services: [])
+        sut.protoFiles = [proto]
+
+        await sut.removeProtoFile(proto)
+
+        XCTAssertEqual(mockWatcher.stopWatchingCalls.count, 1)
+        XCTAssertEqual(mockWatcher.stopWatchingCalls.first?.path, testURL)
+    }
+
+    func test_watcherChange_triggersRefreshProtoFile() async {
+        let url = URL(fileURLWithPath: "/test/auto_refresh.proto")
+        let proto = ProtoFile(name: "auto_refresh.proto", path: url, services: [])
+        let refreshed = ProtoFile(name: "auto_refresh.proto", path: url, services: [])
+        sut.protoFiles = [proto]
+        mockRefreshUseCase.mockResultsByPath[url] = .success(refreshed)
+
+        mockWatcher.emit(proto)
+        try? await Task.sleep(nanoseconds: 150_000_000)
+
+        XCTAssertGreaterThan(mockRefreshUseCase.callCount, 0)
+        XCTAssertEqual(mockRefreshUseCase.lastProtoFile?.path, url)
     }
 
     func test_loadSavedProtos_whenAlreadyLoaded_doesNotDuplicate() async {

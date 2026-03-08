@@ -15,17 +15,21 @@ public final class SidebarViewModel: ObservableObject {
 
     private let importProtoFileUseCase: ImportProtoFileUseCaseProtocol
     private let refreshProtoFileUseCase: RefreshProtoFileUseCaseProtocol
+    private let watcher: ProtoFileWatcherProtocol
     private let importPathsRepository: ImportPathsRepositoryProtocol
     private let protoPathsPersistence: ProtoPathsPersistenceProtocol
     private let loadSavedProtosUseCase: LoadSavedProtosUseCase
     private let logger: AppLogger
     private let telemetry: TelemetryServiceProtocol
 
+    nonisolated(unsafe) private var watcherTask: Task<Void, Never>?
+
     // MARK: - Initialization
 
     public init(
         importProtoFileUseCase: ImportProtoFileUseCaseProtocol,
         refreshProtoFileUseCase: RefreshProtoFileUseCaseProtocol,
+        watcher: ProtoFileWatcherProtocol,
         importPathsRepository: ImportPathsRepositoryProtocol,
         protoPathsPersistence: ProtoPathsPersistenceProtocol,
         loadSavedProtosUseCase: LoadSavedProtosUseCase,
@@ -34,16 +38,33 @@ public final class SidebarViewModel: ObservableObject {
     {
         self.importProtoFileUseCase = importProtoFileUseCase
         self.refreshProtoFileUseCase = refreshProtoFileUseCase
+        self.watcher = watcher
         self.importPathsRepository = importPathsRepository
         self.protoPathsPersistence = protoPathsPersistence
         self.loadSavedProtosUseCase = loadSavedProtosUseCase
         self.logger = logger
         self.telemetry = telemetry
         self.importPathsCount = importPathsRepository.getImportPaths().count
+        startWatcherConsumerTask()
+    }
+
+    deinit {
+        watcherTask?.cancel()
     }
 
     public func refreshImportPathsCount() {
         importPathsCount = importPathsRepository.getImportPaths().count
+    }
+
+    // MARK: - Private Watcher Setup
+
+    private func startWatcherConsumerTask() {
+        watcherTask = Task { [weak self, watcher] in
+            for await protoFile in watcher.changes {
+                guard let self else { break }
+                await self.refreshProtoFile(protoFile)
+            }
+        }
     }
 
     // MARK: - Public Methods
@@ -66,6 +87,7 @@ public final class SidebarViewModel: ObservableObject {
         let loadedProtos = await loadSavedProtosUseCase.execute(urls: savedPaths, importPaths: importPaths)
         for proto in loadedProtos {
             addOrReplaceProtoFile(proto)
+            watcher.startWatching(proto)
         }
         logger.info("Saved proto files loaded", metadata: [
             "count": "\(loadedProtos.count)",
@@ -134,6 +156,7 @@ public final class SidebarViewModel: ObservableObject {
             let importPaths = getImportPathsWithWellKnownTypes()
             let protoFile = try await importProtoFileUseCase.execute(url: url, importPaths: importPaths)
             addOrReplaceProtoFile(protoFile)
+            watcher.startWatching(protoFile)
             logger.info("Proto file imported", metadata: [
                 "name": protoFile.name,
                 "path": url.path,
@@ -156,6 +179,7 @@ public final class SidebarViewModel: ObservableObject {
 
     /// Removes a proto file from the list, persists the updated set, and fires telemetry
     public func removeProtoFile(_ protoFile: ProtoFile) async {
+        watcher.stopWatching(protoFile)
         protoFiles.removeAll { $0.id == protoFile.id }
         saveProtoPaths()
         await telemetry.track(.protoRemoved())
