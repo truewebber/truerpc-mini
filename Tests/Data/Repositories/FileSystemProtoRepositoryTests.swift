@@ -621,6 +621,79 @@ extension FileSystemProtoRepositoryTests {
         XCTAssertEqual(descriptorAfter.fields.count, 3, "getMessageDescriptor must reflect the updated schema")
     }
 
+    // MARK: - Dependency Paths Tests (TRMN-156)
+
+    func test_loadProto_withNoDependencies_returnEmptyDependencyPaths() async throws {
+        let content = """
+        syntax = "proto3";
+        message NoDepsMsg { string value = 1; }
+        """
+        let url = try createTempProtoFile(content: content, name: "no_deps.proto")
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        let result = try await sut.loadProto(url: url)
+
+        XCTAssertTrue(result.dependencyPaths.isEmpty)
+    }
+
+    func test_loadProto_withDependency_includesDependencyPath() async throws {
+        let tempDir = FileManager.default.temporaryDirectory
+        let subDir = tempDir.appendingPathComponent("dep_pkg_156")
+        try? FileManager.default.createDirectory(at: subDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: subDir) }
+
+        let depContent = """
+        syntax = "proto3";
+        package dep;
+        message DepMsg { string value = 1; }
+        """
+        let depURL = subDir.appendingPathComponent("dep.proto")
+        try depContent.write(to: depURL, atomically: true, encoding: .utf8)
+
+        let mainContent = """
+        syntax = "proto3";
+        import "dep_pkg_156/dep.proto";
+        message Main { string value = 1; }
+        """
+        let mainURL = try createTempProtoFile(content: mainContent, name: "main_dep_156.proto")
+        defer { try? FileManager.default.removeItem(at: mainURL) }
+
+        let result = try await sut.loadProto(url: mainURL, importPaths: [tempDir.path])
+
+        XCTAssertEqual(result.dependencyPaths.count, 1)
+        XCTAssertEqual(result.dependencyPaths.first, depURL)
+    }
+
+    func test_loadProto_withWellKnownDependency_excludesWellKnownPath() async throws {
+        let tempDir = FileManager.default.temporaryDirectory
+        let wellKnownDir = tempDir.appendingPathComponent("wkt_bundle_156")
+        let wktSubDir = wellKnownDir.appendingPathComponent("wkt")
+        try? FileManager.default.createDirectory(at: wktSubDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: wellKnownDir) }
+
+        let wktContent = """
+        syntax = "proto3";
+        package wkt;
+        message WKTMsg { string value = 1; }
+        """
+        let wktURL = wktSubDir.appendingPathComponent("types.proto")
+        try wktContent.write(to: wktURL, atomically: true, encoding: .utf8)
+
+        sut = FileSystemProtoRepository(logger: mockLogger, wellKnownResourcePath: wellKnownDir.path)
+
+        let mainContent = """
+        syntax = "proto3";
+        import "wkt/types.proto";
+        message Main { string value = 1; }
+        """
+        let mainURL = try createTempProtoFile(content: mainContent, name: "main_wkt_156.proto")
+        defer { try? FileManager.default.removeItem(at: mainURL) }
+
+        let result = try await sut.loadProto(url: mainURL, importPaths: [wellKnownDir.path])
+
+        XCTAssertTrue(result.dependencyPaths.isEmpty, "Paths under wellKnownResourcePath must be excluded")
+    }
+
     func test_loadProto_whenDifferentFiles_bothDescriptorsStored() async throws {
         // Given - two independent proto files
         let fileAContent = """

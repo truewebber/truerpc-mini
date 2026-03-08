@@ -25,16 +25,20 @@ public final class FileSystemProtoRepository: ProtoRepositoryProtocol {
     private var loadedProtos: [ProtoFile] = []
     private var fileDescriptors: [Google_Protobuf_FileDescriptorProto] = []
     private let logger: AppLogger
+    /// Path prefix for well-known bundled types; dependencies resolved under this prefix are excluded from
+    /// `ProtoFile.dependencyPaths` because they are read-only and do not need to be watched.
+    private let wellKnownResourcePath: String?
 
-    public init(logger: AppLogger) {
+    public init(logger: AppLogger, wellKnownResourcePath: String? = Bundle.main.resourcePath) {
         self.logger = logger
+        self.wellKnownResourcePath = wellKnownResourcePath
     }
 
     public func loadProto(url: URL) async throws -> ProtoFile {
         try await loadProto(url: url, importPaths: [])
     }
 
-    public func loadProto(url: URL, importPaths: [String]) throws -> ProtoFile {
+    public func loadProto(url: URL, importPaths: [String]) async throws -> ProtoFile {
         // parseFile returns a FileDescriptorSet with all transitive dependencies in
         // topological order (dependencies first, requested file last).
         let result = SwiftProtoParser.parseFile(url.path, importPaths: importPaths)
@@ -61,7 +65,14 @@ public final class FileSystemProtoRepository: ProtoRepositoryProtocol {
                 throw ProtoRepositoryError.parsingFailed("No descriptor returned for \(mainFileName)")
             }
 
-            let protoFile = mapToProtoFile(fileDescriptor: mainDescriptor, url: url)
+            let depPaths = resolveDependencyPaths(
+                descriptorSet: descriptorSet,
+                rootURL: url,
+                importPaths: importPaths)
+            let protoFile = mapToProtoFile(
+                fileDescriptor: mainDescriptor,
+                url: url,
+                dependencyPaths: depPaths)
             loadedProtos.append(protoFile)
             return protoFile
 
@@ -243,11 +254,51 @@ public final class FileSystemProtoRepository: ProtoRepositoryProtocol {
         }
     }
 
+    /// Resolves transitive dependency import strings (from `descriptor.dependency`) to absolute file URLs.
+    /// `descriptor.name` is always just the filename, not the import path — so we collect the raw
+    /// import strings from every descriptor's `dependency` field and resolve those instead.
+    /// The root file itself and paths under `wellKnownResourcePath` are excluded.
+    private func resolveDependencyPaths(
+        descriptorSet: Google_Protobuf_FileDescriptorSet,
+        rootURL: URL,
+        importPaths: [String])
+        -> [URL]
+    {
+        var seen = Set<String>()
+        var paths: [URL] = []
+
+        for descriptor in descriptorSet.file {
+            for importString in descriptor.dependency {
+                guard !seen.contains(importString) else { continue }
+                seen.insert(importString)
+
+                if let url = resolveImportString(importString, importPaths: importPaths) {
+                    paths.append(url)
+                }
+            }
+        }
+
+        return paths
+    }
+
+    /// Resolves a proto import string (e.g. `"common/types.proto"`) to an absolute file URL.
+    /// Returns nil if the file cannot be found or falls under `wellKnownResourcePath`.
+    private func resolveImportString(_ importString: String, importPaths: [String]) -> URL? {
+        for importPath in importPaths {
+            let candidate = URL(fileURLWithPath: importPath).appendingPathComponent(importString)
+            guard FileManager.default.fileExists(atPath: candidate.path) else { continue }
+            if let wellKnown = wellKnownResourcePath, candidate.path.hasPrefix(wellKnown) { return nil }
+            return candidate
+        }
+        return nil
+    }
+
     // MARK: - Private Mapping
 
     private func mapToProtoFile(
         fileDescriptor: Google_Protobuf_FileDescriptorProto,
-        url: URL)
+        url: URL,
+        dependencyPaths: [URL] = [])
         -> ProtoFile
     {
         let services = fileDescriptor.service.map { serviceDesc in
@@ -257,7 +308,8 @@ public final class FileSystemProtoRepository: ProtoRepositoryProtocol {
         return ProtoFile(
             name: url.lastPathComponent,
             path: url,
-            services: services)
+            services: services,
+            dependencyPaths: dependencyPaths)
     }
 
     private func mapToService(

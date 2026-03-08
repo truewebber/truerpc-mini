@@ -17,7 +17,8 @@ format: ## Auto-format all Swift source files in-place
 test: ## Run all unit tests
 	xcodebuild test \
 		-scheme $(SCHEME) \
-		-destination '$(DESTINATION)'
+		-destination '$(DESTINATION)' \
+		CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO
 
 coverage: ## Run tests with code coverage and print report
 	@rm -rf $(BUILD_DIR)/coverage.xcresult
@@ -26,11 +27,13 @@ coverage: ## Run tests with code coverage and print report
 		-scheme $(SCHEME) \
 		-destination '$(DESTINATION)' \
 		-enableCodeCoverage YES \
-		-resultBundlePath $(BUILD_DIR)/coverage.xcresult
+		-resultBundlePath $(BUILD_DIR)/coverage.xcresult \
+		CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO
 	@printf '\n%s\n' "────────────────────── Coverage Report ──────────────────────"
 	xcrun xccov view --report $(BUILD_DIR)/coverage.xcresult
 
 build: ## Build the application
 	xcodebuild build \
 		-scheme $(SCHEME) \
-		-destination '$(DESTINATION)'
+		-destination '$(DESTINATION)' \
+		CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO
