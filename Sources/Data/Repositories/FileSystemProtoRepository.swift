@@ -254,31 +254,20 @@ public final class FileSystemProtoRepository: ProtoRepositoryProtocol {
         }
     }
 
-    /// Resolves transitive dependency import strings (from `descriptor.dependency`) to absolute file URLs.
-    /// `descriptor.name` is always just the filename, not the import path — so we collect the raw
-    /// import strings from every descriptor's `dependency` field and resolve those instead.
-    /// The root file itself and paths under `wellKnownResourcePath` are excluded.
+    /// Resolves transitive dependency paths from `descriptorSet` to absolute file URLs.
+    /// `descriptor.name` is the import-relative path (e.g. `"common/types.proto"`); the root file's
+    /// descriptor has just a bare filename and resolves to nil, so it is excluded automatically.
+    /// Paths under `wellKnownResourcePath` are also excluded.
     private func resolveDependencyPaths(
         descriptorSet: Google_Protobuf_FileDescriptorSet,
         rootURL: URL,
         importPaths: [String])
         -> [URL]
     {
-        var seen = Set<String>()
-        var paths: [URL] = []
-
-        for descriptor in descriptorSet.file {
-            for importString in descriptor.dependency {
-                guard !seen.contains(importString) else { continue }
-                seen.insert(importString)
-
-                if let url = resolveImportString(importString, importPaths: importPaths) {
-                    paths.append(url)
-                }
-            }
+        descriptorSet.file.compactMap { descriptor -> URL? in
+            guard let url = resolveImportString(descriptor.name, importPaths: importPaths) else { return nil }
+            return url.standardized == rootURL.standardized ? nil : url
         }
-
-        return paths
     }
 
     /// Resolves a proto import string (e.g. `"common/types.proto"`) to an absolute file URL.
