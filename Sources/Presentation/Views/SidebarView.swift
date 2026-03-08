@@ -210,6 +210,7 @@ private struct ProtoFileRow: View {
                 if isHovered || isRefreshing {
                     Button {
                         guard !isRefreshing else { return }
+
                         isRefreshing = true
                         Task {
                             await onRefresh()

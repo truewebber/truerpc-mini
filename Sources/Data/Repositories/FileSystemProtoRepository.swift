@@ -34,11 +34,11 @@ public final class FileSystemProtoRepository: ProtoRepositoryProtocol {
         self.wellKnownResourcePath = wellKnownResourcePath
     }
 
-    public func loadProto(url: URL) async throws -> ProtoFile {
-        try await loadProto(url: url, importPaths: [])
+    public func loadProto(url: URL) throws -> ProtoFile {
+        try loadProto(url: url, importPaths: [])
     }
 
-    public func loadProto(url: URL, importPaths: [String]) async throws -> ProtoFile {
+    public func loadProto(url: URL, importPaths: [String]) throws -> ProtoFile {
         // parseFile returns a FileDescriptorSet with all transitive dependencies in
         // topological order (dependencies first, requested file last).
         let result = SwiftProtoParser.parseFile(url.path, importPaths: importPaths)
@@ -266,6 +266,7 @@ public final class FileSystemProtoRepository: ProtoRepositoryProtocol {
     {
         descriptorSet.file.compactMap { descriptor -> URL? in
             guard let url = resolveImportString(descriptor.name, importPaths: importPaths) else { return nil }
+
             return url.standardized == rootURL.standardized ? nil : url
         }
     }
@@ -276,6 +277,7 @@ public final class FileSystemProtoRepository: ProtoRepositoryProtocol {
         for importPath in importPaths {
             let candidate = URL(fileURLWithPath: importPath).appendingPathComponent(importString)
             guard FileManager.default.fileExists(atPath: candidate.path) else { continue }
+
             if let wellKnown = wellKnownResourcePath, candidate.path.hasPrefix(wellKnown) { return nil }
             return candidate
         }
