@@ -6,7 +6,7 @@ public protocol ImportPathsRepositoryProtocol {
     /// Retrieves the list of configured import paths
     /// - Returns: Array of absolute directory paths for proto imports
     func getImportPaths() -> [String]
-    
+
     /// Saves the list of import paths
     /// - Parameter paths: Array of absolute directory paths
     func saveImportPaths(_ paths: [String])

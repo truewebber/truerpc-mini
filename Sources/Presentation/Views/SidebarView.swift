@@ -12,8 +12,8 @@ public struct SidebarView: View {
     public init(
         viewModel: SidebarViewModel,
         onMethodSelected: @escaping (Method, Service, ProtoFile) -> Void,
-        onSettingsOpened: @escaping () -> Void = {}
-    ) {
+        onSettingsOpened: @escaping () -> Void = {})
+    {
         _viewModel = StateObject(wrappedValue: viewModel)
         self.onMethodSelected = onMethodSelected
         self.onSettingsOpened = onSettingsOpened
@@ -43,9 +43,9 @@ public struct SidebarView: View {
                 .buttonStyle(.borderless)
             }
             .padding()
-            
+
             Divider()
-            
+
             // Content area
             if viewModel.isLoading {
                 loadingView
@@ -60,26 +60,25 @@ public struct SidebarView: View {
         .fileImporter(
             isPresented: $isImporterPresented,
             allowedContentTypes: [.init(filenameExtension: "proto")!],
-            allowsMultipleSelection: false
-        ) { result in
+            allowsMultipleSelection: false)
+        { result in
             handleFileImport(result: result)
         }
         .sheet(isPresented: $isImportPathsSheetPresented) {
             ImportPathsSettingsView(
                 viewModel: di.resolve(ImportPathsViewModel.self)!,
-                settingsViewModel: di.resolve(SettingsViewModel.self)!
-            )
-            .onDisappear {
-                viewModel.refreshImportPathsCount()
-            }
+                settingsViewModel: di.resolve(SettingsViewModel.self)!)
+                .onDisappear {
+                    viewModel.refreshImportPathsCount()
+                }
         }
         .onChange(of: isImportPathsSheetPresented) { _, isPresented in
             if isPresented { onSettingsOpened() }
         }
     }
-    
+
     // MARK: - Subviews
-    
+
     private var loadingView: some View {
         VStack {
             ProgressView()
@@ -90,7 +89,7 @@ public struct SidebarView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
-    
+
     private func errorView(message: String) -> some View {
         VStack(spacing: 12) {
             Image(systemName: "exclamationmark.triangle")
@@ -106,7 +105,7 @@ public struct SidebarView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
-    
+
     private var emptyStateView: some View {
         VStack(spacing: 12) {
             Image(systemName: "doc.text")
@@ -121,24 +120,23 @@ public struct SidebarView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
-    
+
     private var protoFilesList: some View {
         List {
             ForEach(viewModel.protoFiles, id: \.path) { protoFile in
                 ProtoFileRow(
                     protoFile: protoFile,
-                    onMethodSelected: onMethodSelected
-                )
-                .contextMenu {
-                    Button(role: .destructive) {
-                        Task { await viewModel.removeProtoFile(protoFile) }
-                    } label: {
-                        Label("Remove", systemImage: "trash")
+                    onMethodSelected: onMethodSelected)
+                    .contextMenu {
+                        Button(role: .destructive) {
+                            Task { await viewModel.removeProtoFile(protoFile) }
+                        } label: {
+                            Label("Remove", systemImage: "trash")
+                        }
                     }
-                }
             }
             .onDelete { indexSet in
-                indexSet.forEach { index in
+                for index in indexSet {
                     let proto = viewModel.protoFiles[index]
                     Task { await viewModel.removeProtoFile(proto) }
                 }
@@ -146,17 +144,19 @@ public struct SidebarView: View {
         }
         .listStyle(.sidebar)
     }
-    
+
     // MARK: - Actions
-    
+
     private func handleFileImport(result: Result<[URL], Error>) {
         switch result {
-        case .success(let urls):
+        case let .success(urls):
             guard let url = urls.first else { return }
+
             Task {
                 await viewModel.importProtoFile(url: url)
             }
-        case .failure(let error):
+
+        case let .failure(error):
             viewModel.handlePickerError(error)
         }
     }
@@ -169,7 +169,7 @@ private struct ProtoFileRow: View {
     let protoFile: ProtoFile
     let onMethodSelected: (Method, Service, ProtoFile) -> Void
     @State private var isExpanded = true
-    
+
     var body: some View {
         DisclosureGroup(isExpanded: $isExpanded) {
             if protoFile.services.isEmpty {
@@ -182,8 +182,7 @@ private struct ProtoFileRow: View {
                     ServiceRow(
                         service: service,
                         protoFile: protoFile,
-                        onMethodSelected: onMethodSelected
-                    )
+                        onMethodSelected: onMethodSelected)
                 }
             }
         } label: {
@@ -206,7 +205,7 @@ private struct ServiceRow: View {
     let protoFile: ProtoFile
     let onMethodSelected: (Method, Service, ProtoFile) -> Void
     @State private var isExpanded = true
-    
+
     var body: some View {
         DisclosureGroup(isExpanded: $isExpanded) {
             if service.methods.isEmpty {
@@ -220,8 +219,7 @@ private struct ServiceRow: View {
                         method: method,
                         service: service,
                         protoFile: protoFile,
-                        onMethodSelected: onMethodSelected
-                    )
+                        onMethodSelected: onMethodSelected)
                 }
             }
         } label: {
@@ -244,7 +242,7 @@ private struct MethodRow: View {
     let service: Service
     let protoFile: ProtoFile
     let onMethodSelected: (Method, Service, ProtoFile) -> Void
-    
+
     var body: some View {
         Button {
             onMethodSelected(method, service, protoFile)
@@ -253,12 +251,12 @@ private struct MethodRow: View {
                 Image(systemName: methodIcon)
                     .foregroundColor(methodColor)
                     .frame(width: 16)
-                
+
                 Text(method.name)
                     .font(.callout)
-                
+
                 Spacer()
-                
+
                 if method.isStreaming {
                     Image(systemName: "arrow.triangle.2.circlepath")
                         .font(.caption)
@@ -268,11 +266,11 @@ private struct MethodRow: View {
         }
         .buttonStyle(.plain)
     }
-    
+
     private var methodIcon: String {
         method.isStreaming ? "arrow.left.arrow.right" : "arrow.right"
     }
-    
+
     private var methodColor: Color {
         method.isStreaming ? .orange : .green
     }
@@ -281,158 +279,145 @@ private struct MethodRow: View {
 // MARK: - Preview
 
 #if DEBUG
-struct SidebarView_Previews: PreviewProvider {
-    static var previewDI: AppDI {
-        let di = AppDI()
-        di.register(ImportPathsRepositoryProtocol.self) { UserDefaultsImportPathsRepository() }
-        di.register(ImportPathsViewModel.self, lifecycle: .transient) {
-            ImportPathsViewModel(importPathsRepository: di.resolve(ImportPathsRepositoryProtocol.self)!)
-        }
-        return di
-    }
-
-    static var previews: some View {
-        // Preview with empty state
-        SidebarView(
-            viewModel: SidebarViewModel(
-                importProtoFileUseCase: PreviewMockUseCase(),
-                importPathsRepository: PreviewMockImportPathsRepository(),
-                protoPathsPersistence: PreviewMockProtoPathsPersistence(),
-                loadSavedProtosUseCase: PreviewMockLoadSavedProtosUseCase(),
-                logger: NullLogger(),
-                telemetry: PreviewNullTelemetry()
-            ),
-            onMethodSelected: { _, _, _ in }
-        )
-        .environmentObject(previewDI)
-        .previewDisplayName("Empty State")
-        
-        // Preview with data
-        SidebarView(
-            viewModel: {
-                let vm = SidebarViewModel(
-                    importProtoFileUseCase: PreviewMockUseCase(),
-                    importPathsRepository: PreviewMockImportPathsRepository(),
-                    protoPathsPersistence: PreviewMockProtoPathsPersistence(),
-                    loadSavedProtosUseCase: PreviewMockLoadSavedProtosUseCase(),
-                    logger: NullLogger(),
-                    telemetry: PreviewNullTelemetry()
-                )
-                vm.protoFiles = [
-                    ProtoFile(
-                        name: "example.proto",
-                        path: URL(fileURLWithPath: "/test/example.proto"),
-                        services: [
-                            Service(
-                                name: "UserService",
-                                methods: [
-                                    Method(
-                                        name: "GetUser",
-                                        inputType: "GetUserRequest",
-                                        outputType: "GetUserResponse",
-                                        isStreaming: false
-                                    ),
-                                    Method(
-                                        name: "StreamUsers",
-                                        inputType: "StreamUsersRequest",
-                                        outputType: "User",
-                                        isStreaming: true
-                                    )
-                                ]
-                            )
-                        ]
-                    )
-                ]
-                return vm
-            }(),
-            onMethodSelected: { _, _, _ in
+    struct SidebarView_Previews: PreviewProvider {
+        static var previewDI: AppDI {
+            let di = AppDI()
+            di.register(ImportPathsRepositoryProtocol.self) { UserDefaultsImportPathsRepository() }
+            di.register(ImportPathsViewModel.self, lifecycle: .transient) {
+                ImportPathsViewModel(importPathsRepository: di.resolve(ImportPathsRepositoryProtocol.self)!)
             }
-        )
-        .environmentObject(previewDI)
-        .previewDisplayName("With Data")
-        
-        // Preview with loading state
-        SidebarView(
-            viewModel: {
-                let vm = SidebarViewModel(
+            return di
+        }
+
+        static var previews: some View {
+            // Preview with empty state
+            SidebarView(
+                viewModel: SidebarViewModel(
                     importProtoFileUseCase: PreviewMockUseCase(),
                     importPathsRepository: PreviewMockImportPathsRepository(),
                     protoPathsPersistence: PreviewMockProtoPathsPersistence(),
                     loadSavedProtosUseCase: PreviewMockLoadSavedProtosUseCase(),
                     logger: NullLogger(),
-                    telemetry: PreviewNullTelemetry()
-                )
-                vm.isLoading = true
-                return vm
-            }(),
-            onMethodSelected: { _, _, _ in }
-        )
-        .environmentObject(previewDI)
-        .previewDisplayName("Loading")
-        
-        // Preview with error
-        SidebarView(
-            viewModel: {
-                let vm = SidebarViewModel(
-                    importProtoFileUseCase: PreviewMockUseCase(),
-                    importPathsRepository: PreviewMockImportPathsRepository(),
-                    protoPathsPersistence: PreviewMockProtoPathsPersistence(),
-                    loadSavedProtosUseCase: PreviewMockLoadSavedProtosUseCase(),
-                    logger: NullLogger(),
-                    telemetry: PreviewNullTelemetry()
-                )
-                vm.error = "Failed to load proto file"
-                return vm
-            }(),
-            onMethodSelected: { _, _, _ in }
-        )
-        .environmentObject(previewDI)
-        .previewDisplayName("Error")
-    }
-}
+                    telemetry: PreviewNullTelemetry()),
+                onMethodSelected: { _, _, _ in })
+                .environmentObject(previewDI)
+                .previewDisplayName("Empty State")
 
-private class PreviewMockUseCase: ImportProtoFileUseCaseProtocol {
-    func execute(url: URL) async throws -> ProtoFile {
-        ProtoFile(name: "test.proto", path: url, services: [])
-    }
-    
-    func execute(url: URL, importPaths: [String]) async throws -> ProtoFile {
-        ProtoFile(name: "test.proto", path: url, services: [])
-    }
-}
+            // Preview with data
+            SidebarView(
+                viewModel: {
+                    let vm = SidebarViewModel(
+                        importProtoFileUseCase: PreviewMockUseCase(),
+                        importPathsRepository: PreviewMockImportPathsRepository(),
+                        protoPathsPersistence: PreviewMockProtoPathsPersistence(),
+                        loadSavedProtosUseCase: PreviewMockLoadSavedProtosUseCase(),
+                        logger: NullLogger(),
+                        telemetry: PreviewNullTelemetry())
+                    vm.protoFiles = [
+                        ProtoFile(
+                            name: "example.proto",
+                            path: URL(fileURLWithPath: "/test/example.proto"),
+                            services: [
+                                Service(
+                                    name: "UserService",
+                                    methods: [
+                                        Method(
+                                            name: "GetUser",
+                                            inputType: "GetUserRequest",
+                                            outputType: "GetUserResponse",
+                                            isStreaming: false),
+                                        Method(
+                                            name: "StreamUsers",
+                                            inputType: "StreamUsersRequest",
+                                            outputType: "User",
+                                            isStreaming: true),
+                                    ]),
+                            ]),
+                    ]
+                    return vm
+                }(),
+                onMethodSelected: { _, _, _ in
+                })
+                .environmentObject(previewDI)
+                .previewDisplayName("With Data")
 
-private class PreviewMockImportPathsRepository: ImportPathsRepositoryProtocol {
-    func getImportPaths() -> [String] {
-        return []
-    }
-    
-    func saveImportPaths(_ paths: [String]) {
-        // No-op for preview
-    }
-}
+            // Preview with loading state
+            SidebarView(
+                viewModel: {
+                    let vm = SidebarViewModel(
+                        importProtoFileUseCase: PreviewMockUseCase(),
+                        importPathsRepository: PreviewMockImportPathsRepository(),
+                        protoPathsPersistence: PreviewMockProtoPathsPersistence(),
+                        loadSavedProtosUseCase: PreviewMockLoadSavedProtosUseCase(),
+                        logger: NullLogger(),
+                        telemetry: PreviewNullTelemetry())
+                    vm.isLoading = true
+                    return vm
+                }(),
+                onMethodSelected: { _, _, _ in })
+                .environmentObject(previewDI)
+                .previewDisplayName("Loading")
 
-private class PreviewMockProtoPathsPersistence: ProtoPathsPersistenceProtocol {
-    func saveProtoPaths(_ paths: [URL]) {
-        // No-op for preview
+            // Preview with error
+            SidebarView(
+                viewModel: {
+                    let vm = SidebarViewModel(
+                        importProtoFileUseCase: PreviewMockUseCase(),
+                        importPathsRepository: PreviewMockImportPathsRepository(),
+                        protoPathsPersistence: PreviewMockProtoPathsPersistence(),
+                        loadSavedProtosUseCase: PreviewMockLoadSavedProtosUseCase(),
+                        logger: NullLogger(),
+                        telemetry: PreviewNullTelemetry())
+                    vm.error = "Failed to load proto file"
+                    return vm
+                }(),
+                onMethodSelected: { _, _, _ in })
+                .environmentObject(previewDI)
+                .previewDisplayName("Error")
+        }
     }
-    
-    func getProtoPaths() -> [URL] {
-        return []
-    }
-}
 
-private class PreviewMockLoadSavedProtosUseCase: LoadSavedProtosUseCase {
-    init() {
-        super.init(importProtoFileUseCase: PreviewMockUseCase(), logger: NullLogger())
-    }
-    
-    override func execute(urls: [URL], importPaths: [String]) async -> [ProtoFile] {
-        return []
-    }
-}
+    private class PreviewMockUseCase: ImportProtoFileUseCaseProtocol {
+        func execute(url: URL) throws -> ProtoFile {
+            ProtoFile(name: "test.proto", path: url, services: [])
+        }
 
-private final class PreviewNullTelemetry: TelemetryServiceProtocol {
-    func track(_ event: TelemetryEvent) async {}
-}
+        func execute(url: URL, importPaths _: [String]) throws -> ProtoFile {
+            ProtoFile(name: "test.proto", path: url, services: [])
+        }
+    }
+
+    private class PreviewMockImportPathsRepository: ImportPathsRepositoryProtocol {
+        func getImportPaths() -> [String] {
+            []
+        }
+
+        func saveImportPaths(_: [String]) {
+            // No-op for preview
+        }
+    }
+
+    private class PreviewMockProtoPathsPersistence: ProtoPathsPersistenceProtocol {
+        func saveProtoPaths(_: [URL]) {
+            // No-op for preview
+        }
+
+        func getProtoPaths() -> [URL] {
+            []
+        }
+    }
+
+    private class PreviewMockLoadSavedProtosUseCase: LoadSavedProtosUseCase {
+        init() {
+            super.init(importProtoFileUseCase: PreviewMockUseCase(), logger: NullLogger())
+        }
+
+        override func execute(urls _: [URL], importPaths _: [String]) async -> [ProtoFile] {
+            []
+        }
+    }
+
+    private final class PreviewNullTelemetry: TelemetryServiceProtocol {
+        func track(_: TelemetryEvent) {}
+    }
 #endif
-

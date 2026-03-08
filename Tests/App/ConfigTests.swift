@@ -2,7 +2,6 @@ import XCTest
 @testable import TrueRPCMini
 
 final class ConfigTests: XCTestCase {
-
     // MARK: - Init stores values
 
     func test_config_init_storesAmplitudeKey() {

@@ -2,7 +2,6 @@ import XCTest
 @testable import TrueRPCMini
 
 final class UserDefaultsAnalyticsTests: XCTestCase {
-
     private let suiteName = "com.truerpc.tests.AnalyticsTests"
     private var userDefaults: UserDefaults!
 

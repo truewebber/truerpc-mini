@@ -12,11 +12,6 @@ struct Config {
     let amplitudeKey: String
     let sentryDsn: String
 
-    init(amplitudeKey: String, sentryDsn: String) {
-        self.amplitudeKey = amplitudeKey
-        self.sentryDsn = sentryDsn
-    }
-
     static var fromBundle: Config {
         func read(_ key: String) -> String {
             (Bundle.main.object(forInfoDictionaryKey: key) as? String ?? "")
@@ -24,7 +19,6 @@ struct Config {
         }
         return Config(
             amplitudeKey: read("AmplitudeApiKey"),
-            sentryDsn: read("SentryDsn")
-        )
+            sentryDsn: read("SentryDsn"))
     }
 }

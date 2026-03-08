@@ -1,0 +1,88 @@
+# .swiftformat — SwiftFormat 0.59 configuration for TrueRPC Mini
+# Deliberately strict; CI must fail on any violation.
+#
+# Install: brew install swiftformat
+# Lint:    make lint
+# Format:  make format
+
+# ── Swift version ──────────────────────────────────────────────────────────────
+--swiftversion 6.2
+
+# ── Code style ─────────────────────────────────────────────────────────────────
+--indent 4
+--tab-width 4
+--max-width 120
+--linebreaks lf
+--semicolons never
+--trim-whitespace always
+
+# ── Imports ────────────────────────────────────────────────────────────────────
+# Alphabetical groups; @testable imports last
+--import-grouping testable-last
+
+# ── Self ───────────────────────────────────────────────────────────────────────
+# Explicit self only where the compiler requires it (captures in closures, init)
+--self init-only
+
+# ── Trailing commas ────────────────────────────────────────────────────────────
+--trailing-commas always
+
+# ── Unused arguments ───────────────────────────────────────────────────────────
+--strip-unused-args always
+
+# ── Argument / parameter wrapping ─────────────────────────────────────────────
+--wrap-arguments before-first
+--wrap-parameters before-first
+--wrap-collections before-first
+--closing-paren same-line
+
+# ── Return type and effects (async / throws) ───────────────────────────────────
+--wrap-return-type if-multiline
+--wrap-effects if-multiline
+
+# ── Braces and control flow ────────────────────────────────────────────────────
+--allman false
+--else-position same-line
+--guard-else next-line
+
+# ── Attributes ─────────────────────────────────────────────────────────────────
+# Function and type attributes (e.g. @MainActor, @ViewBuilder) → own line
+--func-attributes prev-line
+--type-attributes prev-line
+# Stored and computed var attributes (e.g. @State, @Binding) → preserve as-is
+--stored-var-attributes preserve
+--computed-var-attributes preserve
+
+# ── Misc ───────────────────────────────────────────────────────────────────────
+--yoda-swap always
+--redundant-async always
+--header ignore
+--void-type Void
+
+# ── Exclusions ─────────────────────────────────────────────────────────────────
+--exclude .build,*.xcodeproj,*.xcworkspace
+
+# ── Enable rules that are disabled by default ──────────────────────────────────
+
+# blockComments: ban /* */ style; all comments must use //
+--enable blockComments
+
+# isEmpty: prefer .isEmpty over == "" or count == 0
+--enable isEmpty
+
+# blankLinesAfterGuardStatements: guard must be followed by a blank line
+--enable blankLinesAfterGuardStatements
+
+# unusedPrivateDeclarations: flag dead private symbols
+--enable unusedPrivateDeclarations
+
+# blankLineAfterSwitchCase: blank line after multiline switch cases
+--enable blankLineAfterSwitchCase
+
+# ── Disable rules ──────────────────────────────────────────────────────────────
+
+# fileHeader: no file-level comment template enforced
+--disable fileHeader
+
+# organizeDeclarations: too disruptive for incremental adoption; apply manually
+--disable organizeDeclarations

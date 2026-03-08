@@ -11,8 +11,8 @@ struct OSLogger: AppLogger {
 
     init(
         subsystem: String = Bundle.main.bundleIdentifier ?? "com.truewebber",
-        category: String
-    ) {
+        category: String)
+    {
         self.logger = os.Logger(subsystem: subsystem, category: category)
     }
 

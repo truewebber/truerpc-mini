@@ -10,6 +10,6 @@ public final class RefreshProtoFileUseCase: RefreshProtoFileUseCaseProtocol {
     }
 
     public func execute(protoFile: ProtoFile, importPaths: [String]) async throws -> ProtoFile {
-        return try await repository.loadProto(url: protoFile.path, importPaths: importPaths)
+        try await repository.loadProto(url: protoFile.path, importPaths: importPaths)
     }
 }

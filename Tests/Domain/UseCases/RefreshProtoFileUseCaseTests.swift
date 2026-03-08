@@ -1,9 +1,8 @@
-import XCTest
 import SwiftProtoReflect
+import XCTest
 @testable import TrueRPCMini
 
 final class RefreshProtoFileUseCaseTests: XCTestCase {
-
     fileprivate var mockRepository: MockProtoRepositoryForRefresh!
     var sut: RefreshProtoFileUseCase!
 
@@ -98,29 +97,31 @@ private class MockProtoRepositoryForRefresh: ProtoRepositoryProtocol {
     var shouldThrowError = false
     var errorToThrow: Error = RefreshProtoError.fileNotFound
 
-    func loadProto(url: URL) async throws -> ProtoFile {
+    func loadProto(url: URL) throws -> ProtoFile {
         loadProtoCalled = true
         loadProtoURL = url
         loadProtoImportPaths = nil
         if shouldThrowError { throw errorToThrow }
         guard let protoFile = protoFileToReturn else { throw RefreshProtoError.fileNotFound }
+
         return protoFile
     }
 
-    func loadProto(url: URL, importPaths: [String]) async throws -> ProtoFile {
+    func loadProto(url: URL, importPaths: [String]) throws -> ProtoFile {
         loadProtoCalled = true
         loadProtoURL = url
         loadProtoImportPaths = importPaths
         if shouldThrowError { throw errorToThrow }
         guard let protoFile = protoFileToReturn else { throw RefreshProtoError.fileNotFound }
+
         return protoFile
     }
 
     func getLoadedProtos() -> [ProtoFile] {
-        return protoFileToReturn.map { [$0] } ?? []
+        protoFileToReturn.map { [$0] } ?? []
     }
 
-    func getMessageDescriptor(forType typeName: String) throws -> MessageDescriptor {
+    func getMessageDescriptor(forType _: String) throws -> MessageDescriptor {
         let fileDesc = FileDescriptor(name: "mock.proto", package: "mock")
         return MessageDescriptor(name: "MockMessage", parent: fileDesc)
     }

@@ -20,7 +20,6 @@ private final class MockSentryWriter: SentryLogWriterProtocol {
 // MARK: - Tests
 
 final class SentryLoggerTests: XCTestCase {
-
     // MARK: - Protocol conformance
 
     func test_sentryLogger_conformsToAppLogger() {

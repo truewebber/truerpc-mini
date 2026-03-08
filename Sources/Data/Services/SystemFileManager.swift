@@ -3,11 +3,10 @@ import Foundation
 /// System implementation of FileManagerProtocol
 /// Wraps Foundation FileManager for file operations
 public final class SystemFileManager: FileManagerProtocol {
-    
     private let fileManager = FileManager.default
-    
+
     public init() {}
-    
+
     /// Write data to file at given URL
     /// Creates intermediate directories if needed
     /// - Parameters:
@@ -21,10 +20,9 @@ public final class SystemFileManager: FileManagerProtocol {
             try fileManager.createDirectory(
                 at: directory,
                 withIntermediateDirectories: true,
-                attributes: nil
-            )
+                attributes: nil)
         }
-        
+
         // Write data to file
         try data.write(to: url, options: [.atomic])
     }

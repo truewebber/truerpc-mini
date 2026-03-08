@@ -8,9 +8,9 @@ final class LoggingTrackerResponseHandler: TrackerResponseHandlerProtocol {
 
     func handleResponse(eventType: String, code: Int, message: String) {
         guard code != 200 else { return }
+
         logger.warning(
             "Amplitude event delivery failed",
-            metadata: ["event": eventType, "code": String(code), "message": message]
-        )
+            metadata: ["event": eventType, "code": String(code), "message": message])
     }
 }

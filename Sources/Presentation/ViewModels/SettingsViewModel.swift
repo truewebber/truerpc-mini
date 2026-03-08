@@ -5,7 +5,6 @@ import Foundation
 /// Tracks `settings_opened` when the screen appears.
 @MainActor
 public final class SettingsViewModel: ObservableObject {
-
     // MARK: - Dependencies
 
     private let telemetry: TelemetryServiceProtocol

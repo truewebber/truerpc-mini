@@ -8,14 +8,14 @@ public struct EditorTab: Identifiable, Equatable {
     public let serviceName: String
     public let protoFile: ProtoFile
     public let method: Method
-    
+
     public init(
         id: UUID = UUID(),
         methodName: String,
         serviceName: String,
         protoFile: ProtoFile,
-        method: Method
-    ) {
+        method: Method)
+    {
         self.id = id
         self.methodName = methodName
         self.serviceName = serviceName

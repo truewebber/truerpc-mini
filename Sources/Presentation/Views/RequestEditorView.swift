@@ -1,5 +1,5 @@
-import SwiftUI
 import AppKit
+import SwiftUI
 import UniformTypeIdentifiers
 
 /// View for editing gRPC request parameters and displaying responses
@@ -9,20 +9,20 @@ struct RequestEditorView: View {
     @State private var showExportError: Bool = false
     @State private var exportErrorMessage: String = ""
     @State private var showCopySuccess: Bool = false
-    
+
     var body: some View {
         VStack(spacing: 0) {
             // Header with method info and Play button
             headerView
-            
+
             Divider()
-            
+
             // Split view: Request Editor (left) | Response (right)
             HSplitView {
                 // Left: Request editor
                 requestEditorView
                     .frame(minWidth: 300)
-                
+
                 // Right: Response panel
                 ResponseView(
                     response: viewModel.response,
@@ -38,9 +38,8 @@ struct RequestEditorView: View {
                         Task {
                             await exportResponse()
                         }
-                    }
-                )
-                .frame(minWidth: 300)
+                    })
+                    .frame(minWidth: 300)
             }
         }
         .task {
@@ -73,9 +72,9 @@ struct RequestEditorView: View {
             }
         }
     }
-    
+
     // MARK: - Subviews
-    
+
     private var headerView: some View {
         HStack {
             VStack(alignment: .leading, spacing: 4) {
@@ -85,9 +84,9 @@ struct RequestEditorView: View {
                     .font(.caption)
                     .foregroundColor(.secondary)
             }
-            
+
             Spacer()
-            
+
             // Metadata toggle button
             Button(action: {
                 withAnimation {
@@ -101,7 +100,7 @@ struct RequestEditorView: View {
             }
             .buttonStyle(.bordered)
             .help("Toggle metadata headers editor")
-            
+
             // Play button
             Button(action: {
                 Task {
@@ -117,7 +116,7 @@ struct RequestEditorView: View {
             }
             .buttonStyle(.borderedProminent)
             .disabled(viewModel.isExecuting || viewModel.url.isEmpty || viewModel.requestJson.isEmpty)
-            
+
             if viewModel.isLoading {
                 ProgressView()
                     .controlSize(.small)
@@ -127,21 +126,21 @@ struct RequestEditorView: View {
         .padding()
         .background(Color(nsColor: .controlBackgroundColor))
     }
-    
+
     private var requestEditorView: some View {
         VSplitView {
             // Top: URL and JSON editor
             VStack(spacing: 0) {
                 // URL input
                 urlInputView
-                
+
                 Divider()
-                
+
                 // JSON editor
                 jsonEditorView
             }
             .frame(minHeight: 200)
-            
+
             // Bottom: Metadata panel (collapsible)
             if viewModel.isMetadataVisible {
                 metadataEditorView
@@ -150,68 +149,65 @@ struct RequestEditorView: View {
             }
         }
     }
-    
+
     private var urlInputView: some View {
         HStack {
             Text("URL")
                 .font(.subheadline)
                 .frame(width: 60, alignment: .leading)
-            
+
             TextField("localhost:50051", text: Binding(
                 get: { viewModel.url },
-                set: { viewModel.updateUrl($0) }
-            ))
-            .textFieldStyle(.roundedBorder)
+                set: { viewModel.updateUrl($0) }))
+                .textFieldStyle(.roundedBorder)
         }
         .padding()
     }
-    
+
     private var jsonEditorView: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Request Body")
                 .font(.subheadline)
                 .foregroundColor(.secondary)
-            
+
             JSONTextEditor(text: Binding(
                 get: { viewModel.requestJson },
-                set: { viewModel.updateJson($0) }
-            ))
-            .id("json-editor-\(viewModel.editorTab.id)")
-            .font(.system(.body, design: .monospaced))
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .border(Color.secondary.opacity(0.2), width: 1)
+                set: { viewModel.updateJson($0) }))
+                .id("json-editor-\(viewModel.editorTab.id)")
+                .font(.system(.body, design: .monospaced))
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .border(Color.secondary.opacity(0.2), width: 1)
         }
         .padding()
     }
-    
+
     private var metadataEditorView: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Text("Metadata (Headers)")
                     .font(.subheadline)
                     .foregroundColor(.secondary)
-                
+
                 Spacer()
-                
+
                 Text("JSON format: {\"key\": \"value\"}")
                     .font(.caption2)
                     .foregroundColor(.secondary)
             }
-            
+
             JSONTextEditor(text: Binding(
                 get: { viewModel.metadataJson },
-                set: { viewModel.updateMetadata($0) }
-            ))
-            .font(.system(.body, design: .monospaced))
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .border(Color.secondary.opacity(0.2), width: 1)
+                set: { viewModel.updateMetadata($0) }))
+                .font(.system(.body, design: .monospaced))
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .border(Color.secondary.opacity(0.2), width: 1)
         }
         .padding()
         .background(Color(nsColor: .controlBackgroundColor).opacity(0.5))
     }
-    
+
     // MARK: - Actions
-    
+
     @MainActor
     private func exportResponse() async {
         guard let window = NSApp.keyWindow else {
@@ -219,7 +215,7 @@ struct RequestEditorView: View {
             showExportError = true
             return
         }
-        
+
         // Create save panel
         let savePanel = NSSavePanel()
         savePanel.allowedContentTypes = [.json]
@@ -227,7 +223,7 @@ struct RequestEditorView: View {
         savePanel.canCreateDirectories = true
         savePanel.title = "Export Response"
         savePanel.message = "Choose where to save the response"
-        
+
         // Use continuation to bridge callback-based API to async/await
         let url: URL? = await withCheckedContinuation { continuation in
             savePanel.beginSheetModal(for: window) { response in
@@ -238,11 +234,11 @@ struct RequestEditorView: View {
                 }
             }
         }
-        
-        guard let url = url else {
+
+        guard let url else {
             return
         }
-        
+
         do {
             try await viewModel.exportResponse(to: url)
         } catch {
@@ -255,68 +251,63 @@ struct RequestEditorView: View {
 // MARK: - Preview
 
 #if DEBUG
-struct RequestEditorView_Previews: PreviewProvider {
-    static var previews: some View {
-        let method = TrueRPCMini.Method(
-            name: "GetUser",
-            inputType: "GetUserRequest",
-            outputType: "GetUserResponse",
-            isStreaming: false
-        )
-        let service = Service(name: "UserService", methods: [method])
-        let protoFile = ProtoFile(
-            name: "users.proto",
-            path: URL(fileURLWithPath: "/test/users.proto"),
-            services: [service]
-        )
-        let editorTab = EditorTab(
-            methodName: method.name,
-            serviceName: service.name,
-            protoFile: protoFile,
-            method: method
-        )
-        
-        // Create mock use cases for preview
-        let mockExecuteUseCase = PreviewMockExecuteUseCase()
-        let mockFileManager = PreviewMockFileManager()
-        let exportUseCase = ExportResponseUseCase(fileManager: mockFileManager)
-        
-        let viewModel = EditorTabViewModel(
-            editorTab: editorTab,
-            generateMockDataUseCase: GenerateMockDataUseCase(mockDataGenerator: MockDataGenerator()),
-            executeRequestUseCase: mockExecuteUseCase,
-            exportResponseUseCase: exportUseCase,
-            logger: NullLogger()
-        )
-        
-        viewModel.url = "localhost:50051"
-        viewModel.requestJson = "{\n  \"userId\": 1\n}"
-        
-        return RequestEditorView(viewModel: viewModel)
-            .frame(width: 600, height: 400)
-            .previewDisplayName("Request Editor")
-    }
-}
+    struct RequestEditorView_Previews: PreviewProvider {
+        static var previews: some View {
+            let method = TrueRPCMini.Method(
+                name: "GetUser",
+                inputType: "GetUserRequest",
+                outputType: "GetUserResponse",
+                isStreaming: false)
+            let service = Service(name: "UserService", methods: [method])
+            let protoFile = ProtoFile(
+                name: "users.proto",
+                path: URL(fileURLWithPath: "/test/users.proto"),
+                services: [service])
+            let editorTab = EditorTab(
+                methodName: method.name,
+                serviceName: service.name,
+                protoFile: protoFile,
+                method: method)
 
-// MARK: - Preview Mocks
+            // Create mock use cases for preview
+            let mockExecuteUseCase = PreviewMockExecuteUseCase()
+            let mockFileManager = PreviewMockFileManager()
+            let exportUseCase = ExportResponseUseCase(fileManager: mockFileManager)
 
-private class PreviewMockExecuteUseCase: ExecuteUnaryRequestUseCaseProtocol {
-    func execute(request: RequestDraft, method: TrueRPCMini.Method) async throws -> GrpcResponse {
-        // Return mock response for preview
-        return GrpcResponse(
-            jsonBody: #"{"id": 1, "name": "Preview User"}"#,
-            responseTime: 0.123,
-            statusCode: 0,
-            statusMessage: "OK"
-        )
-    }
-}
+            let viewModel = EditorTabViewModel(
+                editorTab: editorTab,
+                generateMockDataUseCase: GenerateMockDataUseCase(mockDataGenerator: MockDataGenerator()),
+                executeRequestUseCase: mockExecuteUseCase,
+                exportResponseUseCase: exportUseCase,
+                logger: NullLogger())
 
-private class PreviewMockFileManager: FileManagerProtocol {
-    func write(_ data: Data, to url: URL) throws {
-        // No-op for preview
+            viewModel.url = "localhost:50051"
+            viewModel.requestJson = "{\n  \"userId\": 1\n}"
+
+            return RequestEditorView(viewModel: viewModel)
+                .frame(width: 600, height: 400)
+                .previewDisplayName("Request Editor")
+        }
     }
-}
+
+    // MARK: - Preview Mocks
+
+    private class PreviewMockExecuteUseCase: ExecuteUnaryRequestUseCaseProtocol {
+        func execute(request _: RequestDraft, method _: TrueRPCMini.Method) throws -> GrpcResponse {
+            // Return mock response for preview
+            GrpcResponse(
+                jsonBody: #"{"id": 1, "name": "Preview User"}"#,
+                responseTime: 0.123,
+                statusCode: 0,
+                statusMessage: "OK")
+        }
+    }
+
+    private class PreviewMockFileManager: FileManagerProtocol {
+        func write(_: Data, to _: URL) throws {
+            // No-op for preview
+        }
+    }
 #endif
 
 // MARK: - JSON Text Editor
@@ -324,52 +315,52 @@ private class PreviewMockFileManager: FileManagerProtocol {
 /// Custom text editor for JSON with smart quotes disabled
 struct JSONTextEditor: NSViewRepresentable {
     @Binding var text: String
-    
+
     func makeNSView(context: Context) -> NSScrollView {
         let scrollView = NSTextView.scrollableTextView()
         let textView = scrollView.documentView as! NSTextView
-        
+
         // Disable smart quotes and dashes
         textView.isAutomaticQuoteSubstitutionEnabled = false
         textView.isAutomaticDashSubstitutionEnabled = false
         textView.isAutomaticSpellingCorrectionEnabled = false
         textView.isAutomaticTextReplacementEnabled = false
-        
+
         // Set monospaced font
         textView.font = NSFont.monospacedSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)
-        
+
         // Enable wrapping
         textView.isHorizontallyResizable = false
         textView.textContainer?.widthTracksTextView = true
-        
+
         textView.delegate = context.coordinator
         textView.string = text
-        
+
         return scrollView
     }
-    
-    func updateNSView(_ nsView: NSScrollView, context: Context) {
+
+    func updateNSView(_ nsView: NSScrollView, context _: Context) {
         let textView = nsView.documentView as! NSTextView
         if textView.string != text {
             textView.string = text
         }
     }
-    
+
     func makeCoordinator() -> Coordinator {
         Coordinator(self)
     }
-    
+
     class Coordinator: NSObject, NSTextViewDelegate {
         var parent: JSONTextEditor
-        
+
         init(_ parent: JSONTextEditor) {
             self.parent = parent
         }
-        
+
         func textDidChange(_ notification: Notification) {
             guard let textView = notification.object as? NSTextView else { return }
+
             parent.text = textView.string
         }
     }
 }
-

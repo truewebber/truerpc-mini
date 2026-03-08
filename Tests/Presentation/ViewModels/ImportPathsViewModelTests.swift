@@ -3,7 +3,6 @@ import XCTest
 
 @MainActor
 final class ImportPathsViewModelTests: XCTestCase {
-
     var sut: ImportPathsViewModel!
     var mockRepository: MockImportPathsRepositorySpy!
 

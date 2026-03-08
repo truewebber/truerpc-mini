@@ -1,82 +1,78 @@
-import XCTest
 import SwiftProtoReflect
+import XCTest
 @testable import TrueRPCMini
 
 final class ImportProtoFileUseCaseTests: XCTestCase {
-    
     // MARK: - Test Lifecycle
-    
+
     override func setUp() {
         super.setUp()
     }
-    
+
     override func tearDown() {
         super.tearDown()
     }
-    
+
     // MARK: - Success Cases
-    
+
     func test_execute_whenValidURL_returnsProtoFile() async throws {
         // Given
         let mockRepository = MockProtoRepository()
         let sut = ImportProtoFileUseCase(repository: mockRepository)
         let testURL = URL(fileURLWithPath: "/test/example.proto")
-        
+
         let expectedProtoFile = ProtoFile(
             name: "example.proto",
             path: testURL,
-            services: []
-        )
+            services: [])
         mockRepository.protoFileToReturn = expectedProtoFile
-        
+
         // When
         let result = try await sut.execute(url: testURL)
-        
+
         // Then
         XCTAssertEqual(result, expectedProtoFile)
         XCTAssertTrue(mockRepository.loadProtoCalled)
         XCTAssertEqual(mockRepository.loadProtoURL, testURL)
     }
-    
+
     func test_execute_whenProtoWithServices_returnsCompleteStructure() async throws {
         // Given
         let mockRepository = MockProtoRepository()
         let sut = ImportProtoFileUseCase(repository: mockRepository)
         let testURL = URL(fileURLWithPath: "/test/service.proto")
-        
+
         let method = Method(
             name: "GetUser",
             inputType: "GetUserRequest",
-            outputType: "GetUserResponse"
-        )
+            outputType: "GetUserResponse")
         let service = Service(name: "UserService", methods: [method])
         let expectedProtoFile = ProtoFile(
             name: "service.proto",
             path: testURL,
-            services: [service]
-        )
+            services: [service])
         mockRepository.protoFileToReturn = expectedProtoFile
-        
+
         // When
         let result = try await sut.execute(url: testURL)
-        
+
         // Then
         XCTAssertEqual(result.services.count, 1)
         XCTAssertEqual(result.services.first?.name, "UserService")
         XCTAssertEqual(result.services.first?.methods.count, 1)
         XCTAssertEqual(result.services.first?.methods.first?.name, "GetUser")
     }
-    
+
     // MARK: - Error Cases
-    
+
     func test_execute_whenRepositoryThrows_propagatesError() async throws {
         // Given
         let mockRepository = MockProtoRepository()
         let sut = ImportProtoFileUseCase(repository: mockRepository)
         let testURL = URL(fileURLWithPath: "/test/invalid.proto")
-        
+
         mockRepository.shouldThrowError = true
-        
+
         // When/Then
         do {
             _ = try await sut.execute(url: testURL)
@@ -86,16 +82,16 @@ final class ImportProtoFileUseCaseTests: XCTestCase {
             XCTAssertNotNil(error)
         }
     }
-    
+
     func test_execute_whenFileNotFound_throwsError() async throws {
         // Given
         let mockRepository = MockProtoRepository()
         let sut = ImportProtoFileUseCase(repository: mockRepository)
         let testURL = URL(fileURLWithPath: "/nonexistent/file.proto")
-        
+
         mockRepository.shouldThrowError = true
         mockRepository.errorToThrow = ProtoError.fileNotFound
-        
+
         // When/Then
         do {
             _ = try await sut.execute(url: testURL)
@@ -117,44 +113,44 @@ private class MockProtoRepository: ProtoRepositoryProtocol {
     var protoFileToReturn: ProtoFile?
     var shouldThrowError = false
     var errorToThrow: Error = ProtoError.invalidFormat
-    
-    func loadProto(url: URL) async throws -> ProtoFile {
+
+    func loadProto(url: URL) throws -> ProtoFile {
         loadProtoCalled = true
         loadProtoURL = url
         loadProtoImportPaths = nil
-        
+
         if shouldThrowError {
             throw errorToThrow
         }
-        
+
         guard let protoFile = protoFileToReturn else {
             throw ProtoError.invalidFormat
         }
-        
+
         return protoFile
     }
-    
-    func loadProto(url: URL, importPaths: [String]) async throws -> ProtoFile {
+
+    func loadProto(url: URL, importPaths: [String]) throws -> ProtoFile {
         loadProtoCalled = true
         loadProtoURL = url
         loadProtoImportPaths = importPaths
-        
+
         if shouldThrowError {
             throw errorToThrow
         }
-        
+
         guard let protoFile = protoFileToReturn else {
             throw ProtoError.invalidFormat
         }
-        
+
         return protoFile
     }
-    
+
     func getLoadedProtos() -> [ProtoFile] {
-        return protoFileToReturn.map { [$0] } ?? []
+        protoFileToReturn.map { [$0] } ?? []
     }
-    
-    func getMessageDescriptor(forType typeName: String) throws -> SwiftProtoReflect.MessageDescriptor {
+
+    func getMessageDescriptor(forType _: String) throws -> SwiftProtoReflect.MessageDescriptor {
         // Simple mock: return empty descriptor
         let fileDesc = SwiftProtoReflect.FileDescriptor(name: "mock.proto", package: "mock")
         return SwiftProtoReflect.MessageDescriptor(name: "MockMessage", parent: fileDesc)

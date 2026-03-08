@@ -5,11 +5,11 @@ import SwiftUI
 @MainActor
 public final class AppViewModel: ObservableObject {
     // MARK: - Published Properties
-    
+
     @Published public var selectedEditorTab: EditorTabViewModel?
-    
+
     // MARK: - Dependencies
-    
+
     private let createEditorTabUseCase: CreateEditorTabUseCase
     private let generateMockDataUseCase: GenerateMockDataUseCase
     private let executeRequestUseCase: ExecuteUnaryRequestUseCaseProtocol
@@ -25,8 +25,8 @@ public final class AppViewModel: ObservableObject {
         executeRequestUseCase: ExecuteUnaryRequestUseCaseProtocol,
         exportResponseUseCase: ExportResponseUseCase,
         telemetry: TelemetryServiceProtocol,
-        logger: AppLogger
-    ) {
+        logger: AppLogger)
+    {
         self.createEditorTabUseCase = createEditorTabUseCase
         self.generateMockDataUseCase = generateMockDataUseCase
         self.executeRequestUseCase = executeRequestUseCase
@@ -34,7 +34,7 @@ public final class AppViewModel: ObservableObject {
         self.telemetry = telemetry
         self.logger = logger
     }
-    
+
     // MARK: - Lifecycle
 
     /// Must be called once at app launch. Tracks the `app_launched` event with version info.
@@ -60,7 +60,7 @@ public final class AppViewModel: ObservableObject {
             break
         }
     }
-    
+
     // MARK: - Navigation Telemetry
 
     /// Called when the user navigates to the protos sidebar section.
@@ -83,8 +83,7 @@ public final class AppViewModel: ObservableObject {
             generateMockDataUseCase: generateMockDataUseCase,
             executeRequestUseCase: executeRequestUseCase,
             exportResponseUseCase: exportResponseUseCase,
-            logger: logger
-        )
+            logger: logger)
         selectedEditorTab = tabViewModel
         Task {
             await telemetry.track(.tabSwitched(tabName: "request"))

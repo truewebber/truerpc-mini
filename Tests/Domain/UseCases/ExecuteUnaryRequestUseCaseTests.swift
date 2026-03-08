@@ -1,52 +1,48 @@
+import struct TrueRPCMini.Method
 import XCTest
 @testable import TrueRPCMini
-import struct TrueRPCMini.Method
 
 final class ExecuteUnaryRequestUseCaseTests: XCTestCase {
-    
     var mockGrpcClient: MockGrpcClient!
     var mockTelemetry: MockTelemetryService!
     var sut: ExecuteUnaryRequestUseCase!
-    
+
     override func setUp() {
         super.setUp()
         mockGrpcClient = MockGrpcClient()
         mockTelemetry = MockTelemetryService()
         sut = ExecuteUnaryRequestUseCase(grpcClient: mockGrpcClient, telemetry: mockTelemetry)
     }
-    
+
     override func tearDown() {
         mockGrpcClient = nil
         mockTelemetry = nil
         sut = nil
         super.tearDown()
     }
-    
+
     // MARK: - Success Cases
-    
+
     func test_execute_withValidRequest_callsGrpcClient() async throws {
         // Given
         let method = Method(
             name: "SayHello",
             inputType: "HelloRequest",
-            outputType: "HelloResponse"
-        )
+            outputType: "HelloResponse")
         let request = RequestDraft(
             jsonBody: #"{"name": "World"}"#,
             url: "localhost:50051",
-            method: method
-        )
-        
+            method: method)
+
         mockGrpcClient.stubbedResponse = GrpcResponse(
             jsonBody: #"{"message": "Hello, World!"}"#,
             responseTime: 0.123,
             statusCode: 0,
-            statusMessage: "OK"
-        )
-        
+            statusMessage: "OK")
+
         // When
         let response = try await sut.execute(request: request, method: method)
-        
+
         // Then
         XCTAssertTrue(mockGrpcClient.executeUnaryCalled)
         XCTAssertEqual(mockGrpcClient.capturedRequest?.jsonBody, request.jsonBody)
@@ -55,50 +51,45 @@ final class ExecuteUnaryRequestUseCaseTests: XCTestCase {
         XCTAssertEqual(response.jsonBody, #"{"message": "Hello, World!"}"#)
         XCTAssertEqual(response.statusCode, 0)
     }
-    
+
     func test_execute_withValidRequest_returnsResponseWithTiming() async throws {
         // Given
         let method = Method(
             name: "GetUser",
             inputType: "GetUserRequest",
-            outputType: "User"
-        )
+            outputType: "User")
         let request = RequestDraft(
             jsonBody: #"{"id": 123}"#,
             url: "api.example.com:443",
-            method: method
-        )
-        
+            method: method)
+
         mockGrpcClient.stubbedResponse = GrpcResponse(
             jsonBody: #"{"id": 123, "name": "Alice"}"#,
             responseTime: 0.456,
             statusCode: 0,
-            statusMessage: "OK"
-        )
-        
+            statusMessage: "OK")
+
         // When
         let response = try await sut.execute(request: request, method: method)
-        
+
         // Then
         XCTAssertEqual(response.responseTime, 0.456, accuracy: 0.001)
         XCTAssertGreaterThan(response.responseTime, 0)
     }
-    
+
     // MARK: - Error Cases
-    
+
     func test_execute_withInvalidJSON_throwsValidationError() async {
         // Given
         let method = Method(
             name: "Test",
             inputType: "Request",
-            outputType: "Response"
-        )
+            outputType: "Response")
         let request = RequestDraft(
             jsonBody: "{invalid json",
             url: "localhost:50051",
-            method: method
-        )
-        
+            method: method)
+
         // When/Then
         do {
             _ = try await sut.execute(request: request, method: method)
@@ -113,28 +104,26 @@ final class ExecuteUnaryRequestUseCaseTests: XCTestCase {
             XCTFail("Expected GrpcClientError, got \(error)")
         }
     }
-    
+
     func test_execute_whenClientThrowsNetworkError_propagatesError() async {
         // Given
         let method = Method(
             name: "Test",
             inputType: "Request",
-            outputType: "Response"
-        )
+            outputType: "Response")
         let request = RequestDraft(
             jsonBody: #"{"test": "data"}"#,
             url: "invalid.host:9999",
-            method: method
-        )
-        
+            method: method)
+
         mockGrpcClient.shouldThrowError = .networkError("Connection refused")
-        
+
         // When/Then
         do {
             _ = try await sut.execute(request: request, method: method)
             XCTFail("Expected error to be thrown")
         } catch let error as GrpcClientError {
-            if case .networkError(let message) = error {
+            if case let .networkError(message) = error {
                 XCTAssertEqual(message, "Connection refused")
             } else {
                 XCTFail("Expected networkError, got \(error)")
@@ -143,22 +132,20 @@ final class ExecuteUnaryRequestUseCaseTests: XCTestCase {
             XCTFail("Expected GrpcClientError, got \(error)")
         }
     }
-    
+
     func test_execute_whenClientThrowsTimeout_propagatesError() async {
         // Given
         let method = Method(
             name: "SlowMethod",
             inputType: "Request",
-            outputType: "Response"
-        )
+            outputType: "Response")
         let request = RequestDraft(
             jsonBody: #"{"test": "data"}"#,
             url: "slow.server:50051",
-            method: method
-        )
-        
+            method: method)
+
         mockGrpcClient.shouldThrowError = .timeout
-        
+
         // When/Then
         do {
             _ = try await sut.execute(request: request, method: method)
@@ -169,7 +156,7 @@ final class ExecuteUnaryRequestUseCaseTests: XCTestCase {
             XCTFail("Expected GrpcClientError.timeout, got \(error)")
         }
     }
-    
+
     // MARK: - Telemetry Events
 
     func test_execute_whenRequestSucceeds_tracksRequestSentEvent() async throws {
@@ -178,19 +165,16 @@ final class ExecuteUnaryRequestUseCaseTests: XCTestCase {
             name: "SayHello",
             serviceName: "GreetService",
             inputType: "HelloRequest",
-            outputType: "HelloResponse"
-        )
+            outputType: "HelloResponse")
         let request = RequestDraft(
             jsonBody: #"{"name": "World"}"#,
             url: "localhost:50051",
-            method: method
-        )
+            method: method)
         mockGrpcClient.stubbedResponse = GrpcResponse(
             jsonBody: #"{"message": "Hello"}"#,
             responseTime: 0.1,
             statusCode: 0,
-            statusMessage: "OK"
-        )
+            statusMessage: "OK")
 
         // When
         _ = try await sut.execute(request: request, method: method)
@@ -208,19 +192,16 @@ final class ExecuteUnaryRequestUseCaseTests: XCTestCase {
             name: "SayHello",
             serviceName: "GreetService",
             inputType: "HelloRequest",
-            outputType: "HelloResponse"
-        )
+            outputType: "HelloResponse")
         let request = RequestDraft(
             jsonBody: #"{"name": "World"}"#,
             url: "localhost:50051",
-            method: method
-        )
+            method: method)
         mockGrpcClient.stubbedResponse = GrpcResponse(
             jsonBody: #"{"message": "Hello"}"#,
             responseTime: 0.5,
             statusCode: 0,
-            statusMessage: "OK"
-        )
+            statusMessage: "OK")
 
         // When
         _ = try await sut.execute(request: request, method: method)
@@ -239,19 +220,16 @@ final class ExecuteUnaryRequestUseCaseTests: XCTestCase {
             name: "SayHello",
             serviceName: "GreetService",
             inputType: "HelloRequest",
-            outputType: "HelloResponse"
-        )
+            outputType: "HelloResponse")
         let request = RequestDraft(
             jsonBody: #"{"name": "World"}"#,
             url: "localhost:50051",
-            method: method
-        )
+            method: method)
         mockGrpcClient.stubbedResponse = GrpcResponse(
             jsonBody: #"{"message": "Hello"}"#,
             responseTime: 0.1,
             statusCode: 0,
-            statusMessage: "OK"
-        )
+            statusMessage: "OK")
 
         // When
         _ = try await sut.execute(request: request, method: method)
@@ -268,19 +246,16 @@ final class ExecuteUnaryRequestUseCaseTests: XCTestCase {
             name: "SayHello",
             serviceName: "GreetService",
             inputType: "HelloRequest",
-            outputType: "HelloResponse"
-        )
+            outputType: "HelloResponse")
         let request = RequestDraft(
             jsonBody: #"{"name": "World"}"#,
             url: "localhost:50051",
-            method: method
-        )
+            method: method)
         let errorResponse = GrpcResponse(
             jsonBody: "{}",
             responseTime: 0.1,
             statusCode: 14,
-            statusMessage: "UNAVAILABLE"
-        )
+            statusMessage: "UNAVAILABLE")
         mockGrpcClient.shouldThrowError = .grpcError("UNAVAILABLE", response: errorResponse)
 
         // When
@@ -303,13 +278,11 @@ final class ExecuteUnaryRequestUseCaseTests: XCTestCase {
             name: "SayHello",
             serviceName: "GreetService",
             inputType: "HelloRequest",
-            outputType: "HelloResponse"
-        )
+            outputType: "HelloResponse")
         let request = RequestDraft(
             jsonBody: #"{"name": "World"}"#,
             url: "localhost:50051",
-            method: method
-        )
+            method: method)
         mockGrpcClient.shouldThrowError = .timeout
 
         // When
@@ -330,13 +303,11 @@ final class ExecuteUnaryRequestUseCaseTests: XCTestCase {
             name: "SayHello",
             serviceName: "GreetService",
             inputType: "HelloRequest",
-            outputType: "HelloResponse"
-        )
+            outputType: "HelloResponse")
         let request = RequestDraft(
             jsonBody: #"{"name": "World"}"#,
             url: "localhost:50051",
-            method: method
-        )
+            method: method)
         mockGrpcClient.shouldThrowError = .unavailable
 
         // When
@@ -357,13 +328,11 @@ final class ExecuteUnaryRequestUseCaseTests: XCTestCase {
             name: "SayHello",
             serviceName: "GreetService",
             inputType: "HelloRequest",
-            outputType: "HelloResponse"
-        )
+            outputType: "HelloResponse")
         let request = RequestDraft(
             jsonBody: #"{"name": "World"}"#,
             url: "localhost:50051",
-            method: method
-        )
+            method: method)
         mockGrpcClient.shouldThrowError = .networkError("Connection refused")
 
         // When
@@ -384,13 +353,11 @@ final class ExecuteUnaryRequestUseCaseTests: XCTestCase {
             name: "SayHello",
             serviceName: "GreetService",
             inputType: "HelloRequest",
-            outputType: "HelloResponse"
-        )
+            outputType: "HelloResponse")
         let request = RequestDraft(
             jsonBody: #"{"name": "World"}"#,
             url: "localhost:50051",
-            method: method
-        )
+            method: method)
         mockGrpcClient.shouldThrowError = .unknown("Something went wrong")
 
         // When
@@ -411,13 +378,11 @@ final class ExecuteUnaryRequestUseCaseTests: XCTestCase {
             name: "SayHello",
             serviceName: "GreetService",
             inputType: "HelloRequest",
-            outputType: "HelloResponse"
-        )
+            outputType: "HelloResponse")
         let request = RequestDraft(
             jsonBody: "{invalid json",
             url: "localhost:50051",
-            method: method
-        )
+            method: method)
 
         // When
         do {
@@ -436,24 +401,21 @@ final class ExecuteUnaryRequestUseCaseTests: XCTestCase {
         let method = Method(
             name: "EmptyRequest",
             inputType: "google.protobuf.Empty",
-            outputType: "Response"
-        )
+            outputType: "Response")
         let request = RequestDraft(
             jsonBody: "{}",
             url: "localhost:50051",
-            method: method
-        )
-        
+            method: method)
+
         mockGrpcClient.stubbedResponse = GrpcResponse(
             jsonBody: #"{"success": true}"#,
             responseTime: 0.05,
             statusCode: 0,
-            statusMessage: "OK"
-        )
-        
+            statusMessage: "OK")
+
         // When
         let response = try await sut.execute(request: request, method: method)
-        
+
         // Then
         XCTAssertTrue(mockGrpcClient.executeUnaryCalled)
         XCTAssertEqual(mockGrpcClient.capturedRequest?.jsonBody, "{}")
@@ -469,20 +431,20 @@ class MockGrpcClient: GrpcClientProtocol {
     var capturedMethod: TrueRPCMini.Method?
     var stubbedResponse: GrpcResponse?
     var shouldThrowError: GrpcClientError?
-    
-    func executeUnary(request: RequestDraft, method: TrueRPCMini.Method) async throws -> GrpcResponse {
+
+    func executeUnary(request: RequestDraft, method: TrueRPCMini.Method) throws -> GrpcResponse {
         executeUnaryCalled = true
         capturedRequest = request
         capturedMethod = method
-        
+
         if let error = shouldThrowError {
             throw error
         }
-        
+
         guard let response = stubbedResponse else {
             throw GrpcClientError.unknown("No stubbed response")
         }
-        
+
         return response
     }
 }

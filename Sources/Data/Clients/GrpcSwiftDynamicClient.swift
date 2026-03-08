@@ -13,14 +13,15 @@ public class GrpcSwiftDynamicClient: GrpcClientProtocol {
         self.protoRepository = protoRepository
         self.logger = logger
     }
-    
+
     /// Execute a unary gRPC request
     public func executeUnary(
         request: RequestDraft,
-        method: TrueRPCMini.Method
-    ) async throws -> GrpcResponse {
+        method: TrueRPCMini.Method)
+        async throws -> GrpcResponse
+    {
         let startTime = Date()
-        
+
         // 1. Get message descriptors from proto repository
         let inputDescriptor: MessageDescriptor
         let outputDescriptor: MessageDescriptor
@@ -52,56 +53,55 @@ public class GrpcSwiftDynamicClient: GrpcClientProtocol {
             ])
             throw error
         }
-        
+
         // 3. Parse URL to extract host and port
         let (host, port) = try parseServerAddress(request.url)
-        
+
         // 4. Determine if TLS should be used (default for 443)
         let useTLS = shouldUseTLS(port: port, url: request.url)
-        
+
         do {
             // 5. Create transport and execute with client
             return try await withGRPCClient(
-                transport: try .http2NIOPosix(
+                transport: .http2NIOPosix(
                     target: .dns(host: host, port: port),
                     transportSecurity: useTLS ? .tls : .plaintext,
-                    config: .defaults
-                )
-            ) { client in
+                    config: .defaults))
+            { client in
                 // 5. Create method descriptor for gRPC
                 let methodDescriptor = MethodDescriptor(
                     fullyQualifiedService: method.serviceName,
-                    method: method.name
-                )
-                
+                    method: method.name)
+
                 // 6. Create serializers
                 let serializer = DynamicMessageSerializer()
                 let deserializer = DynamicMessageDeserializer(messageDescriptor: outputDescriptor)
-                
+
                 // 7. Create client request with metadata
                 var clientRequest = ClientRequest(message: inputMessage)
                 if let metadata = request.metadata {
                     clientRequest.metadata = convertToGrpcMetadata(metadata)
                 }
-                
+
                 // 8. Execute unary call
                 return try await client.unary(
                     request: clientRequest,
                     descriptor: methodDescriptor,
                     serializer: serializer,
                     deserializer: deserializer,
-                    options: .defaults
-                ) { response in
+                    options: .defaults)
+                { response in
                     // 9. Convert response message to JSON
                     let responseJSON: String
                     do {
                         responseJSON = try self.messageToJSON(response.message)
                     } catch {
-                        let responseBytes: Int
-                        if let binaryData = try? BinarySerializer().serialize(response.message) {
-                            responseBytes = binaryData.count
+                        let responseBytes: Int = if let binaryData = try? BinarySerializer()
+                            .serialize(response.message)
+                        {
+                            binaryData.count
                         } else {
-                            responseBytes = 0
+                            0
                         }
                         self.logger.error("Response deserialization failed", metadata: [
                             "service": method.serviceName,
@@ -124,8 +124,7 @@ public class GrpcSwiftDynamicClient: GrpcClientProtocol {
                         statusCode: 0, // Success
                         statusMessage: "OK",
                         headers: headers.isEmpty ? nil : headers,
-                        trailers: trailers.isEmpty ? nil : trailers
-                    )
+                        trailers: trailers.isEmpty ? nil : trailers)
                 }
             }
         } catch let error as RPCError {
@@ -135,7 +134,7 @@ public class GrpcSwiftDynamicClient: GrpcClientProtocol {
             logger.error("gRPC request failed", metadata: [
                 "code": error.code.description,
                 "message": error.message,
-                "url": request.url
+                "url": request.url,
             ])
 
             let errorResponse = GrpcResponse(
@@ -144,49 +143,48 @@ public class GrpcSwiftDynamicClient: GrpcClientProtocol {
                 statusCode: error.code.rawValue,
                 statusMessage: error.code.description,
                 trailers: trailers.isEmpty ? nil : trailers,
-                statusDetails: error.message
-            )
+                statusDetails: error.message)
             throw GrpcClientError.grpcError(error.code.description, response: errorResponse)
         } catch {
             logger.error("gRPC request failed with unknown error", metadata: [
                 "error": error.localizedDescription,
-                "url": request.url
+                "url": request.url,
             ])
             throw GrpcClientError.unknown(error.localizedDescription)
         }
     }
-    
+
     /// Determine if TLS should be used based on port
     /// Standard gRPC convention: port 443 = TLS, other ports = plaintext
-    internal func shouldUseTLS(port: Int, url: String) -> Bool {
-        return port == 443
+    func shouldUseTLS(port: Int, url _: String) -> Bool {
+        port == 443
     }
-    
+
     /// Parse server address into host and port
-    internal func parseServerAddress(_ address: String) throws -> (host: String, port: Int) {
+    func parseServerAddress(_ address: String) throws -> (host: String, port: Int) {
         // gRPC doesn't use http:// or https:// prefixes, but clean them if present
         let cleanAddress = address
             .replacingOccurrences(of: "http://", with: "")
             .replacingOccurrences(of: "https://", with: "")
             .trimmingCharacters(in: .whitespaces)
-        
+
         let components = cleanAddress.split(separator: ":")
-        
+
         guard !components.isEmpty else {
             throw GrpcClientError.networkError("Invalid server address: \(address)")
         }
-        
+
         let host = String(components[0])
         let port = components.count > 1 ? Int(components[1]) ?? 50051 : 50051
-        
+
         return (host, port)
     }
-    
+
     /// Map gRPC RPCError to GrpcClientError
-    internal func mapGrpcError(_ error: RPCError, trailers: [String: String]? = nil) -> GrpcClientError {
+    func mapGrpcError(_ error: RPCError, trailers: [String: String]? = nil) -> GrpcClientError {
         let errorMessage = error.message.isEmpty ? error.code.description : error.message
         let trailersInfo = trailers?.isEmpty == false ? " (trailers: \(trailers?.count ?? 0) items)" : ""
-        
+
         switch error.code {
         case .unavailable:
             return .unavailable
@@ -196,17 +194,17 @@ public class GrpcSwiftDynamicClient: GrpcClientProtocol {
             return .networkError("gRPC error: \(error.code) - \(errorMessage)\(trailersInfo)")
         }
     }
-    
+
     /// Parse JSON string to DynamicMessage using descriptor
     func parseJSON(_ jsonString: String, using descriptor: MessageDescriptor) throws -> DynamicMessage {
         guard let jsonData = jsonString.data(using: .utf8) else {
             throw GrpcClientError.invalidJSON("Cannot convert string to data")
         }
-        
+
         let deserializer = JSONDeserializer()
         return try deserializer.deserialize(jsonData, using: descriptor)
     }
-    
+
     /// Convert DynamicMessage to JSON string
     func messageToJSON(_ message: DynamicMessage) throws -> String {
         let serializer = JSONSerializer()
@@ -214,13 +212,14 @@ public class GrpcSwiftDynamicClient: GrpcClientProtocol {
         guard let jsonString = String(data: data, encoding: .utf8) else {
             throw GrpcClientError.invalidResponse
         }
+
         return jsonString
     }
-    
+
     /// Convert TrueRPCMini.GrpcMetadata to GRPCCore.Metadata
     private func convertToGrpcMetadata(_ metadata: TrueRPCMini.GrpcMetadata) -> GRPCCore.Metadata {
         var grpcMetadata = GRPCCore.Metadata()
-        
+
         for (key, value) in metadata.headers {
             // Check if this is binary metadata (keys ending with "-bin")
             if TrueRPCMini.GrpcMetadata.isBinaryKey(key) {
@@ -233,24 +232,25 @@ public class GrpcSwiftDynamicClient: GrpcClientProtocol {
                 grpcMetadata.addString(value, forKey: key)
             }
         }
-        
+
         return grpcMetadata
     }
-    
+
     /// Convert GRPCCore.Metadata to Dictionary
     private func convertMetadataToDict(_ metadata: GRPCCore.Metadata) -> [String: String] {
         var result: [String: String] = [:]
-        
+
         for (key, value) in metadata {
             switch value {
-            case .string(let stringValue):
+            case let .string(stringValue):
                 // Append string values (metadata can have multiple values per key)
                 if let existing = result[key] {
                     result[key] = "\(existing), \(stringValue)"
                 } else {
                     result[key] = stringValue
                 }
-            case .binary(let binaryValue):
+
+            case let .binary(binaryValue):
                 // Convert binary to base64 string
                 let base64 = Data(binaryValue).base64EncodedString()
                 if let existing = result[key] {
@@ -260,7 +260,7 @@ public class GrpcSwiftDynamicClient: GrpcClientProtocol {
                 }
             }
         }
-        
+
         return result
     }
 }

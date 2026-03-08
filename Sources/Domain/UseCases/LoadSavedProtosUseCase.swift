@@ -26,7 +26,7 @@ public class LoadSavedProtosUseCase {
             } catch {
                 logger.error("Proto loading failed", metadata: [
                     "file": url.path,
-                    "error": error.localizedDescription
+                    "error": error.localizedDescription,
                 ])
                 continue
             }

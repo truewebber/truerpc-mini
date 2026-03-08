@@ -15,15 +15,13 @@ public struct TelemetryEvent {
 // MARK: - Event catalog
 
 public extension TelemetryEvent {
-
     static func appLaunched(appVersion: String, osVersion: String) -> TelemetryEvent {
         TelemetryEvent(
             name: "app_launched",
             properties: [
                 "app_version": appVersion,
                 "os_version": osVersion,
-            ]
-        )
+            ])
     }
 
     static func appBackgrounded() -> TelemetryEvent {
@@ -52,8 +50,7 @@ public extension TelemetryEvent {
             properties: [
                 "service_name": serviceName,
                 "method_name": methodName,
-            ]
-        )
+            ])
     }
 
     static func requestSucceeded(serviceName: String, methodName: String, durationMs: Int) -> TelemetryEvent {
@@ -63,8 +60,7 @@ public extension TelemetryEvent {
                 "service_name": serviceName,
                 "method_name": methodName,
                 "duration_ms": String(durationMs),
-            ]
-        )
+            ])
     }
 
     static func requestFailed(serviceName: String, methodName: String, errorCode: String) -> TelemetryEvent {
@@ -74,8 +70,7 @@ public extension TelemetryEvent {
                 "service_name": serviceName,
                 "method_name": methodName,
                 "error_code": errorCode,
-            ]
-        )
+            ])
     }
 
     static func tabSwitched(tabName: String) -> TelemetryEvent {
@@ -89,6 +84,4 @@ public extension TelemetryEvent {
     static func requestFormOpened(hasProto: Bool) -> TelemetryEvent {
         TelemetryEvent(name: "request_form_opened", properties: ["has_proto": hasProto ? "true" : "false"])
     }
-
-
 }

@@ -23,12 +23,13 @@ public struct ImportPathsSettingsView: View {
         .fileImporter(
             isPresented: $isFolderPickerPresented,
             allowedContentTypes: [.folder],
-            allowsMultipleSelection: false
-        ) { result in
+            allowsMultipleSelection: false)
+        { result in
             handleFolderImport(result: result)
         }
         .onChange(of: viewModel.dismissRequested) { _, shouldDismiss in
             guard shouldDismiss else { return }
+
             dismiss()
             viewModel.dismissRequested = false
         }
@@ -108,9 +109,11 @@ public struct ImportPathsSettingsView: View {
 
     private func handleFolderImport(result: Result<[URL], Error>) {
         switch result {
-        case .success(let urls):
+        case let .success(urls):
             guard let url = urls.first else { return }
+
             viewModel.addPath(url: url)
+
         case .failure:
             break
         }
@@ -118,23 +121,27 @@ public struct ImportPathsSettingsView: View {
 }
 
 #if DEBUG
-struct ImportPathsSettingsView_Previews: PreviewProvider {
-    static var previews: some View {
-        ImportPathsSettingsView(
-            viewModel: ImportPathsViewModel(importPathsRepository: PreviewImportPathsRepository()),
-            settingsViewModel: SettingsViewModel(telemetry: PreviewNullTelemetry())
-        )
-        .frame(width: 450, height: 400)
+    struct ImportPathsSettingsView_Previews: PreviewProvider {
+        static var previews: some View {
+            ImportPathsSettingsView(
+                viewModel: ImportPathsViewModel(importPathsRepository: PreviewImportPathsRepository()),
+                settingsViewModel: SettingsViewModel(telemetry: PreviewNullTelemetry()))
+                .frame(width: 450, height: 400)
+        }
     }
-}
 
-private final class PreviewNullTelemetry: TelemetryServiceProtocol {
-    func track(_ event: TelemetryEvent) async {}
-}
+    private final class PreviewNullTelemetry: TelemetryServiceProtocol {
+        func track(_: TelemetryEvent) {}
+    }
 
-private class PreviewImportPathsRepository: ImportPathsRepositoryProtocol {
-    var paths: [String] = ["/tmp/proto", "/Users/test/protos"]
-    func getImportPaths() -> [String] { paths }
-    func saveImportPaths(_ newPaths: [String]) { paths = newPaths }
-}
+    private class PreviewImportPathsRepository: ImportPathsRepositoryProtocol {
+        var paths: [String] = ["/tmp/proto", "/Users/test/protos"]
+        func getImportPaths() -> [String] {
+            paths
+        }
+
+        func saveImportPaths(_ newPaths: [String]) {
+            paths = newPaths
+        }
+    }
 #endif

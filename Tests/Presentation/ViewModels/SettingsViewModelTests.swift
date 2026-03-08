@@ -3,7 +3,6 @@ import XCTest
 
 @MainActor
 final class SettingsViewModelTests: XCTestCase {
-
     private var sut: SettingsViewModel!
     private var mockTelemetry: MockTelemetryService!
 
@@ -41,7 +40,7 @@ final class SettingsViewModelTests: XCTestCase {
     // MARK: - Helpers
 
     private func waitForEvent(named name: String) async {
-        for _ in 0..<1000 {
+        for _ in 0 ..< 1000 {
             if mockTelemetry.trackedEvents.contains(where: { $0.name == name }) { return }
             await Task.yield()
         }

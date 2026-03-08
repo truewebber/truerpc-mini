@@ -2,7 +2,6 @@ import XCTest
 @testable import TrueRPCMini
 
 final class AppLoggerTests: XCTestCase {
-
     // MARK: - MockAppLogger spy captures all log levels
 
     func test_mockAppLogger_debug_capturesMessageAndMetadata() {

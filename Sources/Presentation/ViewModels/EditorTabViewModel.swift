@@ -1,12 +1,12 @@
+import AppKit
 import Foundation
 import SwiftUI
-import AppKit
 
 /// ViewModel for managing request editor tab state
 @MainActor
 public final class EditorTabViewModel: ObservableObject {
     // MARK: - Published Properties
-    
+
     @Published public var requestJson: String = ""
     @Published public var url: String = ""
     @Published public var metadataJson: String = "{}"
@@ -15,13 +15,13 @@ public final class EditorTabViewModel: ObservableObject {
     @Published public var response: GrpcResponse?
     @Published public var error: String?
     @Published public var isExecuting: Bool = false
-    
+
     // MARK: - Properties
-    
+
     public let editorTab: EditorTab
-    
+
     // MARK: - Dependencies
-    
+
     private let generateMockDataUseCase: GenerateMockDataUseCase
     private let executeRequestUseCase: ExecuteUnaryRequestUseCaseProtocol
     public let exportResponseUseCase: ExportResponseUseCase
@@ -34,83 +34,81 @@ public final class EditorTabViewModel: ObservableObject {
         generateMockDataUseCase: GenerateMockDataUseCase,
         executeRequestUseCase: ExecuteUnaryRequestUseCaseProtocol,
         exportResponseUseCase: ExportResponseUseCase,
-        logger: AppLogger
-    ) {
+        logger: AppLogger)
+    {
         self.editorTab = editorTab
         self.generateMockDataUseCase = generateMockDataUseCase
         self.executeRequestUseCase = executeRequestUseCase
         self.exportResponseUseCase = exportResponseUseCase
         self.logger = logger
     }
-    
+
     // MARK: - Public Methods
-    
+
     /// Loads mock data for the method's input type
     public func loadMockData() async {
         isLoading = true
-        
+
         do {
             let mockJson = try await generateMockDataUseCase.execute(method: editorTab.method)
             requestJson = mockJson
         } catch {
             logger.warning("Mock data generation failed", metadata: [
                 "method": editorTab.method.name,
-                "error": error.localizedDescription
+                "error": error.localizedDescription,
             ])
         }
-        
+
         isLoading = false
     }
-    
+
     /// Updates the request JSON
     public func updateJson(_ newJson: String) {
         requestJson = newJson
     }
-    
+
     /// Updates the server URL
     public func updateUrl(_ newUrl: String) {
         url = newUrl
     }
-    
+
     /// Updates the metadata JSON
     public func updateMetadata(_ newMetadata: String) {
         metadataJson = newMetadata
     }
-    
+
     /// Toggles metadata visibility
     public func toggleMetadataVisibility() {
         isMetadataVisible.toggle()
     }
-    
+
     /// Executes the gRPC request
     public func executeRequest() async {
         // Clear previous state
         response = nil
         error = nil
         isExecuting = true
-        
+
         do {
             // Parse metadata if not empty
             var metadata: GrpcMetadata? = nil
             let trimmedMetadata = metadataJson.trimmingCharacters(in: .whitespacesAndNewlines)
-            if trimmedMetadata != "{}" && !trimmedMetadata.isEmpty {
+            if trimmedMetadata != "{}", !trimmedMetadata.isEmpty {
                 metadata = try GrpcMetadata.from(json: metadataJson)
             }
-            
+
             // Create request draft
             let requestDraft = RequestDraft(
                 jsonBody: requestJson,
                 url: url,
                 method: editorTab.method,
-                metadata: metadata
-            )
-            
+                metadata: metadata)
+
             // Execute request
             let grpcResponse = try await executeRequestUseCase.execute(
                 request: requestDraft,
-                method: editorTab.method
-            )
-            
+                method: editorTab.method)
+
             // Update state with response
             response = grpcResponse
         } catch let metadataError as GrpcMetadataError {
@@ -119,7 +117,7 @@ public final class EditorTabViewModel: ObservableObject {
         } catch let grpcError as GrpcClientError {
             // Handle gRPC-specific errors
             // Extract response if error contains it (for metadata visibility)
-            if case .grpcError(_, let errorResponse) = grpcError {
+            if case let .grpcError(_, errorResponse) = grpcError {
                 response = errorResponse
             }
             error = formatError(grpcError)
@@ -138,61 +136,60 @@ public final class EditorTabViewModel: ObservableObject {
             ])
             error = "Request failed: \(otherError.localizedDescription)"
         }
-        
+
         isExecuting = false
     }
-    
+
     // MARK: - Private Methods
-    
+
     /// Copy response to clipboard
     public func copyResponse() {
-        guard let response = response else { return }
-        
+        guard let response else { return }
+
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
         pasteboard.setString(response.jsonBody, forType: .string)
     }
-    
+
     /// Export response to file
     public func exportResponse(to url: URL) async throws {
-        guard let response = response else { return }
-        
+        guard let response else { return }
+
         try await exportResponseUseCase.execute(
             response: response,
             destination: url,
-            includeMetadata: false
-        )
+            includeMetadata: false)
     }
-    
+
     /// Format gRPC error for display
     private func formatError(_ error: GrpcClientError) -> String {
         switch error {
-        case .invalidJSON(let message):
-            return "Invalid JSON: \(message)"
-        case .networkError(let message):
-            return "Network error: \(message)"
+        case let .invalidJSON(message):
+            "Invalid JSON: \(message)"
+        case let .networkError(message):
+            "Network error: \(message)"
         case .timeout:
-            return "Request timeout"
+            "Request timeout"
         case .unavailable:
-            return "Service unavailable"
+            "Service unavailable"
         case .invalidResponse:
-            return "Invalid response from server"
-        case .grpcError(let message, _):
-            return "gRPC error: \(message)"
-        case .unknown(let message):
-            return "Error: \(message)"
+            "Invalid response from server"
+        case let .grpcError(message, _):
+            "gRPC error: \(message)"
+        case let .unknown(message):
+            "Error: \(message)"
         }
     }
-    
+
     /// Format metadata error for display
     private func formatMetadataError(_ error: GrpcMetadataError) -> String {
         switch error {
         case .invalidJSON:
-            return "Invalid metadata JSON format"
+            "Invalid metadata JSON format"
         case .notAnObject:
-            return "Metadata must be a JSON object with key-value pairs"
+            "Metadata must be a JSON object with key-value pairs"
         case .serializationFailed:
-            return "Failed to serialize metadata"
+            "Failed to serialize metadata"
         }
     }
 }

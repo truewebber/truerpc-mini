@@ -9,15 +9,15 @@ public final class UserDefaultsProtoPathsRepository: ProtoPathsPersistenceProtoc
     public init(
         userDefaults: UserDefaults = .standard,
         key: String = "com.truewebber.TrueRPCMini.protoPaths",
-        logger: AppLogger
-    ) {
+        logger: AppLogger)
+    {
         self.userDefaults = userDefaults
         self.key = key
         self.logger = logger
     }
 
     public func saveProtoPaths(_ paths: [URL]) {
-        let pathStrings = paths.map { $0.path }
+        let pathStrings = paths.map(\.path)
         userDefaults.set(pathStrings, forKey: key)
         userDefaults.synchronize()
         logger.debug("Proto paths saved", metadata: ["count": "\(pathStrings.count)"])

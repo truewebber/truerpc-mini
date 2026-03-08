@@ -3,20 +3,20 @@ import SwiftUI
 @main
 struct TrueRPCMiniApp: App {
     // MARK: - Properties
-    
+
     /// Dependency Injection container
     private let di: AppDI
-    
+
     /// Sidebar ViewModel (created once and reused)
     @StateObject private var sidebarViewModel: SidebarViewModel
-    
+
     /// App coordinator ViewModel
     @StateObject private var appViewModel: AppViewModel
 
     @Environment(\.scenePhase) private var scenePhase
-    
+
     // MARK: - Initialization
-    
+
     init() {
         UserDefaults.runAnalyticsMigration()
 
@@ -24,13 +24,13 @@ struct TrueRPCMiniApp: App {
 
         // === LOGGING ===
         #if DEBUG
-        let logger: any AppLogger = OSLogger(category: "app")
+            let logger: any AppLogger = OSLogger(category: "app")
         #else
-        SentryBootstrapper.start(dsn: config.sentryDsn)
-        let logger: any AppLogger = MultiplexLogger([
-            OSLogger(category: "app"),
-            SentryLogger(minLevel: .warning)
-        ])
+            SentryBootstrapper.start(dsn: config.sentryDsn)
+            let logger: any AppLogger = MultiplexLogger([
+                OSLogger(category: "app"),
+                SentryLogger(minLevel: .warning),
+            ])
         #endif
 
         let di = AppDI()
@@ -42,7 +42,7 @@ struct TrueRPCMiniApp: App {
         di.register(ProtoRepositoryProtocol.self) {
             FileSystemProtoRepository(logger: logger)
         }
-        
+
         di.register(ImportPathsRepositoryProtocol.self) {
             UserDefaultsImportPathsRepository()
         }
@@ -54,75 +54,68 @@ struct TrueRPCMiniApp: App {
         di.register(SettingsViewModel.self) {
             SettingsViewModel(telemetry: di.resolve(TelemetryServiceProtocol.self)!)
         }
-        
+
         di.register(ProtoPathsPersistenceProtocol.self) {
             UserDefaultsProtoPathsRepository(logger: logger)
         }
-        
+
         di.register(MockDataGeneratorProtocol.self) {
             MockDataGenerator()
         }
-        
+
         di.register(GrpcClientProtocol.self) {
             GrpcSwiftDynamicClient(
                 protoRepository: di.resolve(ProtoRepositoryProtocol.self)!,
-                logger: logger
-            )
+                logger: logger)
         }
-        
+
         di.register(FileManagerProtocol.self) {
             SystemFileManager()
         }
 
-        
         // === TELEMETRY ===
         di.register(TelemetryServiceProtocol.self) {
-        #if DEBUG
-            OSLogTelemetryService()
-        #else
-            AmplitudeTelemetryService(
-                apiKey: config.amplitudeKey,
-                isEnabled: { UserDefaults.standard.analyticsIsEnabled },
-                responseHandler: LoggingTrackerResponseHandler(logger: logger)
-            )
-        #endif
+            #if DEBUG
+                OSLogTelemetryService()
+            #else
+                AmplitudeTelemetryService(
+                    apiKey: config.amplitudeKey,
+                    isEnabled: { UserDefaults.standard.analyticsIsEnabled },
+                    responseHandler: LoggingTrackerResponseHandler(logger: logger))
+            #endif
         }
-        
+
         // Register Domain Layer dependencies
         di.register(ImportProtoFileUseCaseProtocol.self) {
             ImportProtoFileUseCase(repository: di.resolve(ProtoRepositoryProtocol.self)!)
         }
-        
+
         di.register(LoadSavedProtosUseCase.self) {
             LoadSavedProtosUseCase(
                 importProtoFileUseCase: di.resolve(ImportProtoFileUseCaseProtocol.self)!,
-                logger: logger
-            )
+                logger: logger)
         }
-        
+
         di.register(CreateEditorTabUseCase.self) {
             CreateEditorTabUseCase()
         }
-        
+
         di.register(GenerateMockDataUseCase.self) {
             GenerateMockDataUseCase(
-                mockDataGenerator: di.resolve(MockDataGeneratorProtocol.self)!
-            )
+                mockDataGenerator: di.resolve(MockDataGeneratorProtocol.self)!)
         }
-        
+
         di.register(ExecuteUnaryRequestUseCaseProtocol.self) {
             ExecuteUnaryRequestUseCase(
                 grpcClient: di.resolve(GrpcClientProtocol.self)!,
-                telemetry: di.resolve(TelemetryServiceProtocol.self)!
-            )
+                telemetry: di.resolve(TelemetryServiceProtocol.self)!)
         }
-        
+
         di.register(ExportResponseUseCase.self) {
             ExportResponseUseCase(
-                fileManager: di.resolve(FileManagerProtocol.self)!
-            )
+                fileManager: di.resolve(FileManagerProtocol.self)!)
         }
-        
+
         // Create SidebarViewModel once
         let sidebarVM = SidebarViewModel(
             importProtoFileUseCase: di.resolve(ImportProtoFileUseCaseProtocol.self)!,
@@ -130,8 +123,7 @@ struct TrueRPCMiniApp: App {
             protoPathsPersistence: di.resolve(ProtoPathsPersistenceProtocol.self)!,
             loadSavedProtosUseCase: di.resolve(LoadSavedProtosUseCase.self)!,
             logger: logger,
-            telemetry: di.resolve(TelemetryServiceProtocol.self)!
-        )
+            telemetry: di.resolve(TelemetryServiceProtocol.self)!)
 
         // Create AppViewModel
         let appVM = AppViewModel(
@@ -140,17 +132,16 @@ struct TrueRPCMiniApp: App {
             executeRequestUseCase: di.resolve(ExecuteUnaryRequestUseCaseProtocol.self)!,
             exportResponseUseCase: di.resolve(ExportResponseUseCase.self)!,
             telemetry: di.resolve(TelemetryServiceProtocol.self)!,
-            logger: logger
-        )
+            logger: logger)
         appVM.onLaunched()
-        
+
         // Use _StateObject to initialize @StateObject properties
         _sidebarViewModel = StateObject(wrappedValue: sidebarVM)
         _appViewModel = StateObject(wrappedValue: appVM)
     }
-    
+
     // MARK: - Scene
-    
+
     var body: some Scene {
         WindowGroup {
             NavigationSplitView {
@@ -161,13 +152,12 @@ struct TrueRPCMiniApp: App {
                     },
                     onSettingsOpened: {
                         appViewModel.onSettingsOpened()
+                    })
+                    .navigationSplitViewColumnWidth(min: 260, ideal: 320, max: 420)
+                    .task {
+                        // Load saved proto files on app startup
+                        await sidebarViewModel.loadSavedProtos()
                     }
-                )
-                .navigationSplitViewColumnWidth(min: 260, ideal: 320, max: 420)
-                .task {
-                    // Load saved proto files on app startup
-                    await sidebarViewModel.loadSavedProtos()
-                }
             } detail: {
                 if let editorTab = appViewModel.selectedEditorTab {
                     RequestEditorView(viewModel: editorTab)
@@ -182,9 +172,9 @@ struct TrueRPCMiniApp: App {
             appViewModel.onScenePhaseChanged(to: newPhase)
         }
     }
-    
+
     // MARK: - Subviews
-    
+
     private var placeholderView: some View {
         VStack(spacing: 16) {
             Image(systemName: "doc.text")

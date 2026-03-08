@@ -2,7 +2,6 @@ import XCTest
 @testable import TrueRPCMini
 
 final class OSLogTelemetryServiceTests: XCTestCase {
-
     func test_track_logsMessageContainingEventName() async {
         var capturedMessage: String?
         let sut = OSLogTelemetryService(testSink: { capturedMessage = $0 })

@@ -8,32 +8,32 @@ struct ResponseView: View {
     let isExecuting: Bool
     let onCopy: () -> Void
     let onExport: () -> Void
-    
+
     @State private var showHeaders: Bool = false
     @State private var showTrailers: Bool = false
-    
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             // Header
             headerView
-            
+
             Divider()
-            
+
             // Content
             contentView
         }
     }
-    
+
     // MARK: - Subviews
-    
+
     private var headerView: some View {
         HStack {
             Text("Response")
                 .font(.subheadline)
                 .foregroundColor(.secondary)
-            
+
             Spacer()
-            
+
             if isExecuting {
                 ProgressView()
                     .controlSize(.small)
@@ -41,7 +41,7 @@ struct ResponseView: View {
                 Text("Executing...")
                     .font(.caption)
                     .foregroundColor(.secondary)
-            } else if let response = response {
+            } else if let response {
                 // Action buttons
                 HStack(spacing: 8) {
                     // Copy button
@@ -54,7 +54,7 @@ struct ResponseView: View {
                         }
                     }
                     .buttonStyle(.borderless)
-                    
+
                     // Export button
                     Button(action: onExport) {
                         HStack(spacing: 4) {
@@ -66,7 +66,7 @@ struct ResponseView: View {
                     }
                     .buttonStyle(.borderless)
                 }
-                
+
                 // Response time badge
                 HStack(spacing: 4) {
                     Image(systemName: "clock")
@@ -79,7 +79,7 @@ struct ResponseView: View {
                 .padding(.vertical, 4)
                 .background(Color.green.opacity(0.1))
                 .cornerRadius(4)
-                
+
                 // Status badge
                 HStack(spacing: 4) {
                     Image(systemName: statusIcon(response.statusCode))
@@ -110,26 +110,26 @@ struct ResponseView: View {
         .padding()
         .background(Color(nsColor: .controlBackgroundColor))
     }
-    
+
     @ViewBuilder
     private var contentView: some View {
         if isExecuting {
             executingStateView
-        } else if let response = response {
+        } else if let response {
             // Show response even if there was an error (for metadata visibility)
-            if let error = error {
+            if let error {
                 errorViewWithMetadata(error, response: response)
             } else {
                 responseContentView(response)
             }
-        } else if let error = error {
+        } else if let error {
             // Pure error without response
             errorView(error)
         } else {
             emptyStateView
         }
     }
-    
+
     private var executingStateView: some View {
         VStack(spacing: 16) {
             ProgressView()
@@ -140,7 +140,7 @@ struct ResponseView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(nsColor: .textBackgroundColor))
     }
-    
+
     private var emptyStateView: some View {
         VStack(spacing: 16) {
             Image(systemName: "arrow.down.circle")
@@ -156,7 +156,7 @@ struct ResponseView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(nsColor: .textBackgroundColor))
     }
-    
+
     private func errorView(_ errorMessage: String) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
@@ -167,7 +167,7 @@ struct ResponseView: View {
                     .font(.headline)
                     .foregroundColor(.red)
             }
-            
+
             Text(errorMessage)
                 .font(.body)
                 .foregroundColor(.primary)
@@ -176,14 +176,14 @@ struct ResponseView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(Color.red.opacity(0.05))
                 .cornerRadius(8)
-            
+
             Spacer()
         }
         .padding()
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(nsColor: .textBackgroundColor))
     }
-    
+
     private func errorViewWithMetadata(_ errorMessage: String, response: GrpcResponse) -> some View {
         ScrollView {
             VStack(spacing: 0) {
@@ -197,7 +197,7 @@ struct ResponseView: View {
                             .font(.headline)
                             .foregroundColor(.red)
                     }
-                    
+
                     Text(errorMessage)
                         .font(.body)
                         .foregroundColor(.primary)
@@ -208,13 +208,13 @@ struct ResponseView: View {
                         .cornerRadius(8)
                 }
                 .padding()
-                
+
                 // Response body (if present)
-                if !response.jsonBody.isEmpty && response.jsonBody != "{}" {
+                if !response.jsonBody.isEmpty, response.jsonBody != "{}" {
                     Divider()
                     responseBodySection(response)
                 }
-                
+
                 // Headers section (if present)
                 if let headers = response.headers, !headers.isEmpty {
                     Divider()
@@ -222,10 +222,9 @@ struct ResponseView: View {
                         title: "Response Headers",
                         icon: "arrow.down.doc",
                         metadata: headers,
-                        isExpanded: $showHeaders
-                    )
+                        isExpanded: $showHeaders)
                 }
-                
+
                 // Trailers section (if present) - often contains error details
                 if let trailers = response.trailers, !trailers.isEmpty {
                     Divider()
@@ -233,10 +232,9 @@ struct ResponseView: View {
                         title: "Response Trailers",
                         icon: "arrow.down.to.line",
                         metadata: trailers,
-                        isExpanded: $showTrailers
-                    )
+                        isExpanded: $showTrailers)
                 }
-                
+
                 // Status details (if present)
                 if let statusDetails = response.statusDetails {
                     Divider()
@@ -246,7 +244,7 @@ struct ResponseView: View {
                             .foregroundColor(.secondary)
                             .padding(.horizontal)
                             .padding(.top)
-                        
+
                         Text(statusDetails)
                             .font(.system(.caption, design: .monospaced))
                             .textSelection(.enabled)
@@ -260,13 +258,13 @@ struct ResponseView: View {
         }
         .background(Color(nsColor: .textBackgroundColor))
     }
-    
+
     private func responseContentView(_ response: GrpcResponse) -> some View {
         ScrollView {
             VStack(spacing: 0) {
                 // Response JSON body
                 responseBodySection(response)
-                
+
                 // Headers section (if present)
                 if let headers = response.headers, !headers.isEmpty {
                     Divider()
@@ -274,10 +272,9 @@ struct ResponseView: View {
                         title: "Response Headers",
                         icon: "arrow.down.doc",
                         metadata: headers,
-                        isExpanded: $showHeaders
-                    )
+                        isExpanded: $showHeaders)
                 }
-                
+
                 // Trailers section (if present)
                 if let trailers = response.trailers, !trailers.isEmpty {
                     Divider()
@@ -285,14 +282,13 @@ struct ResponseView: View {
                         title: "Response Trailers",
                         icon: "arrow.down.to.line",
                         metadata: trailers,
-                        isExpanded: $showTrailers
-                    )
+                        isExpanded: $showTrailers)
                 }
             }
         }
         .background(Color(nsColor: .textBackgroundColor))
     }
-    
+
     private func responseBodySection(_ response: GrpcResponse) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Response Body")
@@ -300,7 +296,7 @@ struct ResponseView: View {
                 .foregroundColor(.secondary)
                 .padding(.horizontal)
                 .padding(.top)
-            
+
             Text(response.jsonBody)
                 .font(.system(.body, design: .monospaced))
                 .textSelection(.enabled)
@@ -308,13 +304,14 @@ struct ResponseView: View {
                 .padding()
         }
     }
-    
+
     private func metadataSection(
         title: String,
         icon: String,
         metadata: [String: String],
-        isExpanded: Binding<Bool>
-    ) -> some View {
+        isExpanded: Binding<Bool>)
+        -> some View
+    {
         VStack(alignment: .leading, spacing: 0) {
             // Header button
             Button(action: {
@@ -326,17 +323,17 @@ struct ResponseView: View {
                     Image(systemName: icon)
                         .font(.caption)
                         .foregroundColor(.secondary)
-                    
+
                     Text(title)
                         .font(.subheadline)
                         .foregroundColor(.secondary)
-                    
+
                     Text("(\(metadata.count))")
                         .font(.caption)
                         .foregroundColor(.secondary)
-                    
+
                     Spacer()
-                    
+
                     Image(systemName: isExpanded.wrappedValue ? "chevron.down" : "chevron.right")
                         .font(.caption)
                         .foregroundColor(.secondary)
@@ -346,7 +343,7 @@ struct ResponseView: View {
             }
             .buttonStyle(.plain)
             .background(Color(nsColor: .controlBackgroundColor).opacity(0.5))
-            
+
             // Collapsible content
             if isExpanded.wrappedValue {
                 VStack(alignment: .leading, spacing: 4) {
@@ -356,7 +353,7 @@ struct ResponseView: View {
                                 .font(.system(.caption, design: .monospaced))
                                 .foregroundColor(.secondary)
                                 .frame(minWidth: 120, alignment: .leading)
-                            
+
                             Text(value)
                                 .font(.system(.caption, design: .monospaced))
                                 .textSelection(.enabled)
@@ -364,7 +361,7 @@ struct ResponseView: View {
                         }
                         .padding(.horizontal)
                         .padding(.vertical, 4)
-                        
+
                         if key != metadata.sorted(by: { $0.key < $1.key }).last?.key {
                             Divider()
                                 .padding(.leading)
@@ -376,88 +373,83 @@ struct ResponseView: View {
             }
         }
     }
-    
+
     // MARK: - Helper Methods
-    
+
     private func formatResponseTime(_ time: TimeInterval) -> String {
         if time < 1 {
-            return String(format: "%.0f ms", time * 1000)
+            String(format: "%.0f ms", time * 1000)
         } else {
-            return String(format: "%.2f s", time)
+            String(format: "%.2f s", time)
         }
     }
-    
+
     private func statusColor(_ statusCode: Int) -> Color {
-        return statusCode == 0 ? .green : .red
+        statusCode == 0 ? .green : .red
     }
-    
+
     private func statusIcon(_ statusCode: Int) -> String {
-        return statusCode == 0 ? "checkmark.circle" : "xmark.circle"
+        statusCode == 0 ? "checkmark.circle" : "xmark.circle"
     }
 }
 
 // MARK: - Preview
 
 #if DEBUG
-struct ResponseView_Previews: PreviewProvider {
-    static var previews: some View {
-        Group {
-            // Empty state
-            ResponseView(
-                response: nil,
-                error: nil,
-                isExecuting: false,
-                onCopy: {},
-                onExport: {}
-            )
-            .frame(width: 400, height: 300)
-            .previewDisplayName("Empty State")
-            
-            // Executing state
-            ResponseView(
-                response: nil,
-                error: nil,
-                isExecuting: true,
-                onCopy: {},
-                onExport: {}
-            )
-            .frame(width: 400, height: 300)
-            .previewDisplayName("Executing")
-            
-            // Success response
-            ResponseView(
-                response: GrpcResponse(
-                    jsonBody: """
-                    {
-                      "id": 123,
-                      "name": "Alice Smith",
-                      "email": "alice@example.com",
-                      "createdAt": "2024-01-15T10:30:00Z"
-                    }
-                    """,
-                    responseTime: 0.156,
-                    statusCode: 0,
-                    statusMessage: "OK"
-                ),
-                error: nil,
-                isExecuting: false,
-                onCopy: {},
-                onExport: {}
-            )
-            .frame(width: 400, height: 300)
-            .previewDisplayName("Success Response")
-            
-            // Error state
-            ResponseView(
-                response: nil,
-                error: "Network error: Connection refused. Could not connect to localhost:50051",
-                isExecuting: false,
-                onCopy: {},
-                onExport: {}
-            )
-            .frame(width: 400, height: 300)
-            .previewDisplayName("Error State")
+    struct ResponseView_Previews: PreviewProvider {
+        static var previews: some View {
+            Group {
+                // Empty state
+                ResponseView(
+                    response: nil,
+                    error: nil,
+                    isExecuting: false,
+                    onCopy: {},
+                    onExport: {})
+                    .frame(width: 400, height: 300)
+                    .previewDisplayName("Empty State")
+
+                // Executing state
+                ResponseView(
+                    response: nil,
+                    error: nil,
+                    isExecuting: true,
+                    onCopy: {},
+                    onExport: {})
+                    .frame(width: 400, height: 300)
+                    .previewDisplayName("Executing")
+
+                // Success response
+                ResponseView(
+                    response: GrpcResponse(
+                        jsonBody: """
+                        {
+                          "id": 123,
+                          "name": "Alice Smith",
+                          "email": "alice@example.com",
+                          "createdAt": "2024-01-15T10:30:00Z"
+                        }
+                        """,
+                        responseTime: 0.156,
+                        statusCode: 0,
+                        statusMessage: "OK"),
+                    error: nil,
+                    isExecuting: false,
+                    onCopy: {},
+                    onExport: {})
+                    .frame(width: 400, height: 300)
+                    .previewDisplayName("Success Response")
+
+                // Error state
+                ResponseView(
+                    response: nil,
+                    error: "Network error: Connection refused. Could not connect to localhost:50051",
+                    isExecuting: false,
+                    onCopy: {},
+                    onExport: {})
+                    .frame(width: 400, height: 300)
+                    .previewDisplayName("Error State")
+            }
         }
     }
-}
 #endif

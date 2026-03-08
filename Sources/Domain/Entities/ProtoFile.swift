@@ -7,7 +7,7 @@ public struct ProtoFile: Equatable, Identifiable {
     public let name: String
     public let path: URL
     public let services: [Service]
-    
+
     public init(id: UUID = UUID(), name: String, path: URL, services: [Service]) {
         self.id = id
         self.name = name

@@ -7,19 +7,19 @@ public struct RequestExecution: Equatable {
     public let request: RequestDraft
     public let timestamp: Date
     public let status: ExecutionStatus
-    
+
     public init(
         id: UUID = UUID(),
         request: RequestDraft,
         timestamp: Date = Date(),
-        status: ExecutionStatus
-    ) {
+        status: ExecutionStatus)
+    {
         self.id = id
         self.request = request
         self.timestamp = timestamp
         self.status = status
     }
-    
+
     /// The current status of the request execution
     public enum ExecutionStatus: Equatable {
         case pending

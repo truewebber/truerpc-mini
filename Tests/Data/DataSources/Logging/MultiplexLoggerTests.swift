@@ -2,7 +2,6 @@ import XCTest
 @testable import TrueRPCMini
 
 final class MultiplexLoggerTests: XCTestCase {
-
     // MARK: - Conformance
 
     func test_multiplexLogger_conformsToAppLogger() {
@@ -79,37 +78,41 @@ final class MultiplexLoggerTests: XCTestCase {
         let sut = MultiplexLogger([a, b])
         var evalCount = 0
 
-        sut.debug({ evalCount += 1; return "msg" }(), metadata: [:])
+        sut.debug({ evalCount += 1
+            return "msg" }(), metadata: [:])
 
         XCTAssertEqual(evalCount, 1)
     }
 
     func test_multiplexLogger_info_evaluatesAutoclosureExactlyOnce() {
-        let handlers = (0..<5).map { _ in MockAppLogger() }
+        let handlers = (0 ..< 5).map { _ in MockAppLogger() }
         let sut = MultiplexLogger(handlers)
         var evalCount = 0
 
-        sut.info({ evalCount += 1; return "msg" }(), metadata: [:])
+        sut.info({ evalCount += 1
+            return "msg" }(), metadata: [:])
 
         XCTAssertEqual(evalCount, 1)
     }
 
     func test_multiplexLogger_warning_evaluatesAutoclosureExactlyOnce() {
-        let handlers = (0..<3).map { _ in MockAppLogger() }
+        let handlers = (0 ..< 3).map { _ in MockAppLogger() }
         let sut = MultiplexLogger(handlers)
         var evalCount = 0
 
-        sut.warning({ evalCount += 1; return "msg" }(), metadata: [:])
+        sut.warning({ evalCount += 1
+            return "msg" }(), metadata: [:])
 
         XCTAssertEqual(evalCount, 1)
     }
 
     func test_multiplexLogger_error_evaluatesAutoclosureExactlyOnce() {
-        let handlers = (0..<3).map { _ in MockAppLogger() }
+        let handlers = (0 ..< 3).map { _ in MockAppLogger() }
         let sut = MultiplexLogger(handlers)
         var evalCount = 0
 
-        sut.error({ evalCount += 1; return "msg" }(), metadata: [:])
+        sut.error({ evalCount += 1
+            return "msg" }(), metadata: [:])
 
         XCTAssertEqual(evalCount, 1)
     }

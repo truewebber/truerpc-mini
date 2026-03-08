@@ -5,7 +5,6 @@ import Foundation
 ///
 /// Captures all logged messages per level for assertion in tests.
 public final class MockAppLogger: AppLogger {
-
     public struct LogEntry: Equatable {
         public let message: String
         public let metadata: [String: String]

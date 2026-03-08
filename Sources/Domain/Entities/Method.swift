@@ -8,15 +8,15 @@ public struct Method: Equatable, Identifiable {
     public let inputType: String
     public let outputType: String
     public let isStreaming: Bool
-    
+
     public init(
         id: UUID = UUID(),
         name: String,
         serviceName: String = "",
         inputType: String,
         outputType: String,
-        isStreaming: Bool = false
-    ) {
+        isStreaming: Bool = false)
+    {
         self.id = id
         self.name = name
         self.serviceName = serviceName

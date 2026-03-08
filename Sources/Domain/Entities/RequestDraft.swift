@@ -7,13 +7,13 @@ public struct RequestDraft: Equatable {
     public let url: String
     public let method: Method
     public let metadata: GrpcMetadata?
-    
+
     public init(
         jsonBody: String,
         url: String,
         method: Method,
-        metadata: GrpcMetadata? = nil
-    ) {
+        metadata: GrpcMetadata? = nil)
+    {
         self.jsonBody = jsonBody
         self.url = url
         self.method = method

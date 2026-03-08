@@ -2,7 +2,6 @@ import XCTest
 @testable import TrueRPCMini
 
 final class OSLoggerTests: XCTestCase {
-
     // MARK: - Protocol conformance
 
     func test_osLogger_conformsToAppLogger() {

@@ -1,11 +1,10 @@
-import XCTest
 import SwiftUI
+import XCTest
 @testable import TrueRPCMini
 
 /// Tests for AppViewModel - main app coordinator
 @MainActor
 final class AppViewModelTests: XCTestCase {
-    
     fileprivate var sut: AppViewModel!
     fileprivate var createTabUseCase: CreateEditorTabUseCase!
     fileprivate var generateMockDataUseCase: GenerateMockDataUseCase!
@@ -19,11 +18,9 @@ final class AppViewModelTests: XCTestCase {
 
         createTabUseCase = CreateEditorTabUseCase()
         generateMockDataUseCase = GenerateMockDataUseCase(
-            mockDataGenerator: MockDataGenerator()
-        )
+            mockDataGenerator: MockDataGenerator())
         exportResponseUseCase = ExportResponseUseCase(
-            fileManager: AppMockFileManager()
-        )
+            fileManager: AppMockFileManager())
         executeRequestUseCase = MockExecuteRequestUseCase()
         mockLogger = MockAppLogger()
         mockTelemetry = MockTelemetryService()
@@ -34,8 +31,7 @@ final class AppViewModelTests: XCTestCase {
             executeRequestUseCase: executeRequestUseCase,
             exportResponseUseCase: exportResponseUseCase,
             telemetry: mockTelemetry,
-            logger: mockLogger
-        )
+            logger: mockLogger)
     }
 
     override func tearDown() {
@@ -48,94 +44,88 @@ final class AppViewModelTests: XCTestCase {
         mockLogger = nil
         super.tearDown()
     }
-    
+
     // MARK: - Initial State
-    
+
     func test_init_selectedTabIsNil() {
         // Then
         XCTAssertNil(sut.selectedEditorTab)
     }
-    
+
     // MARK: - Open Method
-    
+
     func test_openMethod_createsAndSetsEditorTabViewModel() {
         // Given
         let method = TrueRPCMini.Method(
             name: "GetUser",
             serviceName: "UserService",
             inputType: ".test.GetUserRequest",
-            outputType: ".test.User"
-        )
+            outputType: ".test.User")
         let service = Service(name: "UserService", methods: [method])
         let protoFile = ProtoFile(
             name: "test.proto",
             path: URL(fileURLWithPath: "/test/test.proto"),
-            services: [service]
-        )
-        
+            services: [service])
+
         // When
         sut.openMethod(method: method, service: service, protoFile: protoFile)
-        
+
         // Then
         XCTAssertNotNil(sut.selectedEditorTab)
         XCTAssertEqual(sut.selectedEditorTab?.editorTab.methodName, "GetUser")
         XCTAssertEqual(sut.selectedEditorTab?.editorTab.serviceName, "UserService")
         XCTAssertEqual(sut.selectedEditorTab?.editorTab.protoFile.name, "test.proto")
     }
-    
+
     func test_openMethod_createsViewModelWithCorrectMethod() {
         // Given
         let method = TrueRPCMini.Method(
             name: "CreateUser",
             serviceName: "UserService",
             inputType: ".test.CreateUserRequest",
-            outputType: ".test.User"
-        )
+            outputType: ".test.User")
         let service = Service(name: "UserService", methods: [method])
         let protoFile = ProtoFile(
             name: "users.proto",
             path: URL(fileURLWithPath: "/protos/users.proto"),
-            services: [service]
-        )
-        
+            services: [service])
+
         // When
         sut.openMethod(method: method, service: service, protoFile: protoFile)
-        
+
         // Then
         XCTAssertNotNil(sut.selectedEditorTab)
         XCTAssertEqual(sut.selectedEditorTab?.editorTab.method.name, "CreateUser")
         XCTAssertEqual(sut.selectedEditorTab?.editorTab.method.inputType, ".test.CreateUserRequest")
         XCTAssertEqual(sut.selectedEditorTab?.editorTab.method.outputType, ".test.User")
     }
-    
-    func test_openMethod_viewModelCanUpdateState() {
+
+    func test_openMethod_viewModelCanUpdateState() throws {
         // Given
         let method = TrueRPCMini.Method(
             name: "DeleteUser",
             serviceName: "UserService",
             inputType: ".test.DeleteUserRequest",
-            outputType: ".test.Empty"
-        )
+            outputType: ".test.Empty")
         let service = Service(name: "UserService", methods: [method])
         let protoFile = ProtoFile(
             name: "users.proto",
             path: URL(fileURLWithPath: "/protos/users.proto"),
-            services: [service]
-        )
-        
+            services: [service])
+
         // When
         sut.openMethod(method: method, service: service, protoFile: protoFile)
-        
+
         // Then - Verify ViewModel is functional
-        let tabVM = sut.selectedEditorTab!
-        
+        let tabVM = try XCTUnwrap(sut.selectedEditorTab)
+
         tabVM.updateJson(#"{"id": 123}"#)
         XCTAssertEqual(tabVM.requestJson, #"{"id": 123}"#)
-        
+
         tabVM.updateUrl("localhost:9090")
         XCTAssertEqual(tabVM.url, "localhost:9090")
     }
-    
+
     // MARK: - Lifecycle: onLaunched
 
     func test_onLaunched_tracksAppLaunchedEvent() async {
@@ -191,7 +181,9 @@ final class AppViewModelTests: XCTestCase {
     func test_onScenePhaseChanged_whenInactive_doesNotTrackEvent() async {
         sut.onScenePhaseChanged(to: .inactive)
         // Yield a few times to confirm no event is enqueued
-        for _ in 0..<5 { await Task.yield() }
+        for _ in 0 ..< 5 {
+            await Task.yield()
+        }
 
         XCTAssertTrue(mockTelemetry.trackedEvents.isEmpty, "Scene phase .inactive must not track any event")
     }
@@ -211,7 +203,7 @@ final class AppViewModelTests: XCTestCase {
 
     /// Polls until the given event name appears in trackedEvents (up to ~1 second).
     private func waitForEvent(named name: String) async {
-        for _ in 0..<1000 {
+        for _ in 0 ..< 1000 {
             if mockTelemetry.trackedEvents.contains(where: { $0.name == name }) { return }
             await Task.yield()
         }
@@ -225,10 +217,12 @@ final class AppViewModelTests: XCTestCase {
             name: "GetUser",
             serviceName: "UserService",
             inputType: ".test.GetUserRequest",
-            outputType: ".test.User"
-        )
+            outputType: ".test.User")
         let service = Service(name: "UserService", methods: [method])
-        let protoFile = ProtoFile(name: "test.proto", path: URL(fileURLWithPath: "/test/test.proto"), services: [service])
+        let protoFile = ProtoFile(
+            name: "test.proto",
+            path: URL(fileURLWithPath: "/test/test.proto"),
+            services: [service])
 
         // When
         sut.openMethod(method: method, service: service, protoFile: protoFile)
@@ -245,10 +239,12 @@ final class AppViewModelTests: XCTestCase {
             name: "GetUser",
             serviceName: "UserService",
             inputType: ".test.GetUserRequest",
-            outputType: ".test.User"
-        )
+            outputType: ".test.User")
         let service = Service(name: "UserService", methods: [method])
-        let protoFile = ProtoFile(name: "test.proto", path: URL(fileURLWithPath: "/test/test.proto"), services: [service])
+        let protoFile = ProtoFile(
+            name: "test.proto",
+            path: URL(fileURLWithPath: "/test/test.proto"),
+            services: [service])
 
         // When
         sut.openMethod(method: method, service: service, protoFile: protoFile)
@@ -290,35 +286,31 @@ final class AppViewModelTests: XCTestCase {
             name: "Method1",
             serviceName: "Service1",
             inputType: ".test.Request1",
-            outputType: ".test.Response1"
-        )
+            outputType: ".test.Response1")
         let service1 = Service(name: "Service1", methods: [method1])
         let protoFile1 = ProtoFile(
             name: "test1.proto",
             path: URL(fileURLWithPath: "/test/test1.proto"),
-            services: [service1]
-        )
-        
+            services: [service1])
+
         let method2 = TrueRPCMini.Method(
             name: "Method2",
             serviceName: "Service2",
             inputType: ".test.Request2",
-            outputType: ".test.Response2"
-        )
+            outputType: ".test.Response2")
         let service2 = Service(name: "Service2", methods: [method2])
         let protoFile2 = ProtoFile(
             name: "test2.proto",
             path: URL(fileURLWithPath: "/test/test2.proto"),
-            services: [service2]
-        )
-        
+            services: [service2])
+
         // When
         sut.openMethod(method: method1, service: service1, protoFile: protoFile1)
         let firstTabId = sut.selectedEditorTab?.editorTab.id
-        
+
         sut.openMethod(method: method2, service: service2, protoFile: protoFile2)
         let secondTabId = sut.selectedEditorTab?.editorTab.id
-        
+
         // Then
         XCTAssertNotEqual(firstTabId, secondTabId)
         XCTAssertEqual(sut.selectedEditorTab?.editorTab.methodName, "Method2")
@@ -328,21 +320,20 @@ final class AppViewModelTests: XCTestCase {
 
 // MARK: - Mock Execute Request Use Case
 
-fileprivate class MockExecuteRequestUseCase: ExecuteUnaryRequestUseCaseProtocol {
-    func execute(request: RequestDraft, method: TrueRPCMini.Method) async throws -> GrpcResponse {
-        return GrpcResponse(
+private class MockExecuteRequestUseCase: ExecuteUnaryRequestUseCaseProtocol {
+    func execute(request _: RequestDraft, method _: TrueRPCMini.Method) throws -> GrpcResponse {
+        GrpcResponse(
             jsonBody: "{}",
             responseTime: 0.1,
             statusCode: 0,
-            statusMessage: "OK"
-        )
+            statusMessage: "OK")
     }
 }
 
 // MARK: - Mock File Manager
 
-fileprivate class AppMockFileManager: FileManagerProtocol {
-    func write(_ data: Data, to url: URL) throws {
+private class AppMockFileManager: FileManagerProtocol {
+    func write(_: Data, to _: URL) throws {
         // No-op for testing
     }
 }

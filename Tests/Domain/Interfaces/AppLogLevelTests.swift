@@ -2,7 +2,6 @@ import XCTest
 @testable import TrueRPCMini
 
 final class AppLogLevelTests: XCTestCase {
-
     // MARK: - Ordering
 
     func test_appLogLevel_debug_isLessThanInfo() {

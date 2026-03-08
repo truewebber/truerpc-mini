@@ -4,7 +4,7 @@ import Foundation
 /// Simple transformation of method metadata into an EditorTab entity
 public final class CreateEditorTabUseCase {
     public init() {}
-    
+
     /// Executes the creation of an editor tab
     /// - Parameters:
     ///   - method: The gRPC method to create a tab for
@@ -12,11 +12,10 @@ public final class CreateEditorTabUseCase {
     ///   - protoFile: The proto file containing the service
     /// - Returns: A new EditorTab configured for the method
     public func execute(method: Method, service: Service, protoFile: ProtoFile) -> EditorTab {
-        return EditorTab(
+        EditorTab(
             methodName: method.name,
             serviceName: service.name,
             protoFile: protoFile,
-            method: method
-        )
+            method: method)
     }
 }

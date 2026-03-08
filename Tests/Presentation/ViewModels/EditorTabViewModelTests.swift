@@ -26,28 +26,24 @@ final class EditorTabViewModelTests: XCTestCase {
             serviceName: "UserService",
             inputType: "GetUserRequest",
             outputType: "GetUserResponse",
-            isStreaming: false
-        )
+            isStreaming: false)
         testService = Service(name: "UserService", methods: [testMethod])
         testProtoFile = ProtoFile(
             name: "users.proto",
             path: URL(fileURLWithPath: "/test/users.proto"),
-            services: [testService]
-        )
+            services: [testService])
         testEditorTab = EditorTab(
             methodName: testMethod.name,
             serviceName: testService.name,
             protoFile: testProtoFile,
-            method: testMethod
-        )
+            method: testMethod)
 
         sut = EditorTabViewModel(
             editorTab: testEditorTab,
             generateMockDataUseCase: mockGenerateMockDataUseCase,
             executeRequestUseCase: mockExecuteRequestUseCase,
             exportResponseUseCase: mockExportResponseUseCase,
-            logger: mockLogger
-        )
+            logger: mockLogger)
     }
 
     override func tearDown() {
@@ -61,9 +57,9 @@ final class EditorTabViewModelTests: XCTestCase {
         testEditorTab = nil
         super.tearDown()
     }
-    
+
     // MARK: - Initial State
-    
+
     func test_init_setsInitialState() {
         // Then
         XCTAssertEqual(sut.editorTab.methodName, "GetUser")
@@ -74,39 +70,39 @@ final class EditorTabViewModelTests: XCTestCase {
         XCTAssertNil(sut.error)
         XCTAssertFalse(sut.isExecuting)
     }
-    
+
     // MARK: - Load Mock Data
-    
+
     func test_loadMockData_success_updatesRequestJson() async {
         // Given
         mockGenerateMockDataUseCase.mockJSON = "{\"userId\": 1}"
-        
+
         // When
         await sut.loadMockData()
-        
+
         // Then
         XCTAssertEqual(sut.requestJson, "{\"userId\": 1}")
         XCTAssertFalse(sut.isLoading)
     }
-    
+
     func test_loadMockData_setsLoadingState() async {
         // Given
         mockGenerateMockDataUseCase.mockJSON = "{}"
-        
+
         // When
         let loadingStateDuringExecution = Task {
             await sut.loadMockData()
         }
-        
+
         // Small delay to check loading state
         try? await Task.sleep(nanoseconds: 1_000_000) // 1ms
-        
+
         await loadingStateDuringExecution.value
-        
+
         // Then
         XCTAssertFalse(sut.isLoading) // Should be false after completion
     }
-    
+
     func test_loadMockData_whenFails_logsWarning() async {
         mockGenerateMockDataUseCase.shouldThrow = true
 
@@ -126,49 +122,48 @@ final class EditorTabViewModelTests: XCTestCase {
     }
 
     // MARK: - Update JSON
-    
+
     func test_updateJson_updatesRequestJson() {
         // Given
         let newJson = "{\"userId\": 123}"
-        
+
         // When
         sut.updateJson(newJson)
-        
+
         // Then
         XCTAssertEqual(sut.requestJson, newJson)
     }
-    
+
     // MARK: - Update URL
-    
+
     func test_updateUrl_updatesUrl() {
         // Given
         let newUrl = "localhost:50051"
-        
+
         // When
         sut.updateUrl(newUrl)
-        
+
         // Then
         XCTAssertEqual(sut.url, newUrl)
     }
-    
+
     // MARK: - Execute Request
-    
+
     func test_executeRequest_success_updatesResponse() async {
         // Given
         sut.updateJson(#"{"userId": 123}"#)
         sut.updateUrl("localhost:50051")
-        
+
         let expectedResponse = GrpcResponse(
             jsonBody: #"{"id": 123, "name": "Alice"}"#,
             responseTime: 0.123,
             statusCode: 0,
-            statusMessage: "OK"
-        )
+            statusMessage: "OK")
         mockExecuteRequestUseCase.stubbedResponse = expectedResponse
-        
+
         // When
         await sut.executeRequest()
-        
+
         // Then
         XCTAssertNotNil(sut.response)
         XCTAssertEqual(sut.response?.jsonBody, #"{"id": 123, "name": "Alice"}"#)
@@ -176,7 +171,7 @@ final class EditorTabViewModelTests: XCTestCase {
         XCTAssertNil(sut.error)
         XCTAssertFalse(sut.isExecuting)
     }
-    
+
     func test_executeRequest_setsExecutingState() async {
         // Given
         sut.updateJson("{}")
@@ -185,61 +180,59 @@ final class EditorTabViewModelTests: XCTestCase {
             jsonBody: "{}",
             responseTime: 0.1,
             statusCode: 0,
-            statusMessage: "OK"
-        )
-        
+            statusMessage: "OK")
+
         // When
         await sut.executeRequest()
-        
+
         // Then
         XCTAssertFalse(sut.isExecuting) // Should be false after completion
     }
-    
-    func test_executeRequest_failure_setsError() async {
+
+    func test_executeRequest_failure_setsError() async throws {
         // Given
         sut.updateJson("{}")
         sut.updateUrl("invalid-host:9999")
         mockExecuteRequestUseCase.shouldThrowError = .networkError("Connection refused")
-        
+
         // When
         await sut.executeRequest()
-        
+
         // Then
         XCTAssertNil(sut.response)
         XCTAssertNotNil(sut.error)
-        XCTAssertTrue(sut.error!.contains("Connection refused"))
+        XCTAssertTrue(try XCTUnwrap(sut.error?.contains("Connection refused")))
         XCTAssertFalse(sut.isExecuting)
     }
-    
+
     func test_executeRequest_clearsPreviousResponseAndError() async {
         // Given
         sut.updateJson("{}")
         sut.updateUrl("localhost:50051")
-        
+
         // Set previous state
         let oldResponse = GrpcResponse(
             jsonBody: "old",
             responseTime: 0.1,
             statusCode: 0,
-            statusMessage: "OK"
-        )
+            statusMessage: "OK")
         mockExecuteRequestUseCase.stubbedResponse = oldResponse
         await sut.executeRequest()
-        
+
         XCTAssertNotNil(sut.response)
-        
+
         // Set new state (error)
         mockExecuteRequestUseCase.stubbedResponse = nil
         mockExecuteRequestUseCase.shouldThrowError = .timeout
-        
+
         // When
         await sut.executeRequest()
-        
+
         // Then
         XCTAssertNil(sut.response) // Previous response cleared
         XCTAssertNotNil(sut.error)
     }
-    
+
     func test_executeRequest_callsUseCaseWithCorrectParameters() async {
         // Given
         sut.updateJson(#"{"test": "data"}"#)
@@ -248,57 +241,55 @@ final class EditorTabViewModelTests: XCTestCase {
             jsonBody: "{}",
             responseTime: 0.1,
             statusCode: 0,
-            statusMessage: "OK"
-        )
-        
+            statusMessage: "OK")
+
         // When
         await sut.executeRequest()
-        
+
         // Then
         XCTAssertTrue(mockExecuteRequestUseCase.executeCalled)
         XCTAssertEqual(mockExecuteRequestUseCase.capturedRequest?.jsonBody, #"{"test": "data"}"#)
         XCTAssertEqual(mockExecuteRequestUseCase.capturedRequest?.url, "api.example.com:443")
         XCTAssertEqual(mockExecuteRequestUseCase.capturedMethod?.name, "GetUser")
     }
-    
+
     // MARK: - Copy Response Tests
-    
+
     func test_copyResponse_whenResponseExists_copiesJsonToClipboard() {
         // Given
         let testResponse = GrpcResponse(
             jsonBody: #"{"user": "John Doe"}"#,
             responseTime: 0.5,
             statusCode: 0,
-            statusMessage: "OK"
-        )
+            statusMessage: "OK")
         sut.response = testResponse
-        
+
         // When
         sut.copyResponse()
-        
+
         // Then
         let pasteboard = NSPasteboard.general
         let copiedString = pasteboard.string(forType: .string)
         XCTAssertEqual(copiedString, #"{"user": "John Doe"}"#)
     }
-    
+
     func test_copyResponse_whenNoResponse_doesNothing() {
         // Given
         sut.response = nil
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString("previous content", forType: .string)
-        
+
         // When
         sut.copyResponse()
-        
+
         // Then
         let pasteboard = NSPasteboard.general
         let content = pasteboard.string(forType: .string)
         XCTAssertEqual(content, "previous content")
     }
-    
+
     // MARK: - Export Response Tests
-    
+
     func test_exportResponse_whenResponseExists_callsExportUseCase() async throws {
         // Given
         let mockExportUseCase = MockExportResponseUseCase()
@@ -306,30 +297,28 @@ final class EditorTabViewModelTests: XCTestCase {
             jsonBody: #"{"result": "success"}"#,
             responseTime: 1.2,
             statusCode: 0,
-            statusMessage: "OK"
-        )
-        
+            statusMessage: "OK")
+
         let sutWithExport = EditorTabViewModel(
             editorTab: testEditorTab,
             generateMockDataUseCase: mockGenerateMockDataUseCase,
             executeRequestUseCase: mockExecuteRequestUseCase,
             exportResponseUseCase: mockExportUseCase,
-            logger: mockLogger
-        )
+            logger: mockLogger)
         sutWithExport.response = testResponse
-        
+
         let testURL = URL(fileURLWithPath: "/tmp/export.json")
-        
+
         // When
         try await sutWithExport.exportResponse(to: testURL)
-        
+
         // Then
         XCTAssertTrue(mockExportUseCase.executeCalled)
         XCTAssertEqual(mockExportUseCase.capturedResponse?.jsonBody, testResponse.jsonBody)
         XCTAssertEqual(mockExportUseCase.capturedDestination, testURL)
         XCTAssertFalse(mockExportUseCase.capturedIncludeMetadata)
     }
-    
+
     func test_exportResponse_whenNoResponse_doesNothing() async throws {
         // Given
         let mockExportUseCase = MockExportResponseUseCase()
@@ -338,15 +327,14 @@ final class EditorTabViewModelTests: XCTestCase {
             generateMockDataUseCase: mockGenerateMockDataUseCase,
             executeRequestUseCase: mockExecuteRequestUseCase,
             exportResponseUseCase: mockExportUseCase,
-            logger: mockLogger
-        )
+            logger: mockLogger)
         sutWithExport.response = nil
-        
+
         let testURL = URL(fileURLWithPath: "/tmp/export.json")
-        
+
         // When
         try await sutWithExport.exportResponse(to: testURL)
-        
+
         // Then
         XCTAssertFalse(mockExportUseCase.executeCalled)
     }
@@ -363,7 +351,7 @@ class MockGenerateMockDataUseCase: GenerateMockDataUseCase {
         super.init(mockDataGenerator: MockDataGenerator())
     }
 
-    override func execute(method: TrueRPCMini.Method) async throws -> String {
+    override func execute(method _: TrueRPCMini.Method) async throws -> String {
         executeCallCount += 1
         if shouldThrow {
             throw NSError(domain: "mock", code: 0, userInfo: [NSLocalizedDescriptionKey: "mock generation failed"])
@@ -382,32 +370,32 @@ class MockExecuteUnaryRequestUseCase: ExecuteUnaryRequestUseCaseProtocol {
     var errorToThrow: GrpcClientError?
     var protoErrorToThrow: ProtoRepositoryError?
     var arbitraryErrorToThrow: Error?
-    
-    func execute(request: RequestDraft, method: TrueRPCMini.Method) async throws -> GrpcResponse {
+
+    func execute(request: RequestDraft, method: TrueRPCMini.Method) throws -> GrpcResponse {
         executeCalled = true
         capturedRequest = request
         capturedMethod = method
-        
+
         if let error = protoErrorToThrow {
             throw error
         }
-        
+
         if let error = arbitraryErrorToThrow {
             throw error
         }
-        
+
         if shouldThrow, let error = errorToThrow {
             throw error
         }
-        
+
         if let error = shouldThrowError {
             throw error
         }
-        
+
         guard let response = stubbedResponse else {
             throw GrpcClientError.unknown("No stubbed response")
         }
-        
+
         return response
     }
 }
@@ -417,16 +405,17 @@ class MockExportResponseUseCase: ExportResponseUseCase {
     var capturedResponse: GrpcResponse?
     var capturedDestination: URL?
     var capturedIncludeMetadata: Bool = false
-    
+
     init() {
         super.init(fileManager: MockFileManager())
     }
-    
+
     override func execute(
         response: GrpcResponse,
         destination: URL,
-        includeMetadata: Bool = false
-    ) async throws {
+        includeMetadata: Bool = false)
+        throws
+    {
         executeCalled = true
         capturedResponse = response
         capturedDestination = destination
@@ -435,127 +424,124 @@ class MockExportResponseUseCase: ExportResponseUseCase {
 }
 
 // MARK: - Metadata Tests
+
 extension EditorTabViewModelTests {
-    
     func test_init_setsDefaultMetadataState() {
         // Then
         XCTAssertEqual(sut.metadataJson, "{}")
         XCTAssertFalse(sut.isMetadataVisible)
     }
-    
+
     func test_updateMetadata_updatesMetadataJson() {
         // Given
         let newMetadata = #"{"authorization": "Bearer token123"}"#
-        
+
         // When
         sut.updateMetadata(newMetadata)
-        
+
         // Then
         XCTAssertEqual(sut.metadataJson, newMetadata)
     }
-    
+
     func test_toggleMetadataVisibility_togglesState() {
         // Given
         XCTAssertFalse(sut.isMetadataVisible)
-        
+
         // When
         sut.toggleMetadataVisibility()
-        
+
         // Then
         XCTAssertTrue(sut.isMetadataVisible)
-        
+
         // When toggled again
         sut.toggleMetadataVisibility()
-        
+
         // Then
         XCTAssertFalse(sut.isMetadataVisible)
     }
-    
+
     func test_executeRequest_withValidMetadata_sendsMetadata() async {
         // Given
         sut.requestJson = "{}"
         sut.url = "localhost:50051"
         sut.metadataJson = #"{"authorization": "Bearer token"}"#
-        
+
         mockExecuteRequestUseCase.stubbedResponse = GrpcResponse(
             jsonBody: "{}",
             responseTime: 0.1,
             statusCode: 0,
-            statusMessage: "OK"
-        )
-        
+            statusMessage: "OK")
+
         // When
         await sut.executeRequest()
-        
+
         // Then
         XCTAssertTrue(mockExecuteRequestUseCase.executeCalled)
         XCTAssertNotNil(mockExecuteRequestUseCase.capturedRequest?.metadata)
         XCTAssertEqual(
             mockExecuteRequestUseCase.capturedRequest?.metadata?.headers["authorization"],
-            "Bearer token"
-        )
+            "Bearer token")
     }
-    
+
     func test_executeRequest_withEmptyMetadata_sendsNoMetadata() async {
         // Given
         sut.requestJson = "{}"
         sut.url = "localhost:50051"
         sut.metadataJson = "{}"
-        
+
         mockExecuteRequestUseCase.stubbedResponse = GrpcResponse(
             jsonBody: "{}",
             responseTime: 0.1,
             statusCode: 0,
-            statusMessage: "OK"
-        )
-        
+            statusMessage: "OK")
+
         // When
         await sut.executeRequest()
-        
+
         // Then
         XCTAssertTrue(mockExecuteRequestUseCase.executeCalled)
         XCTAssertNil(mockExecuteRequestUseCase.capturedRequest?.metadata)
     }
-    
+
     func test_executeRequest_withInvalidMetadataJSON_setsError() async {
         // Given
         sut.requestJson = "{}"
         sut.url = "localhost:50051"
         sut.metadataJson = "{invalid json"
-        
+
         // When
         await sut.executeRequest()
-        
+
         // Then
         XCTAssertNotNil(sut.error, "Error should be set for invalid metadata")
         // Metadata error should prevent request execution
         XCTAssertFalse(mockExecuteRequestUseCase.executeCalled)
     }
-    
+
     func test_executeRequest_withNonObjectMetadata_setsError() async {
         // Given
         sut.requestJson = "{}"
         sut.url = "localhost:50051"
         sut.metadataJson = "[\"array\"]"
-        
+
         // When
         await sut.executeRequest()
-        
+
         // Then
         XCTAssertNotNil(sut.error, "Error should be set for non-object metadata")
         // Metadata error should prevent request execution
         XCTAssertFalse(mockExecuteRequestUseCase.executeCalled)
     }
-    
+
     func test_executeRequest_whenProtoRepositoryError_logsError() async {
         // Given
         sut.requestJson = "{}"
         sut.url = "localhost:50051"
         mockExecuteRequestUseCase.protoErrorToThrow = .messageTypeNotFound(".test.Request")
-        
+
         // When
         await sut.executeRequest()
-        
+
         // Then
         XCTAssertNotNil(sut.error)
         XCTAssertEqual(mockLogger.errorMessages.count, 1)
@@ -564,7 +550,7 @@ extension EditorTabViewModelTests {
         XCTAssertEqual(logEntry.metadata["service"], testMethod.serviceName)
         XCTAssertNotNil(logEntry.metadata["error"])
     }
-    
+
     func test_executeRequest_whenUnknownError_logsError() async {
         // Given
         sut.requestJson = "{}"
@@ -572,12 +558,11 @@ extension EditorTabViewModelTests {
         mockExecuteRequestUseCase.arbitraryErrorToThrow = NSError(
             domain: "test",
             code: 99,
-            userInfo: [NSLocalizedDescriptionKey: "Something unexpected"]
-        )
-        
+            userInfo: [NSLocalizedDescriptionKey: "Something unexpected"])
+
         // When
         await sut.executeRequest()
-        
+
         // Then
         XCTAssertNotNil(sut.error)
         XCTAssertEqual(mockLogger.errorMessages.count, 1)
@@ -586,12 +571,12 @@ extension EditorTabViewModelTests {
         XCTAssertEqual(logEntry.metadata["service"], testMethod.serviceName)
         XCTAssertNotNil(logEntry.metadata["error"])
     }
-    
+
     func test_executeRequest_withGrpcError_setsErrorAndResponse() async {
         // Given
         sut.requestJson = "{}"
         sut.url = "localhost:50051"
-        
+
         let errorResponse = GrpcResponse(
             jsonBody: #"{"error": "not implemented"}"#,
             responseTime: 0.05,
@@ -599,16 +584,15 @@ extension EditorTabViewModelTests {
             statusMessage: "unimplemented",
             trailers: [
                 "grpc-status": "12",
-                "grpc-message": "Method not implemented"
-            ]
-        )
-        
+                "grpc-message": "Method not implemented",
+            ])
+
         mockExecuteRequestUseCase.shouldThrow = true
         mockExecuteRequestUseCase.errorToThrow = .grpcError("unimplemented", response: errorResponse)
-        
+
         // When
         await sut.executeRequest()
-        
+
         // Then - both error and response should be set
         XCTAssertNotNil(sut.error, "Error message should be set")
         XCTAssertNotNil(sut.response, "Response with metadata should be set for debugging")
@@ -616,4 +600,3 @@ extension EditorTabViewModelTests {
         XCTAssertEqual(sut.response?.statusCode, 12)
     }
 }
-

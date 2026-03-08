@@ -8,7 +8,7 @@ struct ContentView: View {
                 Text("Methods")
             }
             .listStyle(SidebarListStyle())
-            
+
             Text("Select a method to start")
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }

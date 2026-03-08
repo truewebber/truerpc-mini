@@ -5,12 +5,12 @@ import SwiftUI
 @MainActor
 public final class SidebarViewModel: ObservableObject {
     // MARK: - Published Properties
-    
+
     @Published public var protoFiles: [ProtoFile] = []
     @Published public var error: String?
     @Published public var isLoading: Bool = false
     @Published public private(set) var importPathsCount: Int = 0
-    
+
     // MARK: - Dependencies
 
     private let importProtoFileUseCase: ImportProtoFileUseCaseProtocol
@@ -28,8 +28,8 @@ public final class SidebarViewModel: ObservableObject {
         protoPathsPersistence: ProtoPathsPersistenceProtocol,
         loadSavedProtosUseCase: LoadSavedProtosUseCase,
         logger: AppLogger,
-        telemetry: TelemetryServiceProtocol
-    ) {
+        telemetry: TelemetryServiceProtocol)
+    {
         self.importProtoFileUseCase = importProtoFileUseCase
         self.importPathsRepository = importPathsRepository
         self.protoPathsPersistence = protoPathsPersistence
@@ -42,9 +42,9 @@ public final class SidebarViewModel: ObservableObject {
     public func refreshImportPathsCount() {
         importPathsCount = importPathsRepository.getImportPaths().count
     }
-    
+
     // MARK: - Public Methods
-    
+
     /// Loads saved proto files from persistent storage
     /// Called on app startup to restore previous session
     public func loadSavedProtos() async {
@@ -66,67 +66,67 @@ public final class SidebarViewModel: ObservableObject {
         }
         logger.info("Saved proto files loaded", metadata: [
             "count": "\(loadedProtos.count)",
-            "files": loadedProtos.map { $0.name }.joined(separator: ",")
+            "files": loadedProtos.map(\.name).joined(separator: ","),
         ])
 
         isLoading = false
     }
-    
+
     /// Loads Google well-known types (Empty, Timestamp, etc.)
     /// These are loaded silently and not shown in sidebar
     private func loadWellKnownTypes() async {
         guard let resourcesPath = Bundle.main.resourcePath else {
             return
         }
-        
+
         let wellKnownTypesPath = URL(fileURLWithPath: resourcesPath)
             .appendingPathComponent("Resources")
             .appendingPathComponent("google")
             .appendingPathComponent("protobuf")
-        
+
         // Check if well-known types directory exists
         guard FileManager.default.fileExists(atPath: wellKnownTypesPath.path) else {
             return
         }
-        
+
         // Load essential well-known types
         let wellKnownFiles = ["empty.proto", "timestamp.proto", "duration.proto", "wrappers.proto"]
-        
+
         for filename in wellKnownFiles {
             let fileURL = wellKnownTypesPath.appendingPathComponent(filename)
-            
+
             if FileManager.default.fileExists(atPath: fileURL.path) {
                 do {
                     _ = try await importProtoFileUseCase.execute(url: fileURL, importPaths: [])
                 } catch {
                     logger.warning("Well-known type loading failed", metadata: [
                         "file": filename,
-                        "error": error.localizedDescription
+                        "error": error.localizedDescription,
                     ])
                 }
             }
         }
     }
-    
+
     /// Get import paths including well-known types location
     private func getImportPathsWithWellKnownTypes() -> [String] {
         var paths = importPathsRepository.getImportPaths()
-        
+
         // Add Resources path for well-known types
         if let resourcesPath = Bundle.main.resourcePath {
             paths.append(resourcesPath)
         }
-        
+
         return paths
     }
-    
+
     /// Imports a proto file from the given URL
     /// Uses configured import paths for dependency resolution
     /// Saves the path to persistent storage after successful import
     public func importProtoFile(url: URL) async {
         isLoading = true
         error = nil
-        
+
         do {
             let importPaths = getImportPathsWithWellKnownTypes()
             let protoFile = try await importProtoFileUseCase.execute(url: url, importPaths: importPaths)
@@ -134,7 +134,7 @@ public final class SidebarViewModel: ObservableObject {
             logger.info("Proto file imported", metadata: [
                 "name": protoFile.name,
                 "path": url.path,
-                "total": "\(protoFiles.count)"
+                "total": "\(protoFiles.count)",
             ])
             await telemetry.track(.protoAdded(source: "file"))
 
@@ -142,7 +142,7 @@ public final class SidebarViewModel: ObservableObject {
         } catch {
             logger.error("Proto file import failed", metadata: [
                 "path": url.path,
-                "error": error.localizedDescription
+                "error": error.localizedDescription,
             ])
             await telemetry.track(.protoLoadFailed(source: "file"))
             self.error = error.localizedDescription
@@ -157,18 +157,18 @@ public final class SidebarViewModel: ObservableObject {
         saveProtoPaths()
         await telemetry.track(.protoRemoved())
     }
-    
+
     // MARK: - Private Methods
-    
+
     private func saveProtoPaths() {
-        let paths = protoFiles.map { $0.path }
+        let paths = protoFiles.map(\.path)
         protoPathsPersistence.saveProtoPaths(paths)
     }
 
     /// Logs the picker error and exposes it to the UI.
     public func handlePickerError(_ error: Error) {
         logger.error("File import picker failed", metadata: [
-            "error": error.localizedDescription
+            "error": error.localizedDescription,
         ])
         self.error = error.localizedDescription
     }

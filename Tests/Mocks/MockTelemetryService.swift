@@ -7,7 +7,7 @@ public final class MockTelemetryService: TelemetryServiceProtocol {
 
     public init() {}
 
-    public func track(_ event: TelemetryEvent) async {
+    public func track(_ event: TelemetryEvent) {
         trackedEvents.append(event)
     }
 

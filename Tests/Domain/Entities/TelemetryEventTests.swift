@@ -2,7 +2,6 @@ import XCTest
 @testable import TrueRPCMini
 
 final class TelemetryEventTests: XCTestCase {
-
     // MARK: - Struct shape
 
     func test_init_storesNameAndProperties() {
@@ -261,5 +260,4 @@ final class TelemetryEventTests: XCTestCase {
 
         XCTAssertEqual(event.properties.count, 1)
     }
-
 }

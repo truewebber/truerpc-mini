@@ -1,0 +1,36 @@
+.PHONY: lint format test coverage build
+
+SCHEME      := TrueRPCMini
+DESTINATION := platform=macOS
+BUILD_DIR   := build
+
+lint: ## Check formatting — fails on any violation (no files modified)
+	@echo "→ Linting…"
+	swiftformat --lint --config .swiftformat Sources Tests
+	@echo "Lint passed."
+
+format: ## Auto-format all Swift source files in-place
+	@echo "→ Formatting…"
+	swiftformat --config .swiftformat Sources Tests
+	@echo "Format complete."
+
+test: ## Run all unit tests
+	xcodebuild test \
+		-scheme $(SCHEME) \
+		-destination '$(DESTINATION)'
+
+coverage: ## Run tests with code coverage and print report
+	@rm -rf $(BUILD_DIR)/coverage.xcresult
+	@mkdir -p $(BUILD_DIR)
+	xcodebuild test \
+		-scheme $(SCHEME) \
+		-destination '$(DESTINATION)' \
+		-enableCodeCoverage YES \
+		-resultBundlePath $(BUILD_DIR)/coverage.xcresult
+	@printf '\n%s\n' "────────────────────── Coverage Report ──────────────────────"
+	xcrun xccov view --report $(BUILD_DIR)/coverage.xcresult
+
+build: ## Build the application
+	xcodebuild build \
+		-scheme $(SCHEME) \
+		-destination '$(DESTINATION)'

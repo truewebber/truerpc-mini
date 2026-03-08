@@ -1,10 +1,9 @@
-import XCTest
-import SwiftProtoReflect
 import GRPCCore
+import SwiftProtoReflect
+import XCTest
 @testable import TrueRPCMini
 
 final class GrpcSwiftDynamicClientTests: XCTestCase {
-    
     var sut: GrpcSwiftDynamicClient!
     fileprivate var mockRepository: MockProtoRepository!
     var mockLogger: MockAppLogger!
@@ -38,178 +37,178 @@ final class GrpcSwiftDynamicClientTests: XCTestCase {
         fileDescriptor = nil
         super.tearDown()
     }
-    
+
     // MARK: - JSON Parsing
-    
+
     func test_parseJSON_withValidJSON_createsDynamicMessage() throws {
         // Given
         let jsonString = #"{"name": "Alice", "age": 30}"#
-        
+
         // When
         let result = try sut.parseJSON(jsonString, using: messageDescriptor)
-        
+
         // Then
         XCTAssertEqual(try result.get(forField: "name") as? String, "Alice")
         XCTAssertEqual(try result.get(forField: "age") as? Int32, 30)
     }
-    
+
     func test_parseJSON_withInvalidJSON_throwsError() throws {
         // Given
         let jsonString = "{invalid json"
-        
+
         // When/Then
         XCTAssertThrowsError(try sut.parseJSON(jsonString, using: messageDescriptor))
     }
-    
+
     func test_parseJSON_withEmptyJSON_createsEmptyMessage() throws {
         // Given
         let jsonString = "{}"
         let emptyDescriptor = MessageDescriptor(name: "Empty", parent: fileDescriptor)
-        
+
         // When
         let result = try sut.parseJSON(jsonString, using: emptyDescriptor)
-        
+
         // Then
         XCTAssertNotNil(result)
     }
-    
+
     // MARK: - Message to JSON
-    
+
     func test_messageToJSON_withValidMessage_returnsJSONString() throws {
         // Given
         var message = MessageFactory().createMessage(from: messageDescriptor)
         try message.set("Bob", forField: "name")
         try message.set(Int32(25), forField: "age")
-        
+
         // When
         let jsonString = try sut.messageToJSON(message)
-        
+
         // Then
         XCTAssertTrue(jsonString.contains("Bob"))
         XCTAssertTrue(jsonString.contains("25"))
-        
+
         // Verify it's valid JSON
-        let jsonData = jsonString.data(using: .utf8)!
+        let jsonData = try XCTUnwrap(jsonString.data(using: .utf8))
         let parsed = try JSONSerialization.jsonObject(with: jsonData)
         XCTAssertNotNil(parsed)
     }
-    
+
     func test_messageToJSON_withEmptyMessage_returnsEmptyObject() throws {
         // Given
         let emptyDescriptor = MessageDescriptor(name: "Empty", parent: fileDescriptor)
         let message = MessageFactory().createMessage(from: emptyDescriptor)
-        
+
         // When
         let jsonString = try sut.messageToJSON(message)
-        
+
         // Then
         XCTAssertEqual(jsonString, "{}")
     }
-    
+
     // MARK: - Server Address Parsing
-    
+
     func test_parseServerAddress_withHostAndPort_returnsCorrectValues() throws {
         // Given
         let address = "localhost:50051"
-        
+
         // When
         let (host, port) = try sut.parseServerAddress(address)
-        
+
         // Then
         XCTAssertEqual(host, "localhost")
         XCTAssertEqual(port, 50051)
     }
-    
+
     func test_parseServerAddress_withOnlyHost_usesDefaultPort() throws {
         // Given
         let address = "api.example.com"
-        
+
         // When
         let (host, port) = try sut.parseServerAddress(address)
-        
+
         // Then
         XCTAssertEqual(host, "api.example.com")
         XCTAssertEqual(port, 50051)
     }
-    
+
     func test_parseServerAddress_withHttpProtocol_stripsProtocol() throws {
         // Given
         let address = "http://localhost:8080"
-        
+
         // When
         let (host, port) = try sut.parseServerAddress(address)
-        
+
         // Then
         XCTAssertEqual(host, "localhost")
         XCTAssertEqual(port, 8080)
     }
-    
+
     func test_parseServerAddress_withHttpsProtocol_stripsProtocol() throws {
         // Given
         let address = "https://api.example.com:443"
-        
+
         // When
         let (host, port) = try sut.parseServerAddress(address)
-        
+
         // Then
         XCTAssertEqual(host, "api.example.com")
         XCTAssertEqual(port, 443)
     }
-    
+
     // MARK: - TLS Detection Tests
-    
+
     func test_shouldUseTLS_withPort443_returnsTrue() {
         // Given
         let port = 443
         let url = "example.com:443"
-        
+
         // When
         let result = sut.shouldUseTLS(port: port, url: url)
-        
+
         // Then
         XCTAssertTrue(result, "Port 443 should use TLS")
     }
-    
+
     func test_shouldUseTLS_withPort50051_returnsFalse() {
         // Given
         let port = 50051
         let url = "localhost:50051"
-        
+
         // When
         let result = sut.shouldUseTLS(port: port, url: url)
-        
+
         // Then
         XCTAssertFalse(result, "Port 50051 should use plaintext")
     }
-    
+
     func test_shouldUseTLS_withPort80_returnsFalse() {
         // Given
         let port = 80
         let url = "example.com:80"
-        
+
         // When
         let result = sut.shouldUseTLS(port: port, url: url)
-        
+
         // Then
         XCTAssertFalse(result, "Port 80 should use plaintext")
     }
-    
+
     func test_shouldUseTLS_withPort8080_returnsFalse() {
         // Given
         let port = 8080
         let url = "example.com:8080"
-        
+
         // When
         let result = sut.shouldUseTLS(port: port, url: url)
-        
+
         // Then
         XCTAssertFalse(result, "Custom port should use plaintext unless it's 443")
     }
-    
+
     func test_parseServerAddress_withEmptyString_throwsError() {
         // Given
         let address = ""
-        
+
         // When/Then
         XCTAssertThrowsError(try sut.parseServerAddress(address)) { error in
             guard case GrpcClientError.networkError = error else {
@@ -218,85 +217,83 @@ final class GrpcSwiftDynamicClientTests: XCTestCase {
             }
         }
     }
-    
+
     func test_parseServerAddress_withInvalidPort_usesDefaultPort() throws {
         // Given
         let address = "localhost:invalid"
-        
+
         // When
         let (host, port) = try sut.parseServerAddress(address)
-        
+
         // Then
         XCTAssertEqual(host, "localhost")
         XCTAssertEqual(port, 50051) // Falls back to default
     }
-    
+
     // MARK: - Error Mapping
-    
+
     func test_mapGrpcError_withUnavailable_returnsUnavailable() {
         // Given
         let rpcError = RPCError(code: .unavailable, message: "Service unavailable")
-        
+
         // When
         let result = sut.mapGrpcError(rpcError)
-        
+
         // Then
         XCTAssertEqual(result, .unavailable)
     }
-    
+
     func test_mapGrpcError_withDeadlineExceeded_returnsTimeout() {
         // Given
         let rpcError = RPCError(code: .deadlineExceeded, message: "Deadline exceeded")
-        
+
         // When
         let result = sut.mapGrpcError(rpcError)
-        
+
         // Then
         XCTAssertEqual(result, .timeout)
     }
-    
+
     func test_mapGrpcError_withOtherCode_returnsNetworkError() {
         // Given
         let rpcError = RPCError(code: .unknown, message: "Unknown error")
-        
+
         // When
         let result = sut.mapGrpcError(rpcError)
-        
+
         // Then
-        if case .networkError(let message) = result {
+        if case let .networkError(message) = result {
             XCTAssertTrue(message.contains("Unknown"))
         } else {
             XCTFail("Expected networkError")
         }
     }
-    
+
     // MARK: - Execute Unary (Integration-style tests)
-    
+
     func test_executeUnary_getsMessageDescriptorsFromRepository() async throws {
         // Given
         let method = TrueRPCMini.Method(
             name: "TestMethod",
             serviceName: "TestService",
             inputType: ".test.Request",
-            outputType: ".test.Response"
-        )
+            outputType: ".test.Response")
         let request = RequestDraft(
             jsonBody: #"{"name": "test"}"#,
             url: "localhost:50051",
-            method: method
-        )
-        
+            method: method)
+
         // Create descriptors for input and output
         var inputDescriptor = MessageDescriptor(name: "Request", parent: fileDescriptor)
         inputDescriptor.addField(FieldDescriptor(name: "name", number: 1, type: .string))
-        
+
         var outputDescriptor = MessageDescriptor(name: "Response", parent: fileDescriptor)
         outputDescriptor.addField(FieldDescriptor(name: "result", number: 1, type: .string))
-        
+
         // Setup mock to return different descriptors based on type
         mockRepository.inputDescriptor = inputDescriptor
         mockRepository.outputDescriptor = outputDescriptor
-        
+
         // When - This will fail trying to connect to localhost:50051, but that's ok
         // We're testing that it calls the repository correctly
         do {
@@ -310,23 +307,21 @@ final class GrpcSwiftDynamicClientTests: XCTestCase {
             XCTAssertTrue(mockRepository.capturedTypeNames.contains(".test.Response"))
         }
     }
-    
+
     func test_executeUnary_whenRepositoryThrows_propagatesError() async {
         // Given
         let method = TrueRPCMini.Method(
             name: "TestMethod",
             serviceName: "TestService",
             inputType: ".test.NonExistent",
-            outputType: ".test.Response"
-        )
+            outputType: ".test.Response")
         let request = RequestDraft(
             jsonBody: "{}",
             url: "localhost:50051",
-            method: method
-        )
-        
+            method: method)
+
         mockRepository.shouldThrow = true
-        
+
         // When/Then
         do {
             _ = try await sut.executeUnary(request: request, method: method)
@@ -336,22 +331,20 @@ final class GrpcSwiftDynamicClientTests: XCTestCase {
             XCTAssertTrue(error is ProtoRepositoryError)
         }
     }
-    
+
     func test_executeUnary_whenRepositoryThrows_logsError() async {
         // Given
         let method = TrueRPCMini.Method(
             name: "TestMethod",
             serviceName: "TestService",
             inputType: ".test.NonExistent",
-            outputType: ".test.Response"
-        )
+            outputType: ".test.Response")
         let request = RequestDraft(
             jsonBody: "{}",
             url: "localhost:50051",
-            method: method
-        )
+            method: method)
         mockRepository.shouldThrow = true
-        
+
         // When
         do {
             _ = try await sut.executeUnary(request: request, method: method)
@@ -359,7 +352,7 @@ final class GrpcSwiftDynamicClientTests: XCTestCase {
         } catch {
             // Expected
         }
-        
+
         // Then - error must be logged with context
         XCTAssertEqual(mockLogger.errorMessages.count, 1)
         let logEntry = mockLogger.errorMessages[0]
@@ -369,23 +362,21 @@ final class GrpcSwiftDynamicClientTests: XCTestCase {
         XCTAssertEqual(logEntry.metadata["method"], "TestMethod")
         XCTAssertNotNil(logEntry.metadata["error"])
     }
-    
+
     func test_executeUnary_withInvalidJSON_throwsError() async {
         // Given
         let method = TrueRPCMini.Method(
             name: "TestMethod",
             serviceName: "TestService",
             inputType: ".test.Request",
-            outputType: ".test.Response"
-        )
+            outputType: ".test.Response")
         let request = RequestDraft(
             jsonBody: "{invalid json",
             url: "localhost:50051",
-            method: method
-        )
-        
+            method: method)
+
         mockRepository.stubbedMessageDescriptor = messageDescriptor
-        
+
         // When/Then
         do {
             _ = try await sut.executeUnary(request: request, method: method)
@@ -395,22 +386,20 @@ final class GrpcSwiftDynamicClientTests: XCTestCase {
             XCTAssertNotNil(error)
         }
     }
-    
+
     func test_executeUnary_withInvalidJSON_logsSerializationError() async {
         // Given
         let method = TrueRPCMini.Method(
             name: "TestMethod",
             serviceName: "TestService",
             inputType: ".test.Request",
-            outputType: ".test.Response"
-        )
+            outputType: ".test.Response")
         let request = RequestDraft(
             jsonBody: "{invalid json",
             url: "localhost:50051",
-            method: method
-        )
+            method: method)
         mockRepository.stubbedMessageDescriptor = messageDescriptor
-        
+
         // When
         do {
             _ = try await sut.executeUnary(request: request, method: method)
@@ -418,7 +407,7 @@ final class GrpcSwiftDynamicClientTests: XCTestCase {
         } catch {
             // Expected
         }
-        
+
         // Then - serialization error logged with full metadata
         let serializationErrors = mockLogger.errorMessages.filter { $0.message == "Request serialization failed" }
         XCTAssertEqual(serializationErrors.count, 1)
@@ -430,23 +419,21 @@ final class GrpcSwiftDynamicClientTests: XCTestCase {
         XCTAssertEqual(logEntry.metadata["missing_field"], "none")
         XCTAssertEqual(logEntry.metadata["type_mismatch"], "none")
     }
-    
+
     func test_executeUnary_withInvalidServerAddress_throwsError() async {
         // Given
         let method = TrueRPCMini.Method(
             name: "TestMethod",
             serviceName: "TestService",
             inputType: ".test.Request",
-            outputType: ".test.Response"
-        )
+            outputType: ".test.Response")
         let request = RequestDraft(
             jsonBody: "{}",
             url: "", // Invalid empty address
-            method: method
-        )
-        
+            method: method)
+
         mockRepository.stubbedMessageDescriptor = messageDescriptor
-        
+
         // When/Then
         do {
             _ = try await sut.executeUnary(request: request, method: method)
@@ -465,7 +452,7 @@ final class GrpcSwiftDynamicClientTests: XCTestCase {
 
 // MARK: - Mock Repository
 
-fileprivate class MockProtoRepository: ProtoRepositoryProtocol {
+private class MockProtoRepository: ProtoRepositoryProtocol {
     var stubbedMessageDescriptor: MessageDescriptor?
     var inputDescriptor: MessageDescriptor?
     var outputDescriptor: MessageDescriptor?
@@ -473,28 +460,28 @@ fileprivate class MockProtoRepository: ProtoRepositoryProtocol {
     var capturedTypeName: String?
     var capturedTypeNames: [String] = []
     var shouldThrow = false
-    
-    func loadProto(url: URL) async throws -> ProtoFile {
+
+    func loadProto(url _: URL) throws -> ProtoFile {
         fatalError("Not implemented in mock")
     }
-    
-    func loadProto(url: URL, importPaths: [String]) async throws -> ProtoFile {
+
+    func loadProto(url _: URL, importPaths _: [String]) throws -> ProtoFile {
         fatalError("Not implemented in mock")
     }
-    
+
     func getLoadedProtos() -> [ProtoFile] {
-        return []
+        []
     }
-    
+
     func getMessageDescriptor(forType typeName: String) throws -> MessageDescriptor {
         getMessageDescriptorCalled = true
         capturedTypeName = typeName
         capturedTypeNames.append(typeName)
-        
+
         if shouldThrow {
             throw ProtoRepositoryError.messageTypeNotFound(typeName)
         }
-        
+
         // Return specific descriptor based on type name
         if typeName.contains("Request"), let descriptor = inputDescriptor {
             return descriptor
@@ -502,25 +489,25 @@ fileprivate class MockProtoRepository: ProtoRepositoryProtocol {
         if typeName.contains("Response"), let descriptor = outputDescriptor {
             return descriptor
         }
-        
+
         guard let descriptor = stubbedMessageDescriptor else {
             throw ProtoRepositoryError.messageTypeNotFound(typeName)
         }
-        
+
         return descriptor
     }
 }
 
 // MARK: - Metadata Conversion Tests
+
 extension GrpcSwiftDynamicClientTests {
-    
     func test_convertToGrpcMetadata_withStringHeaders_convertsCorrectly() {
         // Given
         let metadata = TrueRPCMini.GrpcMetadata(headers: [
             "authorization": "Bearer token123",
-            "x-api-key": "secret456"
+            "x-api-key": "secret456",
         ])
-        
+
         let request = RequestDraft(
             jsonBody: "{}",
             url: "localhost:50051",
@@ -528,29 +515,27 @@ extension GrpcSwiftDynamicClientTests {
                 name: "Test",
                 serviceName: "TestService",
                 inputType: "Request",
-                outputType: "Response"
-            ),
-            metadata: metadata
-        )
-        
+                outputType: "Response"),
+            metadata: metadata)
+
         // When - we test via reflection since convertToGrpcMetadata is private
         // Instead test that request with metadata doesn't crash
         // This is implicitly tested in integration
         XCTAssertNotNil(request.metadata)
         XCTAssertEqual(request.metadata?.headers["authorization"], "Bearer token123")
     }
-    
+
     func test_convertToGrpcMetadata_withBinaryHeaders_identifiesCorrectly() {
         // Given
         let metadata = TrueRPCMini.GrpcMetadata(headers: [
             "content-bin": "binarydata",
-            "regular-header": "textdata"
+            "regular-header": "textdata",
         ])
-        
+
         // Then - verify binary key detection
         XCTAssertTrue(TrueRPCMini.GrpcMetadata.isBinaryKey("content-bin"))
         XCTAssertFalse(TrueRPCMini.GrpcMetadata.isBinaryKey("regular-header"))
-        
+
         let request = RequestDraft(
             jsonBody: "{}",
             url: "localhost:50051",
@@ -558,14 +543,12 @@ extension GrpcSwiftDynamicClientTests {
                 name: "Test",
                 serviceName: "TestService",
                 inputType: "Request",
-                outputType: "Response"
-            ),
-            metadata: metadata
-        )
-        
+                outputType: "Response"),
+            metadata: metadata)
+
         XCTAssertNotNil(request.metadata)
     }
-    
+
     func test_requestWithoutMetadata_worksAsExpected() {
         // Given - request without metadata
         let request = RequestDraft(
@@ -575,113 +558,109 @@ extension GrpcSwiftDynamicClientTests {
                 name: "Test",
                 serviceName: "TestService",
                 inputType: "Request",
-                outputType: "Response"
-            )
-        )
-        
+                outputType: "Response"))
+
         // Then
         XCTAssertNil(request.metadata)
     }
 }
 
 // MARK: - Response Metadata Tests
+
 extension GrpcSwiftDynamicClientTests {
-    
     func test_convertMetadataToDict_withStringValues_convertsCorrectly() {
         // Given
         var metadata = GRPCCore.Metadata()
         metadata.addString("Bearer token123", forKey: "authorization")
         metadata.addString("application/json", forKey: "content-type")
-        
+
         // When - test that string metadata is accessible
         let authValues = metadata[stringValues: "authorization"]
         let contentTypeValues = metadata[stringValues: "content-type"]
-        
+
         // Then
         XCTAssertEqual(Array(authValues), ["Bearer token123"])
         XCTAssertEqual(Array(contentTypeValues), ["application/json"])
     }
-    
+
     func test_convertMetadataToDict_withBinaryValues_convertsToBase64() {
         // Given
         var metadata = GRPCCore.Metadata()
         let binaryData: [UInt8] = [72, 101, 108, 108, 111] // "Hello"
         metadata.addBinary(binaryData, forKey: "data-bin")
-        
+
         // When
         let values = metadata[binaryValues: "data-bin"]
-        
+
         // Then - verify binary value is stored
         XCTAssertEqual(Array(values).count, 1)
         XCTAssertEqual(Array(values).first, binaryData)
     }
-    
+
     func test_convertMetadataToDict_withMultipleValuesForSameKey_combinesThem() {
         // Given
         var metadata = GRPCCore.Metadata()
         metadata.addString("value1", forKey: "x-custom")
         metadata.addString("value2", forKey: "x-custom")
-        
+
         // When
         let values = metadata[stringValues: "x-custom"]
-        
+
         // Then - multiple values should be preserved
         XCTAssertEqual(Array(values).count, 2)
         XCTAssertEqual(Array(values), ["value1", "value2"])
     }
-    
+
     func test_convertMetadataToDict_withEmptyMetadata_returnsEmptyDict() {
         // Given
         let metadata = GRPCCore.Metadata()
-        
+
         // Then
         XCTAssertTrue(metadata.isEmpty)
     }
-    
+
     func test_grpcResponse_withHeaders_storesCorrectly() {
         // Given
         let headers = ["authorization": "Bearer token", "content-type": "application/json"]
-        
+
         // When
         let response = GrpcResponse(
             jsonBody: "{}",
             responseTime: 0.1,
             statusCode: 0,
             statusMessage: "OK",
-            headers: headers
-        )
-        
+            headers: headers)
+
         // Then
         XCTAssertEqual(response.headers, headers)
         XCTAssertNil(response.trailers)
         XCTAssertNil(response.statusDetails)
     }
-    
+
     func test_grpcResponse_withTrailers_storesCorrectly() {
         // Given
         let trailers = ["grpc-status": "0", "grpc-message": "Success"]
-        
+
         // When
         let response = GrpcResponse(
             jsonBody: "{}",
             responseTime: 0.1,
             statusCode: 0,
             statusMessage: "OK",
-            trailers: trailers
-        )
-        
+            trailers: trailers)
+
         // Then
         XCTAssertNil(response.headers)
         XCTAssertEqual(response.trailers, trailers)
         XCTAssertNil(response.statusDetails)
     }
-    
+
     func test_grpcResponse_withAllMetadata_storesCorrectly() {
         // Given
         let headers = ["authorization": "Bearer token"]
         let trailers = ["grpc-status": "0"]
         let statusDetails = "Request completed successfully"
-        
+
         // When
         let response = GrpcResponse(
             jsonBody: "{}",
@@ -690,30 +669,25 @@ extension GrpcSwiftDynamicClientTests {
             statusMessage: "OK",
             headers: headers,
             trailers: trailers,
-            statusDetails: statusDetails
-        )
-        
+            statusDetails: statusDetails)
+
         // Then
         XCTAssertEqual(response.headers, headers)
         XCTAssertEqual(response.trailers, trailers)
         XCTAssertEqual(response.statusDetails, statusDetails)
     }
-    
+
     func test_grpcResponse_backwardCompatibility_withoutMetadata() {
         // Given - old style initialization without metadata
         let response = GrpcResponse(
             jsonBody: "{}",
             responseTime: 0.1,
             statusCode: 0,
-            statusMessage: "OK"
-        )
-        
+            statusMessage: "OK")
+
         // Then - metadata fields should be nil
         XCTAssertNil(response.headers)
         XCTAssertNil(response.trailers)
         XCTAssertNil(response.statusDetails)
     }
 }
-
-
-

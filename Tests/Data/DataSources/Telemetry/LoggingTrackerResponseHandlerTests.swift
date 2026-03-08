@@ -2,7 +2,6 @@ import XCTest
 @testable import TrueRPCMini
 
 final class LoggingTrackerResponseHandlerTests: XCTestCase {
-
     // MARK: - 200 OK — silent
 
     func test_handleResponse_whenCode200_doesNotLog() {

@@ -27,8 +27,8 @@ final class AmplitudeTelemetryService: TelemetryServiceProtocol {
         apiKey: String,
         isEnabled: @escaping () -> Bool,
         responseHandler: TrackerResponseHandlerProtocol,
-        tracker: AnalyticsTrackerProtocol? = nil
-    ) {
+        tracker: AnalyticsTrackerProtocol? = nil)
+    {
         self.isEnabled = isEnabled
         if let tracker {
             self.tracker = tracker
@@ -39,16 +39,15 @@ final class AmplitudeTelemetryService: TelemetryServiceProtocol {
                     responseHandler.handleResponse(
                         eventType: event.eventType,
                         code: code,
-                        message: message
-                    )
+                        message: message)
                 },
-                minTimeBetweenSessionsMillis: AmplitudeTelemetryService.sessionTimeoutMs
-            ))
+                minTimeBetweenSessionsMillis: AmplitudeTelemetryService.sessionTimeoutMs))
         }
     }
 
-    func track(_ event: TelemetryEvent) async {
+    func track(_ event: TelemetryEvent) {
         guard isEnabled() else { return }
+
         let sanitized = sanitize(event)
         let properties: [String: Any]? = sanitized.properties.isEmpty
             ? nil

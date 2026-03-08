@@ -3,7 +3,6 @@ import XCTest
 
 @MainActor
 final class SidebarViewModelTests: XCTestCase {
-    
     var sut: SidebarViewModel!
     var mockUseCase: MockImportProtoFileUseCase!
     var mockImportPathsRepository: MockImportPathsRepository!
@@ -26,8 +25,7 @@ final class SidebarViewModelTests: XCTestCase {
             protoPathsPersistence: mockProtoPathsPersistence,
             loadSavedProtosUseCase: mockLoadSavedProtosUseCase,
             logger: mockLogger,
-            telemetry: mockTelemetry
-        )
+            telemetry: mockTelemetry)
     }
 
     override func tearDown() {
@@ -40,9 +38,9 @@ final class SidebarViewModelTests: XCTestCase {
         mockTelemetry = nil
         super.tearDown()
     }
-    
+
     // MARK: - Initial State Tests
-    
+
     func test_init_setsInitialState() {
         // Then
         XCTAssertTrue(sut.protoFiles.isEmpty)
@@ -60,8 +58,7 @@ final class SidebarViewModelTests: XCTestCase {
             protoPathsPersistence: mockProtoPathsPersistence,
             loadSavedProtosUseCase: mockLoadSavedProtosUseCase,
             logger: mockLogger,
-            telemetry: mockTelemetry
-        )
+            telemetry: mockTelemetry)
 
         XCTAssertEqual(sut.importPathsCount, 2)
     }
@@ -78,58 +75,57 @@ final class SidebarViewModelTests: XCTestCase {
 
         XCTAssertEqual(sut.importPathsCount, 3)
     }
-    
+
     // MARK: - Import Success Tests
-    
+
     func test_importProtoFile_whenSuccess_updatesProtoFiles() async {
         // Given
         let testURL = URL(fileURLWithPath: "/test/example.proto")
         let expectedProto = ProtoFile(
             name: "example.proto",
             path: testURL,
-            services: []
-        )
+            services: [])
         mockUseCase.mockResultsByURL[testURL] = .success(expectedProto)
-        
+
         // When
         await sut.importProtoFile(url: testURL)
-        
+
         // Then
         XCTAssertEqual(sut.protoFiles.count, 1)
         XCTAssertEqual(sut.protoFiles.first?.name, "example.proto")
         XCTAssertNil(sut.error)
         XCTAssertFalse(sut.isLoading)
     }
-    
+
     func test_importProtoFile_whenSuccess_clearsError() async {
         // Given
         sut.error = "Previous error"
         let testURL = URL(fileURLWithPath: "/test/example.proto")
         mockUseCase.mockResultsByURL[testURL] = .success(ProtoFile(name: "test", path: testURL, services: []))
-        
+
         // When
         await sut.importProtoFile(url: testURL)
-        
+
         // Then
         XCTAssertNil(sut.error)
     }
-    
+
     // MARK: - Import Error Tests
-    
+
     func test_importProtoFile_whenError_setsErrorMessage() async {
         // Given
         let testURL = URL(fileURLWithPath: "/test/invalid.proto")
         mockUseCase.mockResultsByURL[testURL] = .failure(TestError.importFailed)
-        
+
         // When
         await sut.importProtoFile(url: testURL)
-        
+
         // Then
         XCTAssertNotNil(sut.error)
         XCTAssertTrue(sut.protoFiles.isEmpty)
         XCTAssertFalse(sut.isLoading)
     }
-    
+
     func test_importProtoFile_whenError_logsError() async {
         let testURL = URL(fileURLWithPath: "/test/broken.proto")
         let error = NSError(domain: "test", code: 1, userInfo: [NSLocalizedDescriptionKey: "parse failed"])
@@ -156,28 +152,28 @@ final class SidebarViewModelTests: XCTestCase {
         // Given
         let testURL = URL(fileURLWithPath: "/test/invalid.proto")
         mockUseCase.mockResultsByURL[testURL] = .failure(TestError.importFailed)
-        
+
         // When
         await sut.importProtoFile(url: testURL)
-        
+
         // Then
         XCTAssertEqual(sut.protoFiles.count, 0)
     }
-    
+
     // MARK: - Multiple Imports Tests
-    
+
     func test_importMultipleFiles_addsAllToList() async {
         // Given
         let url1 = URL(fileURLWithPath: "/test/file1.proto")
         let url2 = URL(fileURLWithPath: "/test/file2.proto")
-        
+
         mockUseCase.mockResultsByURL[url1] = .success(ProtoFile(name: "file1", path: url1, services: []))
         mockUseCase.mockResultsByURL[url2] = .success(ProtoFile(name: "file2", path: url2, services: []))
-        
+
         // When
         await sut.importProtoFile(url: url1)
         await sut.importProtoFile(url: url2)
-        
+
         // Then
         XCTAssertEqual(sut.protoFiles.count, 2)
     }
@@ -188,8 +184,7 @@ final class SidebarViewModelTests: XCTestCase {
         let expectedProto = ProtoFile(
             name: "duplicate.proto",
             path: testURL,
-            services: []
-        )
+            services: [])
         mockUseCase.mockResultsByURL[testURL] = .success(expectedProto)
 
         // When
@@ -298,8 +293,7 @@ final class SidebarViewModelTests: XCTestCase {
         let existingProto = ProtoFile(
             name: "saved.proto",
             path: testURL,
-            services: []
-        )
+            services: [])
         sut.protoFiles = [existingProto]
         mockProtoPathsPersistence.savedPaths = [testURL]
         mockLoadSavedProtosUseCase.mockProtos = [existingProto]
@@ -317,11 +311,11 @@ final class SidebarViewModelTests: XCTestCase {
 
 class MockImportPathsRepository: ImportPathsRepositoryProtocol {
     var importPaths: [String] = []
-    
+
     func getImportPaths() -> [String] {
-        return importPaths
+        importPaths
     }
-    
+
     func saveImportPaths(_ paths: [String]) {
         importPaths = paths
     }
@@ -331,13 +325,13 @@ class MockImportPathsRepository: ImportPathsRepositoryProtocol {
 
 class MockProtoPathsPersistence: ProtoPathsPersistenceProtocol {
     var savedPaths: [URL] = []
-    
+
     func saveProtoPaths(_ paths: [URL]) {
         savedPaths = paths
     }
-    
+
     func getProtoPaths() -> [URL] {
-        return savedPaths
+        savedPaths
     }
 }
 
@@ -348,11 +342,11 @@ class MockLoadSavedProtosUseCase: LoadSavedProtosUseCase {
     var executeURLs: [URL]?
     var executeImportPaths: [String]?
     var mockProtos: [ProtoFile] = []
-    
+
     init() {
         super.init(importProtoFileUseCase: MockImportProtoFileUseCase(), logger: MockAppLogger())
     }
-    
+
     override func execute(urls: [URL], importPaths: [String]) async -> [ProtoFile] {
         executeCalled = true
         executeURLs = urls

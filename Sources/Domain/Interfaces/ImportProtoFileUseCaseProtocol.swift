@@ -8,7 +8,7 @@ public protocol ImportProtoFileUseCaseProtocol {
     /// - Returns: Parsed ProtoFile entity
     /// - Throws: Error if file cannot be loaded or parsed
     func execute(url: URL) async throws -> ProtoFile
-    
+
     /// Executes the proto file import operation with import path resolution
     /// - Parameters:
     ///   - url: URL of the proto file to import

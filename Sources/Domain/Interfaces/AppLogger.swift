@@ -11,8 +11,19 @@ public protocol AppLogger {
 }
 
 public extension AppLogger {
-    func debug(_ message: @autoclosure () -> String) { debug(message(), metadata: [:]) }
-    func info(_ message: @autoclosure () -> String) { info(message(), metadata: [:]) }
-    func warning(_ message: @autoclosure () -> String) { warning(message(), metadata: [:]) }
-    func error(_ message: @autoclosure () -> String) { error(message(), metadata: [:]) }
+    func debug(_ message: @autoclosure () -> String) {
+        debug(message(), metadata: [:])
+    }
+
+    func info(_ message: @autoclosure () -> String) {
+        info(message(), metadata: [:])
+    }
+
+    func warning(_ message: @autoclosure () -> String) {
+        warning(message(), metadata: [:])
+    }
+
+    func error(_ message: @autoclosure () -> String) {
+        error(message(), metadata: [:])
+    }
 }

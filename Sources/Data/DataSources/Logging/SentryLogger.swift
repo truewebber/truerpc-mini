@@ -22,22 +22,26 @@ struct SentryLogger: AppLogger {
     }
 
     func debug(_ message: @autoclosure () -> String, metadata: [String: String]) {
-        guard .debug >= minLevel else { return }
+        guard minLevel <= .debug else { return }
+
         writer.write(level: .debug, message: message(), attributes: metadata)
     }
 
     func info(_ message: @autoclosure () -> String, metadata: [String: String]) {
-        guard .info >= minLevel else { return }
+        guard minLevel <= .info else { return }
+
         writer.write(level: .info, message: message(), attributes: metadata)
     }
 
     func warning(_ message: @autoclosure () -> String, metadata: [String: String]) {
-        guard .warning >= minLevel else { return }
+        guard minLevel <= .warning else { return }
+
         writer.write(level: .warning, message: message(), attributes: metadata)
     }
 
     func error(_ message: @autoclosure () -> String, metadata: [String: String]) {
-        guard .error >= minLevel else { return }
+        guard minLevel <= .error else { return }
+
         writer.write(level: .error, message: message(), attributes: metadata)
     }
 }

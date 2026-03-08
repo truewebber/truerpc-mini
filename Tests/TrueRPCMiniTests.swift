@@ -2,7 +2,7 @@ import XCTest
 @testable import TrueRPCMini
 
 final class TrueRPCMiniTests: XCTestCase {
-    func testExample() throws {
+    func testExample() {
         XCTAssertTrue(true)
     }
 }

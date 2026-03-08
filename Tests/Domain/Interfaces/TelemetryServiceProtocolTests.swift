@@ -2,7 +2,6 @@ import XCTest
 @testable import TrueRPCMini
 
 final class TelemetryServiceProtocolTests: XCTestCase {
-
     func test_mockTelemetryService_capturesTrackedEvents() async {
         let mock = MockTelemetryService()
         let event = TelemetryEvent.appLaunched(appVersion: "1.0.0", osVersion: "15.0")
