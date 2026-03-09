@@ -19,9 +19,9 @@ struct RequestEditorView: View {
 
             // Split view: Request Editor (left) | Response (right)
             HSplitView {
-                // Left: Request editor
+                // Left: Request editor — min 280 so it never vanishes but window min enforces real minimum
                 requestEditorView
-                    .frame(minWidth: 300)
+                    .frame(minWidth: 280)
 
                 // Right: Response panel
                 ResponseView(
@@ -39,7 +39,7 @@ struct RequestEditorView: View {
                             await exportResponse()
                         }
                     })
-                    .frame(minWidth: 300)
+                    .frame(minWidth: 280)
             }
         }
         .task {
@@ -151,17 +151,60 @@ struct RequestEditorView: View {
     }
 
     private var urlInputView: some View {
-        HStack {
-            Text("URL")
-                .font(.subheadline)
-                .frame(width: 60, alignment: .leading)
+        HStack(spacing: 8) {
+            if !viewModel.availableEnvironments.isEmpty {
+                envPicker
+            } else {
+                Text("URL")
+                    .font(.subheadline)
+                    .frame(width: 60, alignment: .leading)
+            }
 
             TextField("localhost:50051", text: Binding(
                 get: { viewModel.url },
                 set: { viewModel.updateUrl($0) }))
                 .textFieldStyle(.roundedBorder)
+                .disabled(viewModel.tabEnvironment != nil)
         }
         .padding()
+    }
+
+    private var envPicker: some View {
+        Menu {
+            ForEach(viewModel.availableEnvironments) { env in
+                Button {
+                    viewModel.selectTabEnvironment(env)
+                } label: {
+                    Label {
+                        Text("\(env.name) — \(env.url)")
+                    } icon: {
+                        if viewModel.tabEnvironment?.id == env.id {
+                            Image(systemName: "checkmark")
+                        }
+                    }
+                }
+            }
+            Divider()
+            Button("Custom URL") {
+                viewModel.useCustomUrl(viewModel.url)
+            }
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: "server.rack")
+                    .font(.caption)
+                Text(viewModel.tabEnvironment?.name ?? "Custom")
+                    .font(.subheadline)
+                    .lineLimit(1)
+                Image(systemName: "chevron.down")
+                    .font(.caption2)
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(Color(nsColor: .controlBackgroundColor))
+            .cornerRadius(6)
+        }
+        .menuStyle(.borderlessButton)
+        .fixedSize()
     }
 
     private var jsonEditorView: some View {

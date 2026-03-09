@@ -599,4 +599,54 @@ extension EditorTabViewModelTests {
         XCTAssertEqual(sut.response?.trailers?["grpc-status"], "12")
         XCTAssertEqual(sut.response?.statusCode, 12)
     }
+
+    // MARK: - Per-tab environment
+
+    func test_init_withGlobalEnv_setsUrlAndTabEnvironment() {
+        let env = ServerEnvironment(name: "Local", host: "localhost", port: 50051)
+        let vm = EditorTabViewModel(
+            editorTab: testEditorTab,
+            initialEnvironment: env,
+            availableEnvironments: [env],
+            generateMockDataUseCase: mockGenerateMockDataUseCase,
+            executeRequestUseCase: mockExecuteRequestUseCase,
+            exportResponseUseCase: mockExportResponseUseCase,
+            logger: mockLogger)
+
+        XCTAssertEqual(vm.url, "localhost:50051")
+        XCTAssertEqual(vm.tabEnvironment, env)
+    }
+
+    func test_init_withoutGlobalEnv_urlIsEmpty() {
+        let vm = EditorTabViewModel(
+            editorTab: testEditorTab,
+            initialEnvironment: nil,
+            availableEnvironments: [],
+            generateMockDataUseCase: mockGenerateMockDataUseCase,
+            executeRequestUseCase: mockExecuteRequestUseCase,
+            exportResponseUseCase: mockExportResponseUseCase,
+            logger: mockLogger)
+
+        XCTAssertEqual(vm.url, "")
+        XCTAssertNil(vm.tabEnvironment)
+    }
+
+    func test_selectTabEnvironment_updatesUrlAndEnvironment() {
+        let env = ServerEnvironment(name: "Staging", host: "staging.example.com", port: 443)
+
+        sut.selectTabEnvironment(env)
+
+        XCTAssertEqual(sut.url, "staging.example.com:443")
+        XCTAssertEqual(sut.tabEnvironment, env)
+    }
+
+    func test_useCustomUrl_clearsEnvironmentAndSetsUrl() {
+        let env = ServerEnvironment(name: "Local", host: "localhost", port: 50051)
+        sut.selectTabEnvironment(env)
+
+        sut.useCustomUrl("my-server:9090")
+
+        XCTAssertNil(sut.tabEnvironment)
+        XCTAssertEqual(sut.url, "my-server:9090")
+    }
 }

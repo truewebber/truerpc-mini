@@ -15,6 +15,8 @@ public final class EditorTabViewModel: ObservableObject {
     @Published public var response: GrpcResponse?
     @Published public var error: String?
     @Published public var isExecuting: Bool = false
+    @Published public var tabEnvironment: ServerEnvironment?
+    @Published public var availableEnvironments: [ServerEnvironment]
 
     // MARK: - Properties
 
@@ -31,12 +33,17 @@ public final class EditorTabViewModel: ObservableObject {
 
     public init(
         editorTab: EditorTab,
+        initialEnvironment: ServerEnvironment? = nil,
+        availableEnvironments: [ServerEnvironment] = [],
         generateMockDataUseCase: GenerateMockDataUseCase,
         executeRequestUseCase: ExecuteUnaryRequestUseCaseProtocol,
         exportResponseUseCase: ExportResponseUseCase,
         logger: AppLogger)
     {
         self.editorTab = editorTab
+        self.tabEnvironment = initialEnvironment
+        self.availableEnvironments = availableEnvironments
+        self.url = initialEnvironment?.url ?? ""
         self.generateMockDataUseCase = generateMockDataUseCase
         self.executeRequestUseCase = executeRequestUseCase
         self.exportResponseUseCase = exportResponseUseCase
@@ -67,9 +74,21 @@ public final class EditorTabViewModel: ObservableObject {
         requestJson = newJson
     }
 
-    /// Updates the server URL
+    /// Updates the server URL (custom mode — clears any active tab environment)
     public func updateUrl(_ newUrl: String) {
         url = newUrl
+    }
+
+    /// Selects an environment for this tab; URL follows the environment
+    public func selectTabEnvironment(_ environment: ServerEnvironment) {
+        tabEnvironment = environment
+        url = environment.url
+    }
+
+    /// Switches to custom URL mode; clears the active tab environment
+    public func useCustomUrl(_ customUrl: String) {
+        tabEnvironment = nil
+        url = customUrl
     }
 
     /// Updates the metadata JSON

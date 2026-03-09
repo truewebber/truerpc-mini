@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 @main
@@ -12,6 +13,9 @@ struct TrueRPCMiniApp: App {
 
     /// App coordinator ViewModel
     @StateObject private var appViewModel: AppViewModel
+
+    /// Global environment selection (singleton)
+    @StateObject private var globalEnvironmentViewModel: GlobalEnvironmentViewModel
 
     @Environment(\.scenePhase) private var scenePhase
 
@@ -49,6 +53,39 @@ struct TrueRPCMiniApp: App {
 
         di.register(ImportPathsViewModel.self, lifecycle: .transient) {
             ImportPathsViewModel(importPathsRepository: di.resolve(ImportPathsRepositoryProtocol.self)!)
+        }
+
+        di.register(EnvironmentRepositoryProtocol.self) {
+            UserDefaultsEnvironmentRepository()
+        }
+
+        di.register(LoadEnvironmentsUseCaseProtocol.self) {
+            LoadEnvironmentsUseCase(repository: di.resolve(EnvironmentRepositoryProtocol.self)!)
+        }
+
+        di.register(SaveEnvironmentUseCaseProtocol.self) {
+            SaveEnvironmentUseCase(repository: di.resolve(EnvironmentRepositoryProtocol.self)!)
+        }
+
+        di.register(DeleteEnvironmentUseCaseProtocol.self) {
+            DeleteEnvironmentUseCase(repository: di.resolve(EnvironmentRepositoryProtocol.self)!)
+        }
+
+        di.register(SelectEnvironmentUseCaseProtocol.self) {
+            SelectEnvironmentUseCase(repository: di.resolve(EnvironmentRepositoryProtocol.self)!)
+        }
+
+        di.register(GetSelectedEnvironmentUseCaseProtocol.self) {
+            GetSelectedEnvironmentUseCase(repository: di.resolve(EnvironmentRepositoryProtocol.self)!)
+        }
+
+        di.register(GlobalEnvironmentViewModel.self) {
+            GlobalEnvironmentViewModel(
+                loadEnvironmentsUseCase: di.resolve(LoadEnvironmentsUseCaseProtocol.self)!,
+                saveEnvironmentUseCase: di.resolve(SaveEnvironmentUseCaseProtocol.self)!,
+                deleteEnvironmentUseCase: di.resolve(DeleteEnvironmentUseCaseProtocol.self)!,
+                selectEnvironmentUseCase: di.resolve(SelectEnvironmentUseCaseProtocol.self)!,
+                getSelectedEnvironmentUseCase: di.resolve(GetSelectedEnvironmentUseCaseProtocol.self)!)
         }
 
         di.register(SettingsViewModel.self) {
@@ -145,9 +182,12 @@ struct TrueRPCMiniApp: App {
             logger: logger)
         appVM.onLaunched()
 
+        let globalEnvVM = di.resolve(GlobalEnvironmentViewModel.self)!
+
         // Use _StateObject to initialize @StateObject properties
         _sidebarViewModel = StateObject(wrappedValue: sidebarVM)
         _appViewModel = StateObject(wrappedValue: appVM)
+        _globalEnvironmentViewModel = StateObject(wrappedValue: globalEnvVM)
     }
 
     // MARK: - Scene
@@ -158,14 +198,18 @@ struct TrueRPCMiniApp: App {
                 SidebarView(
                     viewModel: sidebarViewModel,
                     onMethodSelected: { method, service, protoFile in
-                        appViewModel.openMethod(method: method, service: service, protoFile: protoFile)
+                        appViewModel.openMethod(
+                            method: method,
+                            service: service,
+                            protoFile: protoFile,
+                            initialEnvironment: globalEnvironmentViewModel.selectedEnvironment,
+                            availableEnvironments: globalEnvironmentViewModel.environments)
                     },
                     onSettingsOpened: {
                         appViewModel.onSettingsOpened()
                     })
                     .navigationSplitViewColumnWidth(min: 260, ideal: 320, max: 420)
                     .task {
-                        // Load saved proto files on app startup
                         await sidebarViewModel.loadSavedProtos()
                     }
             } detail: {
@@ -175,11 +219,47 @@ struct TrueRPCMiniApp: App {
                     placeholderView
                 }
             }
-            .frame(minWidth: 900, minHeight: 600)
             .environmentObject(di)
+            .toolbar {
+                ToolbarItem(placement: .navigation) {
+                    GlobalEnvironmentSelectorView(viewModel: globalEnvironmentViewModel)
+                }
+            }
+            .onAppear {
+                applyWindowConstraints(hasTab: appViewModel.selectedEditorTab != nil, animate: false)
+            }
+            .onChange(of: appViewModel.selectedEditorTab?.editorTab.id) { _, newId in
+                applyWindowConstraints(hasTab: newId != nil, animate: true)
+            }
         }
+        .defaultSize(width: 1100, height: 700)
         .onChange(of: scenePhase) { _, newPhase in
             appViewModel.onScenePhaseChanged(to: newPhase)
+        }
+    }
+
+    // MARK: - Private
+
+    private func applyWindowConstraints(hasTab: Bool, animate: Bool) {
+        // Defer so SwiftUI finishes its layout pass before we touch the window
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            guard let window = NSApplication.shared.windows.first(where: { !$0.isMiniaturized && $0.contentView != nil }) else { return }
+
+            if hasTab {
+                // Sidebar(260) + divider + RequestEditor(300) + divider + Response(300) + chrome
+                let minW: CGFloat = 900
+                let minH: CGFloat = 600
+                window.minSize = NSSize(width: minW, height: minH)
+                var frame = window.frame
+                if frame.size.width < minW || frame.size.height < minH {
+                    frame.size.width = max(frame.size.width, minW)
+                    frame.size.height = max(frame.size.height, minH)
+                    window.setFrame(frame, display: true, animate: animate)
+                }
+            } else {
+                // Only sidebar needed
+                window.minSize = NSSize(width: 420, height: 400)
+            }
         }
     }
 

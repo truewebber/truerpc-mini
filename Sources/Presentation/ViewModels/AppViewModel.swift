@@ -75,11 +75,19 @@ public final class AppViewModel: ObservableObject {
 
     // MARK: - Public Methods
 
-    /// Opens an editor tab for the selected method
-    public func openMethod(method: Method, service: Service, protoFile: ProtoFile) {
+    /// Opens an editor tab for the selected method, inheriting the current global environment
+    public func openMethod(
+        method: Method,
+        service: Service,
+        protoFile: ProtoFile,
+        initialEnvironment: ServerEnvironment? = nil,
+        availableEnvironments: [ServerEnvironment] = [])
+    {
         let editorTab = createEditorTabUseCase.execute(method: method, service: service, protoFile: protoFile)
         let tabViewModel = EditorTabViewModel(
             editorTab: editorTab,
+            initialEnvironment: initialEnvironment,
+            availableEnvironments: availableEnvironments,
             generateMockDataUseCase: generateMockDataUseCase,
             executeRequestUseCase: executeRequestUseCase,
             exportResponseUseCase: exportResponseUseCase,
