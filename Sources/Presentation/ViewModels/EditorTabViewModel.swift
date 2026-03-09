@@ -171,7 +171,7 @@ public final class EditorTabViewModel: ObservableObject {
     }
 
     /// Export response to file
-    public func exportResponse(to url: URL) async throws {
+    public func exportResponse(to url: URL) throws {
         guard let response else { return }
 
         try exportResponseUseCase.execute(

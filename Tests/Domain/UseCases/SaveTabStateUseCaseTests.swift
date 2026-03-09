@@ -56,7 +56,7 @@ final class SaveTabStateUseCaseTests: XCTestCase {
     }
 }
 
-fileprivate final class MockTabPersistenceForSave: TabPersistenceProtocol {
+private final class MockTabPersistenceForSave: TabPersistenceProtocol {
     var savedStates: [EditorTabState] = []
 
     func saveTabStates(_ states: [EditorTabState]) {
