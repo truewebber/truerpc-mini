@@ -18,6 +18,7 @@ struct TrueRPCMiniApp: App {
     @StateObject private var globalEnvironmentViewModel: GlobalEnvironmentViewModel
 
     @Environment(\.scenePhase) private var scenePhase
+    @State private var hasRestoredTabs = false
 
     // MARK: - Initialization
 
@@ -161,6 +162,24 @@ struct TrueRPCMiniApp: App {
                 fileManager: di.resolve(FileManagerProtocol.self)!)
         }
 
+        di.register(TabPersistenceProtocol.self) {
+            UserDefaultsTabRepository()
+        }
+
+        di.register(SaveTabStateUseCaseProtocol.self) {
+            SaveTabStateUseCase(repository: di.resolve(TabPersistenceProtocol.self)!)
+        }
+
+        di.register(RestoreTabsUseCaseProtocol.self) {
+            RestoreTabsUseCase(repository: di.resolve(TabPersistenceProtocol.self)!)
+        }
+
+        di.register(TabManagerViewModel.self) {
+            TabManagerViewModel(
+                saveTabStateUseCase: di.resolve(SaveTabStateUseCaseProtocol.self)!,
+                restoreTabsUseCase: di.resolve(RestoreTabsUseCaseProtocol.self)!)
+        }
+
         // Create SidebarViewModel once
         let sidebarVM = SidebarViewModel(
             importProtoFileUseCase: di.resolve(ImportProtoFileUseCaseProtocol.self)!,
@@ -172,8 +191,10 @@ struct TrueRPCMiniApp: App {
             logger: logger,
             telemetry: di.resolve(TelemetryServiceProtocol.self)!)
 
-        // Create AppViewModel
+        // Create TabManagerViewModel and AppViewModel
+        let tabManagerVM = di.resolve(TabManagerViewModel.self)!
         let appVM = AppViewModel(
+            tabManager: tabManagerVM,
             createEditorTabUseCase: di.resolve(CreateEditorTabUseCase.self)!,
             generateMockDataUseCase: di.resolve(GenerateMockDataUseCase.self)!,
             executeRequestUseCase: di.resolve(ExecuteUnaryRequestUseCaseProtocol.self)!,
@@ -212,11 +233,21 @@ struct TrueRPCMiniApp: App {
                     .task {
                         await sidebarViewModel.loadSavedProtos()
                     }
+                    .onChange(of: sidebarViewModel.protoFiles.count) { _, _ in
+                        if !hasRestoredTabs, !sidebarViewModel.protoFiles.isEmpty {
+                            hasRestoredTabs = true
+                            appViewModel.restoreTabs(protoFiles: sidebarViewModel.protoFiles)
+                        }
+                    }
             } detail: {
-                if let editorTab = appViewModel.selectedEditorTab {
-                    RequestEditorView(viewModel: editorTab)
-                } else {
-                    placeholderView
+                VStack(spacing: 0) {
+                    TabBarView(tabManager: appViewModel.tabManager)
+
+                    if let editorTab = appViewModel.selectedEditorTab {
+                        RequestEditorView(viewModel: editorTab)
+                    } else {
+                        placeholderView
+                    }
                 }
             }
             .environmentObject(di)
@@ -226,10 +257,10 @@ struct TrueRPCMiniApp: App {
                 }
             }
             .onAppear {
-                applyWindowConstraints(hasTab: appViewModel.selectedEditorTab != nil, animate: false)
+                applyWindowConstraints(hasTab: !appViewModel.tabManager.tabs.isEmpty, animate: false)
             }
-            .onChange(of: appViewModel.selectedEditorTab?.editorTab.id) { _, newId in
-                applyWindowConstraints(hasTab: newId != nil, animate: true)
+            .onChange(of: appViewModel.tabManager.tabs.count) { _, _ in
+                applyWindowConstraints(hasTab: !appViewModel.tabManager.tabs.isEmpty, animate: true)
             }
         }
         .defaultSize(width: 1100, height: 700)

@@ -1,3 +1,4 @@
+import Combine
 import Foundation
 import SwiftUI
 
@@ -6,10 +7,14 @@ import SwiftUI
 public final class AppViewModel: ObservableObject {
     // MARK: - Published Properties
 
-    @Published public var selectedEditorTab: EditorTabViewModel?
+    public var selectedEditorTab: EditorTabViewModel? {
+        tabManager.selectedTab
+    }
 
     // MARK: - Dependencies
 
+    public let tabManager: TabManagerViewModel
+    private var cancellables = Set<AnyCancellable>()
     private let createEditorTabUseCase: CreateEditorTabUseCase
     private let generateMockDataUseCase: GenerateMockDataUseCase
     private let executeRequestUseCase: ExecuteUnaryRequestUseCaseProtocol
@@ -20,6 +25,7 @@ public final class AppViewModel: ObservableObject {
     // MARK: - Initialization
 
     public init(
+        tabManager: TabManagerViewModel,
         createEditorTabUseCase: CreateEditorTabUseCase,
         generateMockDataUseCase: GenerateMockDataUseCase,
         executeRequestUseCase: ExecuteUnaryRequestUseCaseProtocol,
@@ -27,12 +33,18 @@ public final class AppViewModel: ObservableObject {
         telemetry: TelemetryServiceProtocol,
         logger: AppLogger)
     {
+        self.tabManager = tabManager
         self.createEditorTabUseCase = createEditorTabUseCase
         self.generateMockDataUseCase = generateMockDataUseCase
         self.executeRequestUseCase = executeRequestUseCase
         self.exportResponseUseCase = exportResponseUseCase
         self.telemetry = telemetry
         self.logger = logger
+
+        tabManager.objectWillChange
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in self?.objectWillChange.send() }
+            .store(in: &cancellables)
     }
 
     // MARK: - Lifecycle
@@ -92,10 +104,58 @@ public final class AppViewModel: ObservableObject {
             executeRequestUseCase: executeRequestUseCase,
             exportResponseUseCase: exportResponseUseCase,
             logger: logger)
-        selectedEditorTab = tabViewModel
+        tabManager.addTab(tabViewModel)
         Task {
             await telemetry.track(.tabSwitched(tabName: "request"))
             await telemetry.track(.requestFormOpened(hasProto: true))
         }
+    }
+
+    /// Restores tabs from persisted state using loaded proto files
+    public func restoreTabs(protoFiles: [ProtoFile]) {
+        let states = tabManager.restoredStates()
+        guard !states.isEmpty, !protoFiles.isEmpty else { return }
+
+        for state in states {
+            guard let (method, service, protoFile) = findMethod(
+                protoFilePath: state.protoFilePath,
+                serviceName: state.serviceName,
+                methodName: state.methodName,
+                in: protoFiles)
+            else { continue }
+
+            let editorTab = EditorTab(
+                id: state.id,
+                methodName: method.name,
+                serviceName: service.name,
+                protoFile: protoFile,
+                method: method)
+            let tabViewModel = EditorTabViewModel(
+                editorTab: editorTab,
+                availableEnvironments: [],
+                generateMockDataUseCase: generateMockDataUseCase,
+                executeRequestUseCase: executeRequestUseCase,
+                exportResponseUseCase: exportResponseUseCase,
+                logger: logger)
+            tabManager.addTab(tabViewModel)
+        }
+    }
+
+    private func findMethod(
+        protoFilePath: String,
+        serviceName: String,
+        methodName: String,
+        in protoFiles: [ProtoFile])
+        -> (Method, Service, ProtoFile)?
+    {
+        let normalizedPath = (protoFilePath as NSString).standardizingPath
+        guard let protoFile = protoFiles.first(where: {
+            ($0.path.path as NSString).standardizingPath == normalizedPath
+        })
+        else { return nil }
+        guard let service = protoFile.services.first(where: { $0.name == serviceName }) else { return nil }
+        guard let method = service.methods.first(where: { $0.name == methodName }) else { return nil }
+
+        return (method, service, protoFile)
     }
 }

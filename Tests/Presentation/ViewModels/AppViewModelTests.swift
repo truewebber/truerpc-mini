@@ -25,7 +25,14 @@ final class AppViewModelTests: XCTestCase {
         mockLogger = MockAppLogger()
         mockTelemetry = MockTelemetryService()
 
+        let tabRepo = UserDefaultsTabRepository(
+            userDefaults: UserDefaults(suiteName: "test-app-view-model")!)
+        let tabManager = TabManagerViewModel(
+            saveTabStateUseCase: SaveTabStateUseCase(repository: tabRepo),
+            restoreTabsUseCase: RestoreTabsUseCase(repository: tabRepo))
+
         sut = AppViewModel(
+            tabManager: tabManager,
             createEditorTabUseCase: createTabUseCase,
             generateMockDataUseCase: generateMockDataUseCase,
             executeRequestUseCase: executeRequestUseCase,
