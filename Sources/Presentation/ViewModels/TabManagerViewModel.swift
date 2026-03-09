@@ -30,7 +30,8 @@ public final class TabManagerViewModel: ObservableObject {
     private func setupTabChangeObservation() {
         $tabs
             .flatMap { tabViewModels in
-                Publishers.MergeMany(tabViewModels.map { $0.objectWillChange }) }
+                Publishers.MergeMany(tabViewModels.map(\.objectWillChange))
+            }
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in
                 DispatchQueue.main.async { self?.saveTabs() }

@@ -208,7 +208,7 @@ final class AppViewModelTests: XCTestCase {
 
     // MARK: - restoreTabs
 
-    func test_restoreTabs_withSelectedEnvironmentId_setsInitialEnvironment() {
+    func test_restoreTabs_withSelectedEnvironmentId_setsInitialEnvironment() throws {
         let method = TrueRPCMini.Method(
             name: "GetUser",
             serviceName: "UserService",
@@ -229,8 +229,8 @@ final class AppViewModelTests: XCTestCase {
             methodName: "GetUser",
             selectedEnvironmentId: env.id)
 
-        let tabRepo = UserDefaultsTabRepository(
-            userDefaults: UserDefaults(suiteName: "test-restore-env")!)
+        let tabRepo = try UserDefaultsTabRepository(
+            userDefaults: XCTUnwrap(UserDefaults(suiteName: "test-restore-env")))
         tabRepo.saveTabStates([state])
 
         let tabManager = TabManagerViewModel(
@@ -253,7 +253,7 @@ final class AppViewModelTests: XCTestCase {
         XCTAssertEqual(tabManager.tabs[0].url, env.url)
     }
 
-    func test_restoreTabs_withCustomUrl_restoresCustomUrl() {
+    func test_restoreTabs_withCustomUrl_restoresCustomUrl() throws {
         let method = TrueRPCMini.Method(
             name: "GetUser",
             serviceName: "UserService",
@@ -274,8 +274,8 @@ final class AppViewModelTests: XCTestCase {
             selectedEnvironmentId: nil,
             customUrl: customEndpoint)
 
-        let tabRepo = UserDefaultsTabRepository(
-            userDefaults: UserDefaults(suiteName: "test-restore-custom-url")!)
+        let tabRepo = try UserDefaultsTabRepository(
+            userDefaults: XCTUnwrap(UserDefaults(suiteName: "test-restore-custom-url")))
         tabRepo.saveTabStates([state])
 
         let tabManager = TabManagerViewModel(
@@ -298,7 +298,7 @@ final class AppViewModelTests: XCTestCase {
         XCTAssertEqual(tabManager.tabs[0].url, customEndpoint)
     }
 
-    func test_restoreTabs_whenSavedEnvDeleted_fallsBackToNilEnvironment() {
+    func test_restoreTabs_whenSavedEnvDeleted_fallsBackToNilEnvironment() throws {
         let method = TrueRPCMini.Method(
             name: "GetUser",
             serviceName: "UserService",
@@ -318,8 +318,8 @@ final class AppViewModelTests: XCTestCase {
             methodName: "GetUser",
             selectedEnvironmentId: deletedEnvId)
 
-        let tabRepo = UserDefaultsTabRepository(
-            userDefaults: UserDefaults(suiteName: "test-restore-env-deleted")!)
+        let tabRepo = try UserDefaultsTabRepository(
+            userDefaults: XCTUnwrap(UserDefaults(suiteName: "test-restore-env-deleted")))
         tabRepo.saveTabStates([state])
 
         let tabManager = TabManagerViewModel(

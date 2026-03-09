@@ -284,7 +284,7 @@ struct RequestEditorView: View {
         }
 
         do {
-            try await viewModel.exportResponse(to: url)
+            try viewModel.exportResponse(to: url)
         } catch {
             exportErrorMessage = "Failed to export response: \(error.localizedDescription)"
             showExportError = true
@@ -328,7 +328,9 @@ struct RequestEditorView: View {
             viewModel.url = "localhost:50051"
             viewModel.requestJson = "{\n  \"userId\": 1\n}"
 
-            return RequestEditorView(viewModel: viewModel, globalEnvironmentViewModel: RequestEditorView_PreviewEnvViewModel())
+            return RequestEditorView(
+                viewModel: viewModel,
+                globalEnvironmentViewModel: RequestEditorView_PreviewEnvViewModel())
                 .frame(width: 600, height: 400)
                 .previewDisplayName("Request Editor")
         }
@@ -367,7 +369,9 @@ struct RequestEditorView: View {
     }
 
     private final class RequestEditorView_PreviewNoOpGetSelected: GetSelectedEnvironmentUseCaseProtocol {
-        func execute() -> ServerEnvironment? { nil }
+        func execute() -> ServerEnvironment? {
+            nil
+        }
     }
 
     private class PreviewMockExecuteUseCase: ExecuteUnaryRequestUseCaseProtocol {

@@ -290,7 +290,7 @@ final class EditorTabViewModelTests: XCTestCase {
 
     // MARK: - Export Response Tests
 
-    func test_exportResponse_whenResponseExists_callsExportUseCase() async throws {
+    func test_exportResponse_whenResponseExists_callsExportUseCase() throws {
         // Given
         let mockExportUseCase = MockExportResponseUseCase()
         let testResponse = GrpcResponse(
@@ -319,7 +319,7 @@ final class EditorTabViewModelTests: XCTestCase {
         XCTAssertFalse(mockExportUseCase.capturedIncludeMetadata)
     }
 
-    func test_exportResponse_whenNoResponse_doesNothing() async throws {
+    func test_exportResponse_whenNoResponse_doesNothing() throws {
         // Given
         let mockExportUseCase = MockExportResponseUseCase()
         let sutWithExport = EditorTabViewModel(
