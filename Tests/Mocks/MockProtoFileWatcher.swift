@@ -10,8 +10,8 @@ class MockProtoFileWatcher: ProtoFileWatcherProtocol {
 
     init() {
         var cont: AsyncStream<ProtoFile>.Continuation!
-        changes = AsyncStream { cont = $0 }
-        continuation = cont
+        self.changes = AsyncStream { cont = $0 }
+        self.continuation = cont
     }
 
     func startWatching(_ protoFile: ProtoFile) {

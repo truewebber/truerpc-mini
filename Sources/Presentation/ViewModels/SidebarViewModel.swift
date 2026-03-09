@@ -22,7 +22,7 @@ public final class SidebarViewModel: ObservableObject {
     private let logger: AppLogger
     private let telemetry: TelemetryServiceProtocol
 
-    nonisolated(unsafe) private var watcherTask: Task<Void, Never>?
+    private nonisolated(unsafe) var watcherTask: Task<Void, Never>?
 
     // MARK: - Initialization
 
@@ -62,7 +62,8 @@ public final class SidebarViewModel: ObservableObject {
         watcherTask = Task { [weak self, watcher] in
             for await protoFile in watcher.changes {
                 guard let self else { break }
-                await self.refreshProtoFile(protoFile)
+
+                await refreshProtoFile(protoFile)
             }
         }
     }
@@ -137,9 +138,13 @@ public final class SidebarViewModel: ObservableObject {
     private func getImportPathsWithWellKnownTypes() -> [String] {
         var paths = importPathsRepository.getImportPaths()
 
-        // Add Resources path for well-known types
+        // The Resources folder is bundled as a folder reference, so it lands one level
+        // deeper: Contents/Resources/Resources/google/protobuf/*.proto
+        // SwiftProtoParser resolves "google/protobuf/timestamp.proto" relative to this path.
         if let resourcesPath = Bundle.main.resourcePath {
-            paths.append(resourcesPath)
+            let wellKnownImportPath = URL(fileURLWithPath: resourcesPath)
+                .appendingPathComponent("Resources").path
+            paths.append(wellKnownImportPath)
         }
 
         return paths
