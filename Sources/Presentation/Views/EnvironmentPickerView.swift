@@ -253,6 +253,8 @@ struct EnvironmentFormView: View {
     }
 
     private final class PreviewGetSelectedUseCase: GetSelectedEnvironmentUseCaseProtocol {
-        func execute() -> ServerEnvironment? { nil }
+        func execute() -> ServerEnvironment? {
+            nil
+        }
     }
 #endif

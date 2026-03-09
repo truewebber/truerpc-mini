@@ -243,7 +243,9 @@ struct TrueRPCMiniApp: App {
     private func applyWindowConstraints(hasTab: Bool, animate: Bool) {
         // Defer so SwiftUI finishes its layout pass before we touch the window
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-            guard let window = NSApplication.shared.windows.first(where: { !$0.isMiniaturized && $0.contentView != nil }) else { return }
+            guard let window = NSApplication.shared.windows
+                .first(where: { !$0.isMiniaturized && $0.contentView != nil })
+            else { return }
 
             if hasTab {
                 // Sidebar(260) + divider + RequestEditor(300) + divider + Response(300) + chrome

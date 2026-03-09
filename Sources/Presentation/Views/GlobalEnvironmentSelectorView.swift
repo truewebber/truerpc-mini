@@ -113,6 +113,8 @@ public struct GlobalEnvironmentSelectorView: View {
     }
 
     private final class PreviewNoOpGetSelected: GetSelectedEnvironmentUseCaseProtocol {
-        func execute() -> ServerEnvironment? { nil }
+        func execute() -> ServerEnvironment? {
+            nil
+        }
     }
 #endif

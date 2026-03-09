@@ -38,6 +38,7 @@ public final class UserDefaultsEnvironmentRepository: EnvironmentRepositoryProto
 
     public func getSelectedId() -> UUID? {
         guard let uuidString = userDefaults.string(forKey: selectedIdKey) else { return nil }
+
         return UUID(uuidString: uuidString)
     }
 

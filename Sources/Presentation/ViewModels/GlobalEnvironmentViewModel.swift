@@ -34,7 +34,7 @@ public class GlobalEnvironmentViewModel: ObservableObject {
         self.getSelectedEnvironmentUseCase = getSelectedEnvironmentUseCase
 
         loadEnvironments()
-        selectedEnvironment = getSelectedEnvironmentUseCase.execute()
+        self.selectedEnvironment = getSelectedEnvironmentUseCase.execute()
     }
 
     // MARK: - Public Methods

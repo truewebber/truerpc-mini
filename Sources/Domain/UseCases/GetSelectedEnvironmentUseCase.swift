@@ -13,6 +13,7 @@ public final class GetSelectedEnvironmentUseCase: GetSelectedEnvironmentUseCaseP
 
     public func execute() -> ServerEnvironment? {
         guard let selectedId = repository.getSelectedId() else { return nil }
+
         return repository.getAll().first { $0.id == selectedId }
     }
 }
