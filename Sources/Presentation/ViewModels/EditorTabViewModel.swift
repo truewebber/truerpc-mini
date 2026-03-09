@@ -174,7 +174,7 @@ public final class EditorTabViewModel: ObservableObject {
     public func exportResponse(to url: URL) async throws {
         guard let response else { return }
 
-        try await exportResponseUseCase.execute(
+        try exportResponseUseCase.execute(
             response: response,
             destination: url,
             includeMetadata: false)
