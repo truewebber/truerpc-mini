@@ -112,7 +112,7 @@ public final class AppViewModel: ObservableObject {
     }
 
     /// Restores tabs from persisted state using loaded proto files
-    public func restoreTabs(protoFiles: [ProtoFile]) {
+    public func restoreTabs(protoFiles: [ProtoFile], availableEnvironments: [ServerEnvironment] = []) {
         let states = tabManager.restoredStates()
         guard !states.isEmpty, !protoFiles.isEmpty else { return }
 
@@ -124,6 +124,11 @@ public final class AppViewModel: ObservableObject {
                 in: protoFiles)
             else { continue }
 
+            let initialEnvironment = state.selectedEnvironmentId.flatMap { envId in
+                availableEnvironments.first { $0.id == envId }
+            }
+            let customUrl = initialEnvironment == nil ? state.customUrl : nil
+
             let editorTab = EditorTab(
                 id: state.id,
                 methodName: method.name,
@@ -132,7 +137,9 @@ public final class AppViewModel: ObservableObject {
                 method: method)
             let tabViewModel = EditorTabViewModel(
                 editorTab: editorTab,
-                availableEnvironments: [],
+                initialEnvironment: initialEnvironment,
+                customUrl: customUrl,
+                availableEnvironments: availableEnvironments,
                 generateMockDataUseCase: generateMockDataUseCase,
                 executeRequestUseCase: executeRequestUseCase,
                 exportResponseUseCase: exportResponseUseCase,

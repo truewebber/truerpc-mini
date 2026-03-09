@@ -310,7 +310,7 @@ final class EditorTabViewModelTests: XCTestCase {
         let testURL = URL(fileURLWithPath: "/tmp/export.json")
 
         // When
-        try await sutWithExport.exportResponse(to: testURL)
+        try sutWithExport.exportResponse(to: testURL)
 
         // Then
         XCTAssertTrue(mockExportUseCase.executeCalled)
@@ -333,7 +333,7 @@ final class EditorTabViewModelTests: XCTestCase {
         let testURL = URL(fileURLWithPath: "/tmp/export.json")
 
         // When
-        try await sutWithExport.exportResponse(to: testURL)
+        try sutWithExport.exportResponse(to: testURL)
 
         // Then
         XCTAssertFalse(mockExportUseCase.executeCalled)
@@ -628,6 +628,21 @@ extension EditorTabViewModelTests {
             logger: mockLogger)
 
         XCTAssertEqual(vm.url, "")
+        XCTAssertNil(vm.tabEnvironment)
+    }
+
+    func test_init_withCustomUrl_setsUrlWithoutEnvironment() {
+        let vm = EditorTabViewModel(
+            editorTab: testEditorTab,
+            initialEnvironment: nil,
+            customUrl: "my-server:9090",
+            availableEnvironments: [],
+            generateMockDataUseCase: mockGenerateMockDataUseCase,
+            executeRequestUseCase: mockExecuteRequestUseCase,
+            exportResponseUseCase: mockExportResponseUseCase,
+            logger: mockLogger)
+
+        XCTAssertEqual(vm.url, "my-server:9090")
         XCTAssertNil(vm.tabEnvironment)
     }
 

@@ -204,6 +204,9 @@ struct TrueRPCMiniApp: App {
         appVM.onLaunched()
 
         let globalEnvVM = di.resolve(GlobalEnvironmentViewModel.self)!
+        globalEnvVM.onEnvironmentDeleted = { [weak tabManagerVM] env in
+            tabManagerVM?.handleEnvironmentDeleted(env)
+        }
 
         // Use _StateObject to initialize @StateObject properties
         _sidebarViewModel = StateObject(wrappedValue: sidebarVM)
@@ -236,7 +239,9 @@ struct TrueRPCMiniApp: App {
                     .onChange(of: sidebarViewModel.protoFiles.count) { _, _ in
                         if !hasRestoredTabs, !sidebarViewModel.protoFiles.isEmpty {
                             hasRestoredTabs = true
-                            appViewModel.restoreTabs(protoFiles: sidebarViewModel.protoFiles)
+                            appViewModel.restoreTabs(
+                                protoFiles: sidebarViewModel.protoFiles,
+                                availableEnvironments: globalEnvironmentViewModel.environments)
                         }
                     }
             } detail: {
@@ -244,7 +249,7 @@ struct TrueRPCMiniApp: App {
                     TabBarView(tabManager: appViewModel.tabManager)
 
                     if let editorTab = appViewModel.selectedEditorTab {
-                        RequestEditorView(viewModel: editorTab)
+                        RequestEditorView(viewModel: editorTab, globalEnvironmentViewModel: globalEnvironmentViewModel)
                     } else {
                         placeholderView
                     }

@@ -107,4 +107,35 @@ final class UserDefaultsTabRepositoryTests: XCTestCase {
         XCTAssertEqual(result.count, 1)
         XCTAssertEqual(result[0], state)
     }
+
+    func test_saveAndGet_withSelectedEnvironmentId_preservesEnvId() {
+        let envId = UUID()
+        let state = EditorTabState(
+            id: UUID(),
+            protoFilePath: "/path.proto",
+            serviceName: "UserService",
+            methodName: "GetUser",
+            selectedEnvironmentId: envId)
+        sut.saveTabStates([state])
+
+        let result = sut.getTabStates()
+
+        XCTAssertEqual(result.count, 1)
+        XCTAssertEqual(result[0].selectedEnvironmentId, envId)
+    }
+
+    func test_saveAndGet_withCustomUrl_preservesCustomUrl() {
+        let state = EditorTabState(
+            id: UUID(),
+            protoFilePath: "/path.proto",
+            serviceName: "UserService",
+            methodName: "GetUser",
+            customUrl: "my-server:50051")
+        sut.saveTabStates([state])
+
+        let result = sut.getTabStates()
+
+        XCTAssertEqual(result.count, 1)
+        XCTAssertEqual(result[0].customUrl, "my-server:50051")
+    }
 }

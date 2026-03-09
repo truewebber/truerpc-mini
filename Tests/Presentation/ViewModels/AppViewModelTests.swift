@@ -206,6 +206,142 @@ final class AppViewModelTests: XCTestCase {
         XCTAssertTrue(names.contains("app_foregrounded"))
     }
 
+    // MARK: - restoreTabs
+
+    func test_restoreTabs_withSelectedEnvironmentId_setsInitialEnvironment() {
+        let method = TrueRPCMini.Method(
+            name: "GetUser",
+            serviceName: "UserService",
+            inputType: ".test.GetUserRequest",
+            outputType: ".test.User")
+        let service = Service(name: "UserService", methods: [method])
+        let protoFile = ProtoFile(
+            name: "test.proto",
+            path: URL(fileURLWithPath: "/test/test.proto"),
+            services: [service])
+
+        let env = ServerEnvironment(id: UUID(), name: "Dev", host: "localhost", port: 50051)
+        let tabId = UUID()
+        let state = EditorTabState(
+            id: tabId,
+            protoFilePath: "/test/test.proto",
+            serviceName: "UserService",
+            methodName: "GetUser",
+            selectedEnvironmentId: env.id)
+
+        let tabRepo = UserDefaultsTabRepository(
+            userDefaults: UserDefaults(suiteName: "test-restore-env")!)
+        tabRepo.saveTabStates([state])
+
+        let tabManager = TabManagerViewModel(
+            saveTabStateUseCase: SaveTabStateUseCase(repository: tabRepo),
+            restoreTabsUseCase: RestoreTabsUseCase(repository: tabRepo))
+
+        let appVM = AppViewModel(
+            tabManager: tabManager,
+            createEditorTabUseCase: createTabUseCase,
+            generateMockDataUseCase: generateMockDataUseCase,
+            executeRequestUseCase: executeRequestUseCase,
+            exportResponseUseCase: exportResponseUseCase,
+            telemetry: mockTelemetry,
+            logger: mockLogger)
+
+        appVM.restoreTabs(protoFiles: [protoFile], availableEnvironments: [env])
+
+        XCTAssertEqual(tabManager.tabs.count, 1)
+        XCTAssertEqual(tabManager.tabs[0].tabEnvironment?.id, env.id)
+        XCTAssertEqual(tabManager.tabs[0].url, env.url)
+    }
+
+    func test_restoreTabs_withCustomUrl_restoresCustomUrl() {
+        let method = TrueRPCMini.Method(
+            name: "GetUser",
+            serviceName: "UserService",
+            inputType: ".test.GetUserRequest",
+            outputType: ".test.User")
+        let service = Service(name: "UserService", methods: [method])
+        let protoFile = ProtoFile(
+            name: "test.proto",
+            path: URL(fileURLWithPath: "/test/test.proto"),
+            services: [service])
+
+        let customEndpoint = "my-server:9090"
+        let state = EditorTabState(
+            id: UUID(),
+            protoFilePath: "/test/test.proto",
+            serviceName: "UserService",
+            methodName: "GetUser",
+            selectedEnvironmentId: nil,
+            customUrl: customEndpoint)
+
+        let tabRepo = UserDefaultsTabRepository(
+            userDefaults: UserDefaults(suiteName: "test-restore-custom-url")!)
+        tabRepo.saveTabStates([state])
+
+        let tabManager = TabManagerViewModel(
+            saveTabStateUseCase: SaveTabStateUseCase(repository: tabRepo),
+            restoreTabsUseCase: RestoreTabsUseCase(repository: tabRepo))
+
+        let appVM = AppViewModel(
+            tabManager: tabManager,
+            createEditorTabUseCase: createTabUseCase,
+            generateMockDataUseCase: generateMockDataUseCase,
+            executeRequestUseCase: executeRequestUseCase,
+            exportResponseUseCase: exportResponseUseCase,
+            telemetry: mockTelemetry,
+            logger: mockLogger)
+
+        appVM.restoreTabs(protoFiles: [protoFile], availableEnvironments: [])
+
+        XCTAssertEqual(tabManager.tabs.count, 1)
+        XCTAssertNil(tabManager.tabs[0].tabEnvironment)
+        XCTAssertEqual(tabManager.tabs[0].url, customEndpoint)
+    }
+
+    func test_restoreTabs_whenSavedEnvDeleted_fallsBackToNilEnvironment() {
+        let method = TrueRPCMini.Method(
+            name: "GetUser",
+            serviceName: "UserService",
+            inputType: ".test.GetUserRequest",
+            outputType: ".test.User")
+        let service = Service(name: "UserService", methods: [method])
+        let protoFile = ProtoFile(
+            name: "test.proto",
+            path: URL(fileURLWithPath: "/test/test.proto"),
+            services: [service])
+
+        let deletedEnvId = UUID()
+        let state = EditorTabState(
+            id: UUID(),
+            protoFilePath: "/test/test.proto",
+            serviceName: "UserService",
+            methodName: "GetUser",
+            selectedEnvironmentId: deletedEnvId)
+
+        let tabRepo = UserDefaultsTabRepository(
+            userDefaults: UserDefaults(suiteName: "test-restore-env-deleted")!)
+        tabRepo.saveTabStates([state])
+
+        let tabManager = TabManagerViewModel(
+            saveTabStateUseCase: SaveTabStateUseCase(repository: tabRepo),
+            restoreTabsUseCase: RestoreTabsUseCase(repository: tabRepo))
+
+        let appVM = AppViewModel(
+            tabManager: tabManager,
+            createEditorTabUseCase: createTabUseCase,
+            generateMockDataUseCase: generateMockDataUseCase,
+            executeRequestUseCase: executeRequestUseCase,
+            exportResponseUseCase: exportResponseUseCase,
+            telemetry: mockTelemetry,
+            logger: mockLogger)
+
+        appVM.restoreTabs(protoFiles: [protoFile], availableEnvironments: [])
+
+        XCTAssertEqual(tabManager.tabs.count, 1)
+        XCTAssertNil(tabManager.tabs[0].tabEnvironment)
+        XCTAssertEqual(tabManager.tabs[0].url, "")
+    }
+
     // MARK: - Helpers
 
     /// Polls until the given event name appears in trackedEvents (up to ~1 second).

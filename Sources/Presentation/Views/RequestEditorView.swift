@@ -6,6 +6,7 @@ import UniformTypeIdentifiers
 /// Displays URL input, JSON editor, Play button, and response panel
 struct RequestEditorView: View {
     @ObservedObject var viewModel: EditorTabViewModel
+    @ObservedObject var globalEnvironmentViewModel: GlobalEnvironmentViewModel
     @State private var showExportError: Bool = false
     @State private var exportErrorMessage: String = ""
     @State private var showCopySuccess: Bool = false
@@ -152,7 +153,7 @@ struct RequestEditorView: View {
 
     private var urlInputView: some View {
         HStack(spacing: 8) {
-            if !viewModel.availableEnvironments.isEmpty {
+            if !globalEnvironmentViewModel.environments.isEmpty {
                 envPicker
             } else {
                 Text("URL")
@@ -171,7 +172,7 @@ struct RequestEditorView: View {
 
     private var envPicker: some View {
         Menu {
-            ForEach(viewModel.availableEnvironments) { env in
+            ForEach(globalEnvironmentViewModel.environments) { env in
                 Button {
                     viewModel.selectTabEnvironment(env)
                 } label: {
@@ -327,13 +328,47 @@ struct RequestEditorView: View {
             viewModel.url = "localhost:50051"
             viewModel.requestJson = "{\n  \"userId\": 1\n}"
 
-            return RequestEditorView(viewModel: viewModel)
+            return RequestEditorView(viewModel: viewModel, globalEnvironmentViewModel: RequestEditorView_PreviewEnvViewModel())
                 .frame(width: 600, height: 400)
                 .previewDisplayName("Request Editor")
         }
     }
 
     // MARK: - Preview Mocks
+
+    @MainActor
+    private final class RequestEditorView_PreviewEnvViewModel: GlobalEnvironmentViewModel {
+        init() {
+            super.init(
+                loadEnvironmentsUseCase: RequestEditorView_PreviewLoadEnvs(),
+                saveEnvironmentUseCase: RequestEditorView_PreviewNoOpSave(),
+                deleteEnvironmentUseCase: RequestEditorView_PreviewNoOpDelete(),
+                selectEnvironmentUseCase: RequestEditorView_PreviewNoOpSelect(),
+                getSelectedEnvironmentUseCase: RequestEditorView_PreviewNoOpGetSelected())
+        }
+    }
+
+    private final class RequestEditorView_PreviewLoadEnvs: LoadEnvironmentsUseCaseProtocol {
+        func execute() -> [ServerEnvironment] {
+            [ServerEnvironment(name: "Local", host: "localhost", port: 50051)]
+        }
+    }
+
+    private final class RequestEditorView_PreviewNoOpSave: SaveEnvironmentUseCaseProtocol {
+        func execute(_: ServerEnvironment) {}
+    }
+
+    private final class RequestEditorView_PreviewNoOpDelete: DeleteEnvironmentUseCaseProtocol {
+        func execute(id _: UUID) {}
+    }
+
+    private final class RequestEditorView_PreviewNoOpSelect: SelectEnvironmentUseCaseProtocol {
+        func execute(_: ServerEnvironment?) {}
+    }
+
+    private final class RequestEditorView_PreviewNoOpGetSelected: GetSelectedEnvironmentUseCaseProtocol {
+        func execute() -> ServerEnvironment? { nil }
+    }
 
     private class PreviewMockExecuteUseCase: ExecuteUnaryRequestUseCaseProtocol {
         func execute(request _: RequestDraft, method _: TrueRPCMini.Method) throws -> GrpcResponse {

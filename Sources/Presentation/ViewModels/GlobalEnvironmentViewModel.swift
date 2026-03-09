@@ -18,6 +18,9 @@ public class GlobalEnvironmentViewModel: ObservableObject {
     private let selectEnvironmentUseCase: SelectEnvironmentUseCaseProtocol
     private let getSelectedEnvironmentUseCase: GetSelectedEnvironmentUseCaseProtocol
 
+    /// Called when an environment is deleted; tabs can switch to custom URL using the deleted env's address
+    public var onEnvironmentDeleted: ((ServerEnvironment) -> Void)?
+
     // MARK: - Initialization
 
     public init(
@@ -63,12 +66,14 @@ public class GlobalEnvironmentViewModel: ObservableObject {
     }
 
     /// Deletes an environment. Clears selection if the deleted env was selected.
+    /// Notifies onEnvironmentDeleted so tabs using it can switch to custom URL.
     public func deleteEnvironment(_ environment: ServerEnvironment) {
         if selectedEnvironment?.id == environment.id {
             selectedEnvironment = nil
             selectEnvironmentUseCase.execute(nil)
         }
         deleteEnvironmentUseCase.execute(id: environment.id)
+        onEnvironmentDeleted?(environment)
         loadEnvironments()
     }
 }

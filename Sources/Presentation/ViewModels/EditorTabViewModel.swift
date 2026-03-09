@@ -34,6 +34,7 @@ public final class EditorTabViewModel: ObservableObject {
     public init(
         editorTab: EditorTab,
         initialEnvironment: ServerEnvironment? = nil,
+        customUrl: String? = nil,
         availableEnvironments: [ServerEnvironment] = [],
         generateMockDataUseCase: GenerateMockDataUseCase,
         executeRequestUseCase: ExecuteUnaryRequestUseCaseProtocol,
@@ -43,7 +44,7 @@ public final class EditorTabViewModel: ObservableObject {
         self.editorTab = editorTab
         self.tabEnvironment = initialEnvironment
         self.availableEnvironments = availableEnvironments
-        self.url = initialEnvironment?.url ?? ""
+        self.url = initialEnvironment?.url ?? customUrl ?? ""
         self.generateMockDataUseCase = generateMockDataUseCase
         self.executeRequestUseCase = executeRequestUseCase
         self.exportResponseUseCase = exportResponseUseCase
