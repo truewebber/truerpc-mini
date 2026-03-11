@@ -31,7 +31,11 @@ struct TrueRPCMiniApp: App {
         #if DEBUG
             let logger: any AppLogger = OSLogger(category: "app")
         #else
-            SentryBootstrapper.start(dsn: config.sentryDsn)
+            // Defer Sentry init to next run loop to avoid blocking main thread at startup.
+            // Sentry SDK can perform I/O and sync work that triggers App Hang on slow systems.
+            DispatchQueue.main.async {
+                SentryBootstrapper.start(dsn: config.sentryDsn)
+            }
             let logger: any AppLogger = MultiplexLogger([
                 OSLogger(category: "app"),
                 SentryLogger(minLevel: .warning),
@@ -234,6 +238,7 @@ struct TrueRPCMiniApp: App {
                     })
                     .navigationSplitViewColumnWidth(min: 260, ideal: 320, max: 420)
                     .task {
+                        globalEnvironmentViewModel.loadEnvironments()
                         await sidebarViewModel.loadSavedProtos()
                     }
                     .onChange(of: sidebarViewModel.protoFiles.count) { _, _ in

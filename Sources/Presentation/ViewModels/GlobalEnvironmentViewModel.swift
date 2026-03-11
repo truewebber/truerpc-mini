@@ -35,16 +35,16 @@ public class GlobalEnvironmentViewModel: ObservableObject {
         self.deleteEnvironmentUseCase = deleteEnvironmentUseCase
         self.selectEnvironmentUseCase = selectEnvironmentUseCase
         self.getSelectedEnvironmentUseCase = getSelectedEnvironmentUseCase
-
-        loadEnvironments()
-        self.selectedEnvironment = getSelectedEnvironmentUseCase.execute()
+        // Load deferred to loadEnvironments() — called from view .task to avoid blocking App init.
     }
 
     // MARK: - Public Methods
 
-    /// Loads all environments from storage
+    /// Loads all environments from storage and restores the selected environment.
+    /// Call from view .task/.onAppear — do not run during App init to avoid blocking main thread.
     public func loadEnvironments() {
         environments = loadEnvironmentsUseCase.execute()
+        selectedEnvironment = getSelectedEnvironmentUseCase.execute()
     }
 
     /// Sets and persists the global environment selection

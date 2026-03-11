@@ -88,6 +88,7 @@ public struct GlobalEnvironmentSelectorView: View {
                 deleteEnvironmentUseCase: PreviewNoOpDelete(),
                 selectEnvironmentUseCase: PreviewNoOpSelect(),
                 getSelectedEnvironmentUseCase: PreviewNoOpGetSelected())
+            loadEnvironments()
         }
     }
 

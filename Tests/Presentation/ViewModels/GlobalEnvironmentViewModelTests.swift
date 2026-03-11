@@ -38,31 +38,34 @@ final class GlobalEnvironmentViewModelTests: XCTestCase {
             getSelectedEnvironmentUseCase: mockGetSelectedUseCase)
     }
 
-    // MARK: - init
+    // MARK: - loadEnvironments
 
-    func test_init_loadsEnvironments() {
+    func test_loadEnvironments_loadsEnvironments() {
         let env = ServerEnvironment(name: "Local", host: "localhost", port: 50051)
         mockLoadUseCase.stubbedResult = [env]
 
         sut = makeSUT()
+        sut.loadEnvironments()
 
         XCTAssertEqual(sut.environments.count, 1)
         XCTAssertEqual(sut.environments[0], env)
     }
 
-    func test_init_restoresSelectedEnvironment() {
+    func test_loadEnvironments_restoresSelectedEnvironment() {
         let env = ServerEnvironment(name: "Local", host: "localhost", port: 50051)
         mockGetSelectedUseCase.stubbedResult = env
 
         sut = makeSUT()
+        sut.loadEnvironments()
 
         XCTAssertEqual(sut.selectedEnvironment, env)
     }
 
-    func test_init_whenNoSelection_selectedEnvironmentIsNil() {
+    func test_loadEnvironments_whenNoSelection_selectedEnvironmentIsNil() {
         mockGetSelectedUseCase.stubbedResult = nil
 
         sut = makeSUT()
+        sut.loadEnvironments()
 
         XCTAssertNil(sut.selectedEnvironment)
     }
@@ -72,6 +75,7 @@ final class GlobalEnvironmentViewModelTests: XCTestCase {
     func test_selectEnvironment_updatesPublishedProperty() {
         let env = ServerEnvironment(name: "Local", host: "localhost", port: 50051)
         sut = makeSUT()
+        sut.loadEnvironments()
 
         sut.selectEnvironment(env)
 
@@ -81,6 +85,7 @@ final class GlobalEnvironmentViewModelTests: XCTestCase {
     func test_selectEnvironment_persistsSelection() {
         let env = ServerEnvironment(name: "Local", host: "localhost", port: 50051)
         sut = makeSUT()
+        sut.loadEnvironments()
 
         sut.selectEnvironment(env)
 
@@ -94,6 +99,7 @@ final class GlobalEnvironmentViewModelTests: XCTestCase {
         let env = ServerEnvironment(name: "Local", host: "localhost", port: 50051)
         mockGetSelectedUseCase.stubbedResult = env
         sut = makeSUT()
+        sut.loadEnvironments()
 
         sut.clearSelection()
 
@@ -102,6 +108,7 @@ final class GlobalEnvironmentViewModelTests: XCTestCase {
 
     func test_clearSelection_persistsNil() {
         sut = makeSUT()
+        sut.loadEnvironments()
 
         sut.clearSelection()
 
@@ -114,6 +121,7 @@ final class GlobalEnvironmentViewModelTests: XCTestCase {
     func test_saveEnvironment_callsSaveUseCase() {
         let env = ServerEnvironment(name: "Local", host: "localhost", port: 50051)
         sut = makeSUT()
+        sut.loadEnvironments()
 
         sut.saveEnvironment(env)
 
@@ -124,6 +132,7 @@ final class GlobalEnvironmentViewModelTests: XCTestCase {
         let env = ServerEnvironment(name: "Local", host: "localhost", port: 50051)
         mockLoadUseCase.stubbedResult = [env]
         sut = makeSUT()
+        sut.loadEnvironments()
         mockLoadUseCase.executeCallCount = 0
 
         sut.saveEnvironment(env)
@@ -136,6 +145,7 @@ final class GlobalEnvironmentViewModelTests: XCTestCase {
     func test_deleteEnvironment_callsDeleteUseCase() {
         let env = ServerEnvironment(name: "Local", host: "localhost", port: 50051)
         sut = makeSUT()
+        sut.loadEnvironments()
 
         sut.deleteEnvironment(env)
 
@@ -144,8 +154,9 @@ final class GlobalEnvironmentViewModelTests: XCTestCase {
 
     func test_deleteEnvironment_whenSelected_clearsSelectionAndPersists() {
         let env = ServerEnvironment(name: "Local", host: "localhost", port: 50051)
-        mockGetSelectedUseCase.stubbedResult = env
+        mockGetSelectedUseCase.returnValues = [env, nil] // loadEnvironments, then loadEnvironments after delete
         sut = makeSUT()
+        sut.loadEnvironments()
 
         sut.deleteEnvironment(env)
 
