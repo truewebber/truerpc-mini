@@ -1,0 +1,16 @@
+<?xml version="1.0" standalone="yes"?>
+<rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0">
+    <channel>
+        <title>TrueRPCMini</title>
+        <item>
+            <title>0.0.11-rc-4</title>
+            <pubDate>Sun, 15 Mar 2026 14:30:21 +0000</pubDate>
+            <link>https://github.com/truewebber/truerpc-mini</link>
+            <sparkle:fullReleaseNotesLink>https://github.com/truewebber/truerpc-mini/releases/tag/v0.0.11-rc-4</sparkle:fullReleaseNotesLink>
+            <sparkle:version>72b5fd5</sparkle:version>
+            <sparkle:shortVersionString>0.0.11-rc-4</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/truewebber/truerpc-mini/releases/download/v0.0.11-rc-4/TrueRPCMini-v0.0.11-rc-4.zip" length="24265584" type="application/octet-stream" sparkle:edSignature="LSoE3Zu7tYNEWMCqub23HA3UA7V0ZrjMlU+UqEyBoMURwqO2VXdbxu8+d1Py11xeRq7M6BSAgQhWHHz7nA5QBQ=="/>
+        </item>
+    </channel>
+</rss>
