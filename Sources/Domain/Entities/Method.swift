@@ -1,7 +1,7 @@
 import Foundation
 
 /// Represents a gRPC method (RPC) definition
-public struct Method: Equatable, Identifiable {
+public struct Method: Equatable, Identifiable, Sendable {
     public let id: UUID
     public let name: String
     public let serviceName: String

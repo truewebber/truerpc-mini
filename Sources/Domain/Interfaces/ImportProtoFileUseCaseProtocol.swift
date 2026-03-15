@@ -2,7 +2,7 @@ import Foundation
 
 /// Protocol defining the contract for importing proto files
 /// This abstraction allows the Presentation layer to depend on an interface rather than concrete implementation
-public protocol ImportProtoFileUseCaseProtocol {
+public protocol ImportProtoFileUseCaseProtocol: Sendable {
     /// Executes the proto file import operation without import path resolution
     /// - Parameter url: URL of the proto file to import
     /// - Returns: Parsed ProtoFile entity

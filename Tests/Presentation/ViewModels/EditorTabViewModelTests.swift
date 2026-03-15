@@ -342,16 +342,15 @@ final class EditorTabViewModelTests: XCTestCase {
 
 // MARK: - Mock
 
-class MockGenerateMockDataUseCase: GenerateMockDataUseCase {
+@MainActor
+final class MockGenerateMockDataUseCase: GenerateMockDataUseCaseProtocol {
     var mockJSON: String = "{}"
     var executeCallCount = 0
     var shouldThrow = false
 
-    init() {
-        super.init(mockDataGenerator: MockDataGenerator())
-    }
+    init() {}
 
-    override func execute(method _: TrueRPCMini.Method) async throws -> String {
+    func execute(method _: TrueRPCMini.Method) throws -> String {
         executeCallCount += 1
         if shouldThrow {
             throw NSError(domain: "mock", code: 0, userInfo: [NSLocalizedDescriptionKey: "mock generation failed"])
@@ -360,7 +359,8 @@ class MockGenerateMockDataUseCase: GenerateMockDataUseCase {
     }
 }
 
-class MockExecuteUnaryRequestUseCase: ExecuteUnaryRequestUseCaseProtocol {
+@MainActor
+final class MockExecuteUnaryRequestUseCase: ExecuteUnaryRequestUseCaseProtocol {
     var executeCalled = false
     var capturedRequest: RequestDraft?
     var capturedMethod: TrueRPCMini.Method?
@@ -400,17 +400,16 @@ class MockExecuteUnaryRequestUseCase: ExecuteUnaryRequestUseCaseProtocol {
     }
 }
 
-class MockExportResponseUseCase: ExportResponseUseCase {
+@MainActor
+final class MockExportResponseUseCase: ExportResponseUseCaseProtocol {
     var executeCalled = false
     var capturedResponse: GrpcResponse?
     var capturedDestination: URL?
     var capturedIncludeMetadata: Bool = false
 
-    init() {
-        super.init(fileManager: MockFileManager())
-    }
+    init() {}
 
-    override func execute(
+    func execute(
         response: GrpcResponse,
         destination: URL,
         includeMetadata: Bool = false)
@@ -420,6 +419,10 @@ class MockExportResponseUseCase: ExportResponseUseCase {
         capturedResponse = response
         capturedDestination = destination
         capturedIncludeMetadata = includeMetadata
+    }
+
+    func generateDefaultFilename() -> String {
+        "mock_response.json"
     }
 }
 

@@ -1,7 +1,7 @@
 import Foundation
 
 /// Represents a named server endpoint configuration
-public struct ServerEnvironment: Equatable, Identifiable, Codable {
+public struct ServerEnvironment: Equatable, Identifiable, Codable, Sendable {
     public let id: UUID
     public var name: String
     public var host: String

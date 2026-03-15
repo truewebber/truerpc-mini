@@ -5,7 +5,7 @@ import SwiftProtoReflect
 
 /// Dynamic gRPC client that uses SwiftProtoReflect for message handling
 /// and grpc-swift-2 for transport
-public class GrpcSwiftDynamicClient: GrpcClientProtocol {
+public final class GrpcSwiftDynamicClient: GrpcClientProtocol, Sendable {
     private let protoRepository: ProtoRepositoryProtocol
     private let logger: AppLogger
 
@@ -26,8 +26,8 @@ public class GrpcSwiftDynamicClient: GrpcClientProtocol {
         let inputDescriptor: MessageDescriptor
         let outputDescriptor: MessageDescriptor
         do {
-            inputDescriptor = try protoRepository.getMessageDescriptor(forType: method.inputType)
-            outputDescriptor = try protoRepository.getMessageDescriptor(forType: method.outputType)
+            inputDescriptor = try await protoRepository.getMessageDescriptor(forType: method.inputType)
+            outputDescriptor = try await protoRepository.getMessageDescriptor(forType: method.outputType)
         } catch {
             logger.error("Proto message descriptor not found", metadata: [
                 "inputType": method.inputType,

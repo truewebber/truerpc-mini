@@ -1,3 +1,4 @@
+import os
 import XCTest
 @testable import TrueRPCMini
 
@@ -400,45 +401,62 @@ final class SidebarViewModelTests: XCTestCase {
 
 // MARK: - Mock ImportPaths Repository
 
-class MockImportPathsRepository: ImportPathsRepositoryProtocol {
-    var importPaths: [String] = []
+final class MockImportPathsRepository: ImportPathsRepositoryProtocol, Sendable {
+    private struct Storage {
+        var importPaths: [String] = []
+    }
+
+    private let storage = OSAllocatedUnfairLock(initialState: Storage())
+
+    var importPaths: [String] {
+        get { storage.withLock { $0.importPaths } }
+        set { storage.withLock { $0.importPaths = newValue } }
+    }
 
     func getImportPaths() -> [String] {
-        importPaths
+        storage.withLock { $0.importPaths }
     }
 
     func saveImportPaths(_ paths: [String]) {
-        importPaths = paths
+        storage.withLock { $0.importPaths = paths }
     }
 }
 
 // MARK: - Mock ProtoPathsPersistence
 
-class MockProtoPathsPersistence: ProtoPathsPersistenceProtocol {
-    var savedPaths: [URL] = []
+final class MockProtoPathsPersistence: ProtoPathsPersistenceProtocol, Sendable {
+    private struct Storage {
+        var savedPaths: [URL] = []
+    }
+
+    private let storage = OSAllocatedUnfairLock(initialState: Storage())
+
+    var savedPaths: [URL] {
+        get { storage.withLock { $0.savedPaths } }
+        set { storage.withLock { $0.savedPaths = newValue } }
+    }
 
     func saveProtoPaths(_ paths: [URL]) {
-        savedPaths = paths
+        storage.withLock { $0.savedPaths = paths }
     }
 
     func getProtoPaths() -> [URL] {
-        savedPaths
+        storage.withLock { $0.savedPaths }
     }
 }
 
 // MARK: - Mock LoadSavedProtosUseCase
 
-class MockLoadSavedProtosUseCase: LoadSavedProtosUseCase {
+@MainActor
+final class MockLoadSavedProtosUseCase: LoadSavedProtosUseCaseProtocol {
     var executeCalled = false
     var executeURLs: [URL]?
     var executeImportPaths: [String]?
     var mockProtos: [ProtoFile] = []
 
-    init() {
-        super.init(importProtoFileUseCase: MockImportProtoFileUseCase(), logger: MockAppLogger())
-    }
+    init() {}
 
-    override func execute(urls: [URL], importPaths: [String]) async -> [ProtoFile] {
+    func execute(urls: [URL], importPaths: [String]) -> [ProtoFile] {
         executeCalled = true
         executeURLs = urls
         executeImportPaths = importPaths

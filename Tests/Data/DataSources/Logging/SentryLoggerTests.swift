@@ -1,19 +1,29 @@
+import os
 import XCTest
 @testable import TrueRPCMini
 
 // MARK: - Mock
 
-private final class MockSentryWriter: SentryLogWriterProtocol {
+private final class MockSentryWriter: SentryLogWriterProtocol, Sendable {
     struct WriteCall {
         let level: AppLogLevel
         let message: String
-        let attributes: [String: Any]
+        let attributes: [String: String]
     }
 
-    private(set) var calls: [WriteCall] = []
+    private struct Storage {
+        var calls: [WriteCall] = []
+    }
+
+    private let storage = OSAllocatedUnfairLock(initialState: Storage())
+
+    var calls: [WriteCall] {
+        storage.withLock { $0.calls }
+    }
 
     func write(level: AppLogLevel, message: String, attributes: [String: Any]) {
-        calls.append(WriteCall(level: level, message: message, attributes: attributes))
+        let stringAttributes = attributes.compactMapValues { $0 as? String }
+        storage.withLock { $0.calls.append(WriteCall(level: level, message: message, attributes: stringAttributes)) }
     }
 }
 
@@ -107,8 +117,8 @@ final class SentryLoggerTests: XCTestCase {
         sut.error("msg", metadata: ["userId": "abc", "code": "404"])
 
         XCTAssertEqual(writer.calls.count, 1)
-        XCTAssertEqual(writer.calls[0].attributes["userId"] as? String, "abc")
-        XCTAssertEqual(writer.calls[0].attributes["code"] as? String, "404")
+        XCTAssertEqual(writer.calls[0].attributes["userId"], "abc")
+        XCTAssertEqual(writer.calls[0].attributes["code"], "404")
     }
 
     func test_sentryLogger_emptyMetadata_isPassedAsEmptyAttributes() {

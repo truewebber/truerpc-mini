@@ -24,9 +24,9 @@ public final class EditorTabViewModel: ObservableObject {
 
     // MARK: - Dependencies
 
-    private let generateMockDataUseCase: GenerateMockDataUseCase
+    private let generateMockDataUseCase: GenerateMockDataUseCaseProtocol
     private let executeRequestUseCase: ExecuteUnaryRequestUseCaseProtocol
-    public let exportResponseUseCase: ExportResponseUseCase
+    public let exportResponseUseCase: ExportResponseUseCaseProtocol
     private let logger: AppLogger
 
     // MARK: - Initialization
@@ -36,9 +36,9 @@ public final class EditorTabViewModel: ObservableObject {
         initialEnvironment: ServerEnvironment? = nil,
         customUrl: String? = nil,
         availableEnvironments: [ServerEnvironment] = [],
-        generateMockDataUseCase: GenerateMockDataUseCase,
+        generateMockDataUseCase: GenerateMockDataUseCaseProtocol,
         executeRequestUseCase: ExecuteUnaryRequestUseCaseProtocol,
-        exportResponseUseCase: ExportResponseUseCase,
+        exportResponseUseCase: ExportResponseUseCaseProtocol,
         logger: AppLogger)
     {
         self.editorTab = editorTab

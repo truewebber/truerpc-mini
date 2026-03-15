@@ -1,8 +1,10 @@
+import os
 import XCTest
 @testable import TrueRPCMini
 
 /// Tests for ExportResponseUseCase
 /// Validates response export to file functionality
+@MainActor
 final class ExportResponseUseCaseTests: XCTestCase {
     // MARK: - Test: Successful export
 
@@ -131,18 +133,41 @@ final class ExportResponseUseCaseTests: XCTestCase {
 
 // MARK: - Mocks
 
-class MockFileManager: FileManagerProtocol {
-    var writeWasCalled = false
-    var writtenURL: URL?
-    var writtenData: Data?
-    var shouldFail = false
+final class MockFileManager: FileManagerProtocol, Sendable {
+    private struct Storage {
+        var writeWasCalled = false
+        var writtenURL: URL?
+        var writtenData: Data?
+        var shouldFail = false
+    }
+
+    private let storage = OSAllocatedUnfairLock(initialState: Storage())
+
+    var writeWasCalled: Bool {
+        storage.withLock { $0.writeWasCalled }
+    }
+
+    var writtenURL: URL? {
+        storage.withLock { $0.writtenURL }
+    }
+
+    var writtenData: Data? {
+        storage.withLock { $0.writtenData }
+    }
+
+    var shouldFail: Bool {
+        get { storage.withLock { $0.shouldFail } }
+        set { storage.withLock { $0.shouldFail = newValue } }
+    }
 
     func write(_ data: Data, to url: URL) throws {
-        writeWasCalled = true
-        writtenURL = url
-        writtenData = data
-
-        if shouldFail {
+        let fail = storage.withLock { st -> Bool in
+            st.writeWasCalled = true
+            st.writtenURL = url
+            st.writtenData = data
+            return st.shouldFail
+        }
+        if fail {
             throw ExportError.fileWriteFailed
         }
     }

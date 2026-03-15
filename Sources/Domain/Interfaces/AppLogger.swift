@@ -3,7 +3,7 @@
 /// `@autoclosure` prevents string formatting overhead for filtered-out levels.
 /// `metadata` carries structured key-value context for log-backend filtering (e.g. Sentry).
 /// Implementations live in the Data layer; call sites use the protocol only.
-public protocol AppLogger {
+public protocol AppLogger: Sendable {
     func debug(_ message: @autoclosure () -> String, metadata: [String: String])
     func info(_ message: @autoclosure () -> String, metadata: [String: String])
     func warning(_ message: @autoclosure () -> String, metadata: [String: String])

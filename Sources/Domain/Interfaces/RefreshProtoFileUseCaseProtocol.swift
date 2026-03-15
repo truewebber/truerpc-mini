@@ -1,7 +1,7 @@
 import Foundation
 
 /// Protocol defining the contract for refreshing (re-parsing) an already-loaded proto file
-public protocol RefreshProtoFileUseCaseProtocol {
+public protocol RefreshProtoFileUseCaseProtocol: Sendable {
     /// Re-parses the proto file at the given ProtoFile's path and returns an updated entity
     /// - Parameters:
     ///   - protoFile: The existing ProtoFile whose source file should be re-parsed

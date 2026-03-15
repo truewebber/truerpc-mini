@@ -1,7 +1,7 @@
 import Foundation
 
 /// Represents a gRPC service definition
-public struct Service: Equatable, Identifiable {
+public struct Service: Equatable, Identifiable, Sendable {
     public let id: UUID
     public let name: String
     public let methods: [Method]

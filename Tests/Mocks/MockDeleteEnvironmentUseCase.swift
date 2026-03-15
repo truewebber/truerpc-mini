@@ -1,10 +1,19 @@
 import Foundation
+import os
 @testable import TrueRPCMini
 
-class MockDeleteEnvironmentUseCase: DeleteEnvironmentUseCaseProtocol {
-    var deletedIds: [UUID] = []
+final class MockDeleteEnvironmentUseCase: DeleteEnvironmentUseCaseProtocol, Sendable {
+    private struct Storage {
+        var deletedIds: [UUID] = []
+    }
+
+    private let storage = OSAllocatedUnfairLock(initialState: Storage())
+
+    var deletedIds: [UUID] {
+        storage.withLock { $0.deletedIds }
+    }
 
     func execute(id: UUID) {
-        deletedIds.append(id)
+        storage.withLock { $0.deletedIds.append(id) }
     }
 }

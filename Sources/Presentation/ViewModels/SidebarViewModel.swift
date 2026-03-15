@@ -18,7 +18,7 @@ public final class SidebarViewModel: ObservableObject {
     private let watcher: ProtoFileWatcherProtocol
     private let importPathsRepository: ImportPathsRepositoryProtocol
     private let protoPathsPersistence: ProtoPathsPersistenceProtocol
-    private let loadSavedProtosUseCase: LoadSavedProtosUseCase
+    private let loadSavedProtosUseCase: LoadSavedProtosUseCaseProtocol
     private let logger: AppLogger
     private let telemetry: TelemetryServiceProtocol
 
@@ -32,7 +32,7 @@ public final class SidebarViewModel: ObservableObject {
         watcher: ProtoFileWatcherProtocol,
         importPathsRepository: ImportPathsRepositoryProtocol,
         protoPathsPersistence: ProtoPathsPersistenceProtocol,
-        loadSavedProtosUseCase: LoadSavedProtosUseCase,
+        loadSavedProtosUseCase: LoadSavedProtosUseCaseProtocol,
         logger: AppLogger,
         telemetry: TelemetryServiceProtocol)
     {

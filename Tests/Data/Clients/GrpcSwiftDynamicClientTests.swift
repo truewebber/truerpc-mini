@@ -3,6 +3,7 @@ import SwiftProtoReflect
 import XCTest
 @testable import TrueRPCMini
 
+@MainActor
 final class GrpcSwiftDynamicClientTests: XCTestCase {
     var sut: GrpcSwiftDynamicClient!
     fileprivate var mockRepository: MockProtoRepository!
@@ -452,7 +453,8 @@ final class GrpcSwiftDynamicClientTests: XCTestCase {
 
 // MARK: - Mock Repository
 
-private class MockProtoRepository: ProtoRepositoryProtocol {
+@MainActor
+private final class MockProtoRepository: ProtoRepositoryProtocol {
     var stubbedMessageDescriptor: MessageDescriptor?
     var inputDescriptor: MessageDescriptor?
     var outputDescriptor: MessageDescriptor?
@@ -482,7 +484,6 @@ private class MockProtoRepository: ProtoRepositoryProtocol {
             throw ProtoRepositoryError.messageTypeNotFound(typeName)
         }
 
-        // Return specific descriptor based on type name
         if typeName.contains("Request"), let descriptor = inputDescriptor {
             return descriptor
         }

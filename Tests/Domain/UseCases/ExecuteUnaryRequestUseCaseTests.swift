@@ -2,6 +2,7 @@ import struct TrueRPCMini.Method
 import XCTest
 @testable import TrueRPCMini
 
+@MainActor
 final class ExecuteUnaryRequestUseCaseTests: XCTestCase {
     var mockGrpcClient: MockGrpcClient!
     var mockTelemetry: MockTelemetryService!
@@ -425,7 +426,8 @@ final class ExecuteUnaryRequestUseCaseTests: XCTestCase {
 
 // MARK: - Mock
 
-class MockGrpcClient: GrpcClientProtocol {
+@MainActor
+final class MockGrpcClient: GrpcClientProtocol {
     var executeUnaryCalled = false
     var capturedRequest: RequestDraft?
     var capturedMethod: TrueRPCMini.Method?

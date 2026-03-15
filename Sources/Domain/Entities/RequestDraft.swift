@@ -2,7 +2,7 @@ import Foundation
 
 /// Represents a draft of a gRPC request being edited
 /// Contains the current state of the request before execution
-public struct RequestDraft: Equatable {
+public struct RequestDraft: Equatable, Sendable {
     public let jsonBody: String
     public let url: String
     public let method: Method

@@ -1,5 +1,6 @@
 @testable import TrueRPCMini
 
+@MainActor
 final class MockUpdaterService: UpdaterServiceProtocol {
     var checkForUpdatesCallCount = 0
     var checkForUpdatesCalled: Bool {

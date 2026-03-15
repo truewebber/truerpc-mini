@@ -16,9 +16,9 @@ public final class AppViewModel: ObservableObject {
     public let tabManager: TabManagerViewModel
     private var cancellables = Set<AnyCancellable>()
     private let createEditorTabUseCase: CreateEditorTabUseCase
-    private let generateMockDataUseCase: GenerateMockDataUseCase
+    private let generateMockDataUseCase: GenerateMockDataUseCaseProtocol
     private let executeRequestUseCase: ExecuteUnaryRequestUseCaseProtocol
-    private let exportResponseUseCase: ExportResponseUseCase
+    private let exportResponseUseCase: ExportResponseUseCaseProtocol
     private let telemetry: TelemetryServiceProtocol
     private let logger: AppLogger
 
@@ -27,9 +27,9 @@ public final class AppViewModel: ObservableObject {
     public init(
         tabManager: TabManagerViewModel,
         createEditorTabUseCase: CreateEditorTabUseCase,
-        generateMockDataUseCase: GenerateMockDataUseCase,
+        generateMockDataUseCase: GenerateMockDataUseCaseProtocol,
         executeRequestUseCase: ExecuteUnaryRequestUseCaseProtocol,
-        exportResponseUseCase: ExportResponseUseCase,
+        exportResponseUseCase: ExportResponseUseCaseProtocol,
         telemetry: TelemetryServiceProtocol,
         logger: AppLogger)
     {

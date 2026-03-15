@@ -27,8 +27,12 @@ struct TrueRPCMiniApp: App {
     /// Updater ViewModel for the "Check for Updates..." menu item
     @StateObject private var updaterViewModel: UpdaterViewModel
 
+    /// About dialog ViewModel
+    @StateObject private var aboutViewModel: AboutViewModel
+
     @Environment(\.scenePhase) private var scenePhase
     @State private var hasRestoredTabs = false
+    @State private var isAboutPresented = false
 
     // MARK: - Initialization
 
@@ -246,6 +250,7 @@ struct TrueRPCMiniApp: App {
         _appViewModel = StateObject(wrappedValue: appVM)
         _globalEnvironmentViewModel = StateObject(wrappedValue: globalEnvVM)
         _updaterViewModel = StateObject(wrappedValue: di.resolve(UpdaterViewModel.self)!)
+        _aboutViewModel = StateObject(wrappedValue: AboutViewModel())
     }
 
     // MARK: - Scene
@@ -302,10 +307,18 @@ struct TrueRPCMiniApp: App {
             .onChange(of: appViewModel.tabManager.tabs.count) { _, _ in
                 applyWindowConstraints(hasTab: !appViewModel.tabManager.tabs.isEmpty, animate: true)
             }
+            .sheet(isPresented: $isAboutPresented) {
+                AboutView(viewModel: aboutViewModel)
+            }
         }
         .commands {
-            CommandGroup(after: .appInfo) {
+            CommandGroup(replacing: .appInfo) {
+                Button("About TrueRPC Mini") {
+                    isAboutPresented = true
+                }
+
                 Divider()
+
                 Button("Check for Updates...") {
                     updaterViewModel.checkForUpdates()
                 }

@@ -3,7 +3,7 @@ import Foundation
 /// Represents gRPC metadata (headers) to be sent with requests
 /// gRPC metadata is key-value pairs sent alongside the request
 /// Binary metadata keys must end with "-bin" suffix
-public struct GrpcMetadata: Equatable {
+public struct GrpcMetadata: Equatable, Sendable {
     /// Dictionary of metadata key-value pairs
     public let headers: [String: String]
 

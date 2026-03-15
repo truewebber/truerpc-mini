@@ -2,6 +2,7 @@ import SwiftProtoReflect
 import XCTest
 @testable import TrueRPCMini
 
+@MainActor
 final class RefreshProtoFileUseCaseTests: XCTestCase {
     fileprivate var mockRepository: MockProtoRepositoryForRefresh!
     var sut: RefreshProtoFileUseCase!
@@ -89,7 +90,8 @@ final class RefreshProtoFileUseCaseTests: XCTestCase {
 
 // MARK: - Mock
 
-private class MockProtoRepositoryForRefresh: ProtoRepositoryProtocol {
+@MainActor
+private final class MockProtoRepositoryForRefresh: ProtoRepositoryProtocol {
     var loadProtoCalled = false
     var loadProtoURL: URL?
     var loadProtoImportPaths: [String]?

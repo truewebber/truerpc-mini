@@ -1,7 +1,7 @@
 import Foundation
 
 /// Persistable snapshot of an EditorTab for restoration across app restarts
-public struct EditorTabState: Identifiable, Equatable, Codable {
+public struct EditorTabState: Identifiable, Equatable, Codable, Sendable {
     public let id: UUID
     public let protoFilePath: String
     public let serviceName: String

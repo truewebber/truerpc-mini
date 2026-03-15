@@ -2,7 +2,7 @@ import Foundation
 
 /// Use case for creating editor tabs for gRPC methods
 /// Simple transformation of method metadata into an EditorTab entity
-public final class CreateEditorTabUseCase {
+public final class CreateEditorTabUseCase: Sendable {
     public init() {}
 
     /// Executes the creation of an editor tab

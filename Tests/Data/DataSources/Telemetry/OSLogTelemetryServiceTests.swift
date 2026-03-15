@@ -1,6 +1,7 @@
 import XCTest
 @testable import TrueRPCMini
 
+@MainActor
 final class OSLogTelemetryServiceTests: XCTestCase {
     func test_track_logsMessageContainingEventName() async {
         var capturedMessage: String?

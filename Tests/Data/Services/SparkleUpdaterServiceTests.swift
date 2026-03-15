@@ -1,6 +1,7 @@
 import XCTest
 @testable import TrueRPCMini
 
+@MainActor
 final class SparkleUpdaterServiceTests: XCTestCase {
     private var mockUpdating: MockSparkleUpdating!
     private var sut: SparkleUpdaterService!
@@ -51,6 +52,7 @@ final class SparkleUpdaterServiceTests: XCTestCase {
 
 // MARK: - Test Double
 
+@MainActor
 final class MockSparkleUpdating: SparkleUpdating {
     var checkForUpdatesCalled: Bool {
         checkForUpdatesCallCount > 0

@@ -3,7 +3,7 @@ import SwiftProtoReflect
 
 /// Protocol defining the contract for proto file repository
 /// Follows Dependency Inversion Principle - Domain defines the interface
-public protocol ProtoRepositoryProtocol {
+public protocol ProtoRepositoryProtocol: Sendable {
     /// Loads and parses a proto file from the given URL without import path resolution
     /// - Parameter url: File URL pointing to a .proto file
     /// - Returns: Parsed ProtoFile entity
@@ -22,11 +22,11 @@ public protocol ProtoRepositoryProtocol {
 
     /// Returns all currently loaded proto files
     /// - Returns: Array of loaded ProtoFile entities
-    func getLoadedProtos() -> [ProtoFile]
+    func getLoadedProtos() async -> [ProtoFile]
 
     /// Gets the message descriptor for a specific message type from loaded protos
     /// - Parameter typeName: Fully qualified message type name (e.g., ".package.MessageName" or "MessageName")
     /// - Returns: MessageDescriptor for dynamic message creation
     /// - Throws: ProtoRepositoryError if type not found in loaded protos
-    func getMessageDescriptor(forType typeName: String) throws -> MessageDescriptor
+    func getMessageDescriptor(forType typeName: String) async throws -> MessageDescriptor
 }

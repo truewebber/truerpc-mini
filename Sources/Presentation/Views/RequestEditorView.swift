@@ -374,7 +374,7 @@ struct RequestEditorView: View {
         }
     }
 
-    private class PreviewMockExecuteUseCase: ExecuteUnaryRequestUseCaseProtocol {
+    private final class PreviewMockExecuteUseCase: ExecuteUnaryRequestUseCaseProtocol {
         func execute(request _: RequestDraft, method _: TrueRPCMini.Method) throws -> GrpcResponse {
             // Return mock response for preview
             GrpcResponse(
@@ -385,7 +385,7 @@ struct RequestEditorView: View {
         }
     }
 
-    private class PreviewMockFileManager: FileManagerProtocol {
+    private final class PreviewMockFileManager: FileManagerProtocol {
         func write(_: Data, to _: URL) throws {
             // No-op for preview
         }

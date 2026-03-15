@@ -1,3 +1,4 @@
+import os
 import XCTest
 @testable import TrueRPCMini
 
@@ -243,11 +244,20 @@ final class TabManagerViewModelTests: XCTestCase {
     }
 }
 
-private final class MockSaveTabStateUseCase: SaveTabStateUseCaseProtocol {
-    var savedStates: [[EditorTabState]] = []
+private final class MockSaveTabStateUseCase: SaveTabStateUseCaseProtocol, Sendable {
+    private struct Storage {
+        var savedStates: [[EditorTabState]] = []
+    }
+
+    private let storage = OSAllocatedUnfairLock(initialState: Storage())
+
+    var savedStates: [[EditorTabState]] {
+        get { storage.withLock { $0.savedStates } }
+        set { storage.withLock { $0.savedStates = newValue } }
+    }
 
     func execute(_ states: [EditorTabState]) {
-        savedStates.append(states)
+        storage.withLock { $0.savedStates.append(states) }
     }
 }
 
@@ -261,10 +271,19 @@ private final class TabManagerMockFileManager: FileManagerProtocol {
     func write(_: Data, to _: URL) throws {}
 }
 
-private final class MockRestoreTabsUseCase: RestoreTabsUseCaseProtocol {
-    var states: [EditorTabState] = []
+private final class MockRestoreTabsUseCase: RestoreTabsUseCaseProtocol, Sendable {
+    private struct Storage {
+        var states: [EditorTabState] = []
+    }
+
+    private let storage = OSAllocatedUnfairLock(initialState: Storage())
+
+    var states: [EditorTabState] {
+        get { storage.withLock { $0.states } }
+        set { storage.withLock { $0.states = newValue } }
+    }
 
     func execute() -> [EditorTabState] {
-        states
+        storage.withLock { $0.states }
     }
 }

@@ -2,6 +2,7 @@ import XCTest
 @testable import TrueRPCMini
 
 /// Tests for LoadSavedProtosUseCase - loading proto files from saved paths
+@MainActor
 final class LoadSavedProtosUseCaseTests: XCTestCase {
     var sut: LoadSavedProtosUseCase!
     var mockImportUseCase: MockImportProtoFileUseCase!

@@ -2,7 +2,7 @@ import Foundation
 
 /// Use case for generating mock JSON data for gRPC method inputs
 /// Delegates to MockDataGenerator to create realistic test data
-public class GenerateMockDataUseCase {
+public final class GenerateMockDataUseCase: GenerateMockDataUseCaseProtocol {
     private let mockDataGenerator: MockDataGeneratorProtocol
 
     public init(mockDataGenerator: MockDataGeneratorProtocol) {

@@ -24,14 +24,9 @@ public final class AppDI: ObservableObject {
     /// Caches singleton instances
     private var singletons: [String: Any] = [:]
 
-    /// Singleton instance of the container itself
-    private static var shared: AppDI?
-
     // MARK: - Initialization
 
-    public init() {
-        Self.shared = self
-    }
+    public init() {}
 
     // MARK: - Public Methods
 

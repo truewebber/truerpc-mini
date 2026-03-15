@@ -2,7 +2,8 @@ import Foundation
 @testable import TrueRPCMini
 
 /// Mock implementation of RefreshProtoFileUseCaseProtocol for testing
-public class MockRefreshProtoFileUseCase: RefreshProtoFileUseCaseProtocol {
+@MainActor
+public final class MockRefreshProtoFileUseCase: RefreshProtoFileUseCaseProtocol {
     public var callCount = 0
     public var lastProtoFile: ProtoFile?
     public var lastImportPaths: [String]?

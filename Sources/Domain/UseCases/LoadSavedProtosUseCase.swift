@@ -2,7 +2,7 @@ import Foundation
 
 /// Use case for loading proto files from saved paths
 /// Attempts to load each proto file, skips files that fail to load
-public class LoadSavedProtosUseCase {
+public final class LoadSavedProtosUseCase: LoadSavedProtosUseCaseProtocol {
     private let importProtoFileUseCase: ImportProtoFileUseCaseProtocol
     private let logger: AppLogger
 

@@ -1,6 +1,7 @@
 import XCTest
 @testable import TrueRPCMini
 
+@MainActor
 final class UpdaterServiceProtocolTests: XCTestCase {
     func test_mockUpdaterService_checkForUpdates_setsCalledFlag() {
         let sut = MockUpdaterService()

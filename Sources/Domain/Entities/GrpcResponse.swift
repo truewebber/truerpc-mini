@@ -2,7 +2,7 @@ import Foundation
 
 /// Represents the result of a gRPC request execution
 /// Contains response data, timing, status information, and metadata
-public struct GrpcResponse: Equatable {
+public struct GrpcResponse: Equatable, Sendable {
     public let jsonBody: String
     public let responseTime: TimeInterval
     public let statusCode: Int

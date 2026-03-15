@@ -15,6 +15,7 @@ private let allowedPropertyKeys: Set<String> = [
 
 private let maxPropertyLength = 64
 
+@MainActor
 final class AmplitudeTelemetryService: TelemetryServiceProtocol {
     /// 30 minutes of inactivity ends the session.
     /// Prevents idle macOS desktop sessions from inflating session duration metrics.

@@ -2,7 +2,7 @@ import Foundation
 
 /// Represents a parsed Protocol Buffer file
 /// Pure Domain entity - independent of any external library
-public struct ProtoFile: Equatable, Identifiable {
+public struct ProtoFile: Equatable, Identifiable, Sendable {
     public let id: UUID
     public let name: String
     public let path: URL

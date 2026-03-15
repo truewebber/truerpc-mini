@@ -2,11 +2,11 @@ import Foundation
 
 /// Use case for executing unary gRPC requests.
 /// Validates input, fires telemetry events at lifecycle points, and delegates to gRPC client.
-public protocol ExecuteUnaryRequestUseCaseProtocol {
+public protocol ExecuteUnaryRequestUseCaseProtocol: Sendable {
     func execute(request: RequestDraft, method: TrueRPCMini.Method) async throws -> GrpcResponse
 }
 
-public class ExecuteUnaryRequestUseCase: ExecuteUnaryRequestUseCaseProtocol {
+public final class ExecuteUnaryRequestUseCase: ExecuteUnaryRequestUseCaseProtocol {
     private let grpcClient: GrpcClientProtocol
     private let telemetry: TelemetryServiceProtocol
 

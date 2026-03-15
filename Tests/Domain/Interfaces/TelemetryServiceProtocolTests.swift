@@ -1,6 +1,7 @@
 import XCTest
 @testable import TrueRPCMini
 
+@MainActor
 final class TelemetryServiceProtocolTests: XCTestCase {
     func test_mockTelemetryService_capturesTrackedEvents() async {
         let mock = MockTelemetryService()

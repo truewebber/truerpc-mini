@@ -21,7 +21,7 @@ private extension Error {
 
 /// Repository for loading proto files from the file system
 /// Implements ProtoRepositoryProtocol from Domain layer
-public final class FileSystemProtoRepository: ProtoRepositoryProtocol {
+public actor FileSystemProtoRepository: ProtoRepositoryProtocol {
     private var loadedProtos: [ProtoFile] = []
     private var fileDescriptors: [Google_Protobuf_FileDescriptorProto] = []
     private let logger: AppLogger

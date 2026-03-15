@@ -1,10 +1,19 @@
 import Foundation
+import os
 @testable import TrueRPCMini
 
-class MockSaveEnvironmentUseCase: SaveEnvironmentUseCaseProtocol {
-    var savedEnvironments: [ServerEnvironment] = []
+final class MockSaveEnvironmentUseCase: SaveEnvironmentUseCaseProtocol, Sendable {
+    private struct Storage {
+        var savedEnvironments: [ServerEnvironment] = []
+    }
+
+    private let storage = OSAllocatedUnfairLock(initialState: Storage())
+
+    var savedEnvironments: [ServerEnvironment] {
+        storage.withLock { $0.savedEnvironments }
+    }
 
     func execute(_ environment: ServerEnvironment) {
-        savedEnvironments.append(environment)
+        storage.withLock { $0.savedEnvironments.append(environment) }
     }
 }

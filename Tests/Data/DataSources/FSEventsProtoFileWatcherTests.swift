@@ -1,6 +1,7 @@
 import XCTest
 @testable import TrueRPCMini
 
+@MainActor
 final class FSEventsProtoFileWatcherTests: XCTestCase {
     var sut: FSEventsProtoFileWatcher!
 

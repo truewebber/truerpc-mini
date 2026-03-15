@@ -2,6 +2,7 @@
 ///
 /// Conforming types wrap the concrete update framework (Sparkle) so that
 /// ViewModels and use cases remain framework-independent.
+@MainActor
 public protocol UpdaterServiceProtocol {
     /// Whether a user-initiated update check can be started right now.
     var canCheckForUpdates: Bool { get }

@@ -2,7 +2,8 @@ import Foundation
 @testable import TrueRPCMini
 
 /// Mock implementation of ImportProtoFileUseCaseProtocol for testing
-public class MockImportProtoFileUseCase: ImportProtoFileUseCaseProtocol {
+@MainActor
+public final class MockImportProtoFileUseCase: ImportProtoFileUseCaseProtocol {
     public var callCount = 0
     public var lastURL: URL?
     public var lastImportPaths: [String]?

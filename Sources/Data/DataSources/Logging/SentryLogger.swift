@@ -3,7 +3,7 @@ import Foundation
 /// Internal abstraction over the Sentry logging sink.
 ///
 /// Allows replacing real Sentry calls with a mock in unit tests.
-protocol SentryLogWriterProtocol {
+protocol SentryLogWriterProtocol: Sendable {
     func write(level: AppLogLevel, message: String, attributes: [String: Any])
 }
 

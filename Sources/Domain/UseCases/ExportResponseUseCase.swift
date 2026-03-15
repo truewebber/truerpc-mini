@@ -2,7 +2,8 @@ import Foundation
 
 /// Use Case for exporting gRPC response to file
 /// Handles saving response JSON with optional metadata
-open class ExportResponseUseCase {
+@MainActor
+public final class ExportResponseUseCase: ExportResponseUseCaseProtocol {
     private let fileManager: FileManagerProtocol
 
     public init(fileManager: FileManagerProtocol) {
@@ -15,7 +16,7 @@ open class ExportResponseUseCase {
     ///   - destination: Destination file URL
     ///   - includeMetadata: If true, wraps response with metadata (time, status)
     /// - Throws: Error if file write fails
-    open func execute(
+    public func execute(
         response: GrpcResponse,
         destination: URL,
         includeMetadata: Bool = false)

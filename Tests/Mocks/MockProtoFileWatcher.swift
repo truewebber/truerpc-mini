@@ -1,28 +1,40 @@
 import Foundation
+import os
 @testable import TrueRPCMini
 
-class MockProtoFileWatcher: ProtoFileWatcherProtocol {
-    var startWatchingCalls: [ProtoFile] = []
-    var stopWatchingCalls: [ProtoFile] = []
+final class MockProtoFileWatcher: ProtoFileWatcherProtocol, Sendable {
+    private struct Storage {
+        var startWatchingCalls: [ProtoFile] = []
+        var stopWatchingCalls: [ProtoFile] = []
+    }
 
+    private let storage = OSAllocatedUnfairLock(initialState: Storage())
+    private let _continuation: AsyncStream<ProtoFile>.Continuation
     let changes: AsyncStream<ProtoFile>
-    private var continuation: AsyncStream<ProtoFile>.Continuation!
 
     init() {
         var cont: AsyncStream<ProtoFile>.Continuation!
         self.changes = AsyncStream { cont = $0 }
-        self.continuation = cont
+        self._continuation = cont
+    }
+
+    var startWatchingCalls: [ProtoFile] {
+        storage.withLock { $0.startWatchingCalls }
+    }
+
+    var stopWatchingCalls: [ProtoFile] {
+        storage.withLock { $0.stopWatchingCalls }
     }
 
     func startWatching(_ protoFile: ProtoFile) {
-        startWatchingCalls.append(protoFile)
+        storage.withLock { $0.startWatchingCalls.append(protoFile) }
     }
 
     func stopWatching(_ protoFile: ProtoFile) {
-        stopWatchingCalls.append(protoFile)
+        storage.withLock { $0.stopWatchingCalls.append(protoFile) }
     }
 
     func emit(_ protoFile: ProtoFile) {
-        continuation.yield(protoFile)
+        _continuation.yield(protoFile)
     }
 }

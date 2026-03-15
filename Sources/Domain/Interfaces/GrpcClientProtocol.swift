@@ -2,7 +2,7 @@ import Foundation
 
 /// Protocol for gRPC client that executes dynamic requests
 /// Abstracts the underlying gRPC transport implementation
-public protocol GrpcClientProtocol {
+public protocol GrpcClientProtocol: Sendable {
     /// Execute a unary gRPC request
     /// - Parameters:
     ///   - request: The request draft containing JSON body, URL, method, and optional metadata

@@ -2,7 +2,7 @@ import Foundation
 
 /// Use Case for importing proto files
 /// Orchestrates the business logic of loading and validating proto files
-public final class ImportProtoFileUseCase: ImportProtoFileUseCaseProtocol {
+public final class ImportProtoFileUseCase: ImportProtoFileUseCaseProtocol, Sendable {
     private let repository: ProtoRepositoryProtocol
 
     public init(repository: ProtoRepositoryProtocol) {

@@ -2,6 +2,7 @@ import SwiftProtoReflect
 import XCTest
 @testable import TrueRPCMini
 
+@MainActor
 final class ImportProtoFileUseCaseTests: XCTestCase {
     // MARK: - Test Lifecycle
 
@@ -106,7 +107,8 @@ final class ImportProtoFileUseCaseTests: XCTestCase {
 
 // MARK: - Mock Repository
 
-private class MockProtoRepository: ProtoRepositoryProtocol {
+@MainActor
+private final class MockProtoRepository: ProtoRepositoryProtocol {
     var loadProtoCalled = false
     var loadProtoURL: URL?
     var loadProtoImportPaths: [String]?
@@ -151,7 +153,6 @@ private class MockProtoRepository: ProtoRepositoryProtocol {
     }
 
     func getMessageDescriptor(forType _: String) throws -> SwiftProtoReflect.MessageDescriptor {
-        // Simple mock: return empty descriptor
         let fileDesc = SwiftProtoReflect.FileDescriptor(name: "mock.proto", package: "mock")
         return SwiftProtoReflect.MessageDescriptor(name: "MockMessage", parent: fileDesc)
     }

@@ -4,6 +4,7 @@
 
     /// Debug-only TelemetryServiceProtocol implementation that logs events to Console.app.
     /// Not compiled in Release — use AmplitudeTelemetryService instead.
+    @MainActor
     struct OSLogTelemetryService: TelemetryServiceProtocol {
         private let logger: os.Logger
         private let testSink: ((String) -> Void)?

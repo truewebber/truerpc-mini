@@ -26,13 +26,27 @@
 	<string>$(MACOSX_DEPLOYMENT_TARGET)</string>
 	<key>AmplitudeApiKey</key>
 	<string>$(AMPLITUDE_API_KEY)</string>
+	<key>AppGitHubURL</key>
+	<string>$(APP_GITHUB_URL)</string>
+	<key>AppShortDescription</key>
+	<string>$(APP_SHORT_DESCRIPTION)</string>
 	<key>SentryDsn</key>
 	<string>https://$(SENTRY_DSN_REMAINDER)</string>
+	<key>DeveloperEmail</key>
+	<string>$(DEVELOPER_EMAIL)</string>
+	<key>DeveloperName</key>
+	<string>$(DEVELOPER_NAME)</string>
+	<key>DeveloperWebsiteURL</key>
+	<string>$(DEVELOPER_WEBSITE_URL)</string>
 	<key>SUFeedURL</key>
 	<string>https://$(SPARKLE_APPCAST_URL_REMAINDER)</string>
 	<key>SUPublicEDKey</key>
 	<string>$(SPARKLE_ED_PUBLIC_KEY)</string>
 	<key>SUScheduledCheckInterval</key>
 	<integer>86400</integer>
+	<key>SwiftLanguageVersion</key>
+	<string>$(SWIFT_VERSION)</string>
+	<key>XcodeVersion</key>
+	<string>$(XCODE_VERSION_ACTUAL)</string>
 </dict>
 </plist>

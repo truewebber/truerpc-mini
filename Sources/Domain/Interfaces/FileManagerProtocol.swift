@@ -2,7 +2,7 @@ import Foundation
 
 /// Protocol for file system operations
 /// Abstracts file writing for testability
-public protocol FileManagerProtocol {
+public protocol FileManagerProtocol: Sendable {
     /// Write data to file at given URL
     /// - Parameters:
     ///   - data: Data to write

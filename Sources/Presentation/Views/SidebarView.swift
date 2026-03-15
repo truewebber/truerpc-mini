@@ -422,7 +422,7 @@ private struct MethodRow: View {
         }
     }
 
-    private class PreviewMockUseCase: ImportProtoFileUseCaseProtocol {
+    private final class PreviewMockUseCase: ImportProtoFileUseCaseProtocol {
         func execute(url: URL) throws -> ProtoFile {
             ProtoFile(name: "test.proto", path: url, services: [])
         }
@@ -452,12 +452,8 @@ private struct MethodRow: View {
         }
     }
 
-    private class PreviewMockLoadSavedProtosUseCase: LoadSavedProtosUseCase {
-        init() {
-            super.init(importProtoFileUseCase: PreviewMockUseCase(), logger: NullLogger())
-        }
-
-        override func execute(urls _: [URL], importPaths _: [String]) async -> [ProtoFile] {
+    private final class PreviewMockLoadSavedProtosUseCase: LoadSavedProtosUseCaseProtocol {
+        func execute(urls _: [URL], importPaths _: [String]) -> [ProtoFile] {
             []
         }
     }
@@ -466,7 +462,7 @@ private struct MethodRow: View {
         func track(_: TelemetryEvent) {}
     }
 
-    private class PreviewMockRefreshUseCase: RefreshProtoFileUseCaseProtocol {
+    private final class PreviewMockRefreshUseCase: RefreshProtoFileUseCaseProtocol {
         func execute(protoFile: ProtoFile, importPaths _: [String]) throws -> ProtoFile {
             protoFile
         }

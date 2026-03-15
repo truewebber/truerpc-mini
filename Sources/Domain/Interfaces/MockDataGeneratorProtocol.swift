@@ -1,7 +1,7 @@
 import Foundation
 
 /// Protocol for generating mock data for gRPC messages
-public protocol MockDataGeneratorProtocol {
+public protocol MockDataGeneratorProtocol: Sendable {
     /// Generates mock JSON data for a given message type
     /// - Parameter messageType: The fully qualified message type name (e.g., "GetUserRequest")
     /// - Returns: JSON string with mock data

@@ -2,7 +2,7 @@ import Foundation
 
 /// Represents an editor tab for a gRPC method
 /// Each tab maintains state for editing and executing a single gRPC method
-public struct EditorTab: Identifiable, Equatable {
+public struct EditorTab: Identifiable, Equatable, Sendable {
     public let id: UUID
     public let methodName: String
     public let serviceName: String

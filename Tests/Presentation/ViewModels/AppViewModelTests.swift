@@ -463,7 +463,8 @@ final class AppViewModelTests: XCTestCase {
 
 // MARK: - Mock Execute Request Use Case
 
-private class MockExecuteRequestUseCase: ExecuteUnaryRequestUseCaseProtocol {
+@MainActor
+private final class MockExecuteRequestUseCase: ExecuteUnaryRequestUseCaseProtocol {
     func execute(request _: RequestDraft, method _: TrueRPCMini.Method) throws -> GrpcResponse {
         GrpcResponse(
             jsonBody: "{}",
@@ -475,7 +476,7 @@ private class MockExecuteRequestUseCase: ExecuteUnaryRequestUseCaseProtocol {
 
 // MARK: - Mock File Manager
 
-private class AppMockFileManager: FileManagerProtocol {
+private final class AppMockFileManager: FileManagerProtocol {
     func write(_: Data, to _: URL) throws {
         // No-op for testing
     }
