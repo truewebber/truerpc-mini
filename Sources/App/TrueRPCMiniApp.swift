@@ -12,6 +12,9 @@ struct TrueRPCMiniApp: App {
     /// Sparkle updater controller — must be retained for the app's lifetime.
     private let sparkleUpdaterController: SPUStandardUpdaterController
 
+    /// Sparkle delegate — must be retained; SPUStandardUpdaterController holds it weakly.
+    private let sparkleUpdaterDelegate: SparkleUpdaterDelegate
+
     /// Sidebar ViewModel (created once and reused)
     @StateObject private var sidebarViewModel: SidebarViewModel
 
@@ -34,14 +37,8 @@ struct TrueRPCMiniApp: App {
 
         let config = Config.fromBundle
 
-        // === SPARKLE ===
-        let updaterController = SPUStandardUpdaterController(
-            startingUpdater: true,
-            updaterDelegate: nil,
-            userDriverDelegate: nil)
-        self.sparkleUpdaterController = updaterController
-
         // === LOGGING ===
+        // Must be set up before Sparkle so the delegate can log immediately.
         #if DEBUG
             let logger: any AppLogger = OSLogger(category: "app")
         #else
@@ -55,6 +52,15 @@ struct TrueRPCMiniApp: App {
                 SentryLogger(minLevel: .warning),
             ])
         #endif
+
+        // === SPARKLE ===
+        let sparkleDelegate = SparkleUpdaterDelegate(logger: logger)
+        self.sparkleUpdaterDelegate = sparkleDelegate
+        let updaterController = SPUStandardUpdaterController(
+            startingUpdater: true,
+            updaterDelegate: sparkleDelegate,
+            userDriverDelegate: nil)
+        self.sparkleUpdaterController = updaterController
 
         let di = AppDI()
         self.di = di
