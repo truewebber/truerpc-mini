@@ -63,6 +63,66 @@ final class ReleaseWorkflowTests: XCTestCase {
             "ZIP must be created using ditto for correct Sparkle-compatible archive structure")
     }
 
+    func test_releaseWorkflow_secretsXcconfig_writesSparkleAppcastUrl() throws {
+        let workflow = try loadReleaseWorkflow()
+
+        XCTAssertTrue(
+            workflow.contains("SPARKLE_APPCAST_URL_REMAINDER = truewebber.github.io/truerpc-mini/appcast.xml"),
+            "Secrets.xcconfig generation must write SPARKLE_APPCAST_URL_REMAINDER so release builds have SUFeedURL")
+    }
+
+    func test_releaseWorkflow_secretsXcconfig_writesSparkleEdPublicKey() throws {
+        let workflow = try loadReleaseWorkflow()
+
+        XCTAssertTrue(
+            workflow.contains("SPARKLE_ED_PUBLIC_KEY"),
+            "Secrets.xcconfig generation must inject SPARKLE_ED_PUBLIC_KEY so release builds reject unsigned updates")
+    }
+
+    func test_releaseWorkflow_signsZipAndGeneratesAppcastWithEdDSAKey() throws {
+        let workflow = try loadReleaseWorkflow()
+
+        XCTAssertTrue(
+            workflow.contains("SPARKLE_ED_PRIVATE_KEY"),
+            "Workflow must reference SPARKLE_ED_PRIVATE_KEY secret for EdDSA signing")
+        XCTAssertTrue(
+            workflow.contains("generate_appcast"),
+            "Workflow must call generate_appcast to produce the Sparkle feed")
+        XCTAssertTrue(
+            workflow.contains("-s \"$SPARKLE_ED_PRIVATE_KEY\""),
+            "generate_appcast must receive the private key via -s flag")
+    }
+
+    func test_releaseWorkflow_appcastDownloadUrlPointsToGithubRelease() throws {
+        let workflow = try loadReleaseWorkflow()
+
+        XCTAssertTrue(
+            workflow.contains("--download-url-prefix"),
+            "generate_appcast must use --download-url-prefix to point downloads at GitHub Releases")
+        XCTAssertTrue(
+            workflow.contains("/releases/download/"),
+            "Appcast download URL prefix must reference the GitHub Releases download path")
+    }
+
+    func test_releaseWorkflow_appcastIsPublishedToGhPages() throws {
+        let workflow = try loadReleaseWorkflow()
+
+        XCTAssertTrue(
+            workflow.contains("gh-pages"),
+            "Workflow must publish appcast.xml to the gh-pages branch for stable Sparkle feed URL")
+        XCTAssertTrue(
+            workflow.contains("push origin gh-pages"),
+            "Workflow must push the appcast.xml update to the gh-pages branch")
+    }
+
+    func test_releaseWorkflow_appcastStepFailsExplicitlyWhenPrivateKeyMissing() throws {
+        let workflow = try loadReleaseWorkflow()
+
+        XCTAssertTrue(
+            workflow.contains("SPARKLE_ED_PRIVATE_KEY secret is not set"),
+            "Workflow must fail with an explicit error when SPARKLE_ED_PRIVATE_KEY is missing")
+    }
+
     private func loadReleaseWorkflow() throws -> String {
         let filePath = URL(fileURLWithPath: #filePath)
         let repositoryRoot = filePath

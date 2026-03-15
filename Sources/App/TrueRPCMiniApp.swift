@@ -1,4 +1,5 @@
 import AppKit
+import Sparkle
 import SwiftUI
 
 @main
@@ -7,6 +8,9 @@ struct TrueRPCMiniApp: App {
 
     /// Dependency Injection container
     private let di: AppDI
+
+    /// Sparkle updater controller — must be retained for the app's lifetime.
+    private let sparkleUpdaterController: SPUStandardUpdaterController
 
     /// Sidebar ViewModel (created once and reused)
     @StateObject private var sidebarViewModel: SidebarViewModel
@@ -26,6 +30,13 @@ struct TrueRPCMiniApp: App {
         UserDefaults.runAnalyticsMigration()
 
         let config = Config.fromBundle
+
+        // === SPARKLE ===
+        let updaterController = SPUStandardUpdaterController(
+            startingUpdater: true,
+            updaterDelegate: nil,
+            userDriverDelegate: nil)
+        sparkleUpdaterController = updaterController
 
         // === LOGGING ===
         #if DEBUG
@@ -125,6 +136,11 @@ struct TrueRPCMiniApp: App {
                     isEnabled: { UserDefaults.standard.analyticsIsEnabled },
                     responseHandler: LoggingTrackerResponseHandler(logger: logger))
             #endif
+        }
+
+        // === UPDATER ===
+        di.register(UpdaterServiceProtocol.self) {
+            SparkleUpdaterService(updater: updaterController)
         }
 
         // Register Domain Layer dependencies

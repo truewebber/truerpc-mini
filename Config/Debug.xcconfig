@@ -1,2 +1,4 @@
 AMPLITUDE_API_KEY = dummy
 SENTRY_DSN_REMAINDER = dummy-remainder
+SPARKLE_APPCAST_URL_REMAINDER = truewebber.github.io/truerpc-mini/appcast.xml
+SPARKLE_ED_PUBLIC_KEY = dummy

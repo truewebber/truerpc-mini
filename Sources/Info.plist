@@ -28,5 +28,9 @@
 	<string>$(AMPLITUDE_API_KEY)</string>
 	<key>SentryDsn</key>
 	<string>https://$(SENTRY_DSN_REMAINDER)</string>
+	<key>SUFeedURL</key>
+	<string>https://$(SPARKLE_APPCAST_URL_REMAINDER)</string>
+	<key>SUPublicEDKey</key>
+	<string>$(SPARKLE_ED_PUBLIC_KEY)</string>
 </dict>
 </plist>

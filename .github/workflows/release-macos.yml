@@ -13,10 +13,13 @@
 #   APPLE_APP_SPECIFIC_PASSWORD — App-specific password (appleid.apple.com)
 #   AMPLITUDE_API_KEY       — Amplitude project API key (Analytics)
 #   SENTRY_DSN              — Sentry project DSN (sentry.io → Settings → Projects → Client Keys)
+#   SPARKLE_ED_PRIVATE_KEY  — base64-encoded Ed25519 private key for signing Sparkle update ZIPs
+#                             (generate once with: ./bin/generate_keys from the Sparkle package)
 #
 # Variables:
 #   MACOS_CODESIGN_IDENTITY — "Developer ID Application: Name (TEAMID)" (security find-identity -v)
 #   APPLE_TEAM_ID           — Team ID from developer.apple.com
+#   SPARKLE_ED_PUBLIC_KEY   — base64-encoded Ed25519 public key (companion to SPARKLE_ED_PRIVATE_KEY)
 
 name: Release macOS
 
@@ -27,6 +30,7 @@ on:
 
 permissions:
   contents: write
+  pages: write
 
 jobs:
   release_new_version:
@@ -36,20 +40,27 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      # 0) Create Secrets.xcconfig from env (AMPLITUDE_API_KEY, SENTRY_DSN)
+      # 0) Create Secrets.xcconfig from env (AMPLITUDE_API_KEY, SENTRY_DSN, Sparkle keys)
       #
-      # xcconfig treats "//" as a comment, so the Sentry DSN full URL cannot be
-      # stored directly. We strip the "https://" scheme and write only the
-      # remainder; Info.plist reconstructs the full URL as https://$(SENTRY_DSN_REMAINDER).
+      # xcconfig treats "//" as a comment, so URLs with "https://" cannot be stored
+      # directly. We strip the scheme and write only the remainder; Info.plist
+      # reconstructs the full URL as https://$(…_REMAINDER).
+      #
+      # Variables:
+      #   SPARKLE_ED_PUBLIC_KEY — EdDSA public key for Sparkle signature validation
+      #                           (Settings → Variables → SPARKLE_ED_PUBLIC_KEY)
       - name: Create Secrets.xcconfig
         env:
           AMPLITUDE_API_KEY: ${{ secrets.AMPLITUDE_API_KEY }}
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+          SPARKLE_ED_PUBLIC_KEY: ${{ vars.SPARKLE_ED_PUBLIC_KEY }}
         run: |
           mkdir -p Config
           {
             [ -n "$AMPLITUDE_API_KEY" ] && echo "AMPLITUDE_API_KEY = $AMPLITUDE_API_KEY"
             [ -n "$SENTRY_DSN" ] && echo "SENTRY_DSN_REMAINDER = ${SENTRY_DSN#https://}"
+            echo "SPARKLE_APPCAST_URL_REMAINDER = truewebber.github.io/truerpc-mini/appcast.xml"
+            [ -n "$SPARKLE_ED_PUBLIC_KEY" ] && echo "SPARKLE_ED_PUBLIC_KEY = $SPARKLE_ED_PUBLIC_KEY"
           } > Config/Secrets.xcconfig
 
       # 1) Generate Xcode project
@@ -152,7 +163,45 @@ jobs:
           echo "DMG_NAME=$DMG_NAME" >> "$GITHUB_ENV"
           echo "ZIP_NAME=$ZIP_NAME" >> "$GITHUB_ENV"
 
-      # 6) Notarize ZIP (Sparkle auto-update asset)
+      # 6) Sign ZIP with EdDSA and generate Sparkle appcast.xml
+      # generate_appcast extracts version info from the app bundle inside the ZIP,
+      # signs the archive with the EdDSA private key, and writes a ready-to-host appcast.xml.
+      - name: Sign ZIP and generate Sparkle appcast
+        env:
+          SPARKLE_ED_PRIVATE_KEY: ${{ secrets.SPARKLE_ED_PRIVATE_KEY }}
+        run: |
+          set -euxo pipefail
+          if [ -z "$SPARKLE_ED_PRIVATE_KEY" ]; then
+            echo "::error::SPARKLE_ED_PRIVATE_KEY secret is not set. Generate keys with ./bin/generate_keys from Sparkle."
+            exit 1
+          fi
+
+          SPARKLE_VERSION="2.9.0"
+          curl -sfL \
+            "https://github.com/sparkle-project/Sparkle/releases/download/${SPARKLE_VERSION}/Sparkle-${SPARKLE_VERSION}.tar.xz" \
+            -o sparkle.tar.xz
+          tar -xJf sparkle.tar.xz bin/generate_appcast
+          chmod +x bin/generate_appcast
+
+          # Stage only the update ZIP so generate_appcast processes a single item
+          mkdir -p _sparkle_feed
+          cp "$ZIP_NAME" _sparkle_feed/
+
+          DOWNLOAD_PREFIX="https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/"
+          RELEASE_NOTES_URL="https://github.com/${{ github.repository }}/releases/tag/${{ github.ref_name }}"
+
+          ./bin/generate_appcast \
+            -s "$SPARKLE_ED_PRIVATE_KEY" \
+            --link "https://github.com/${{ github.repository }}" \
+            --full-release-notes-url "$RELEASE_NOTES_URL" \
+            --download-url-prefix "$DOWNLOAD_PREFIX" \
+            -o appcast.xml \
+            _sparkle_feed/
+
+          echo "--- Generated appcast.xml ---"
+          cat appcast.xml
+
+      # 7) Notarize ZIP (Sparkle auto-update asset)
       # ZIP cannot be stapled — notarization ticket is verified by Gatekeeper online.
       - name: Notarize ZIP (notarytool)
         env:
@@ -180,7 +229,7 @@ jobs:
             exit 1
           fi
 
-      # 7) Notarize DMG
+      # 8) Notarize DMG
       - name: Notarize DMG (notarytool)
         env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
@@ -211,16 +260,46 @@ jobs:
             exit 1
           fi
 
-      # 8) Staple notarization ticket onto DMG (ZIP cannot be stapled)
+      # 9) Staple notarization ticket onto DMG (ZIP cannot be stapled)
       - name: Staple DMG
         run: |
           set -euxo pipefail
           xcrun stapler staple "$DMG_NAME"
 
-      # 9) Create GitHub Release + upload assets
+      # 10) Create GitHub Release + upload assets
       - name: Create GitHub Release + upload assets
         uses: softprops/action-gh-release@v2
         with:
           files: |
             TrueRPCMini-${{ github.ref_name }}.dmg
             TrueRPCMini-${{ github.ref_name }}.zip
+
+      # 11) Publish appcast.xml to gh-pages
+      # Hosts the Sparkle feed at https://truewebber.github.io/truerpc-mini/appcast.xml
+      # Enable GitHub Pages for the gh-pages branch in Settings → Pages.
+      - name: Publish appcast.xml to gh-pages
+        run: |
+          set -euxo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          REPO_URL="https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git"
+
+          if git ls-remote --exit-code "$REPO_URL" gh-pages > /dev/null 2>&1; then
+            git clone --branch gh-pages --depth 1 "$REPO_URL" _gh_pages
+          else
+            mkdir -p _gh_pages
+            git -C _gh_pages init
+            git -C _gh_pages remote add origin "$REPO_URL"
+            git -C _gh_pages checkout --orphan gh-pages
+          fi
+
+          cp appcast.xml _gh_pages/appcast.xml
+          touch _gh_pages/.nojekyll
+
+          git -C _gh_pages add appcast.xml .nojekyll
+          git -C _gh_pages diff --cached --quiet \
+            && echo "appcast.xml unchanged, skipping push" \
+            && exit 0
+          git -C _gh_pages commit -m "Update appcast.xml for ${{ github.ref_name }}"
+          git -C _gh_pages push origin gh-pages
