@@ -190,8 +190,8 @@ jobs:
           DOWNLOAD_PREFIX="https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/"
           RELEASE_NOTES_URL="https://github.com/${{ github.repository }}/releases/tag/${{ github.ref_name }}"
 
-          ./bin/generate_appcast \
-            -s "$SPARKLE_ED_PRIVATE_KEY" \
+          echo "$SPARKLE_ED_PRIVATE_KEY" | ./bin/generate_appcast \
+            --ed-key-file - \
             --link "https://github.com/${{ github.repository }}" \
             --full-release-notes-url "$RELEASE_NOTES_URL" \
             --download-url-prefix "$DOWNLOAD_PREFIX" \

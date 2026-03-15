@@ -89,8 +89,11 @@ final class ReleaseWorkflowTests: XCTestCase {
             workflow.contains("generate_appcast"),
             "Workflow must call generate_appcast to produce the Sparkle feed")
         XCTAssertTrue(
-            workflow.contains("-s \"$SPARKLE_ED_PRIVATE_KEY\""),
-            "generate_appcast must receive the private key via -s flag")
+            workflow.contains("--ed-key-file -"),
+            "generate_appcast must receive the private key via stdin (--ed-key-file -)")
+        XCTAssertTrue(
+            workflow.contains("echo \"$SPARKLE_ED_PRIVATE_KEY\" |"),
+            "Private key must be piped to generate_appcast via stdin to avoid shell history exposure")
     }
 
     func test_releaseWorkflow_appcastDownloadUrlPointsToGithubRelease() throws {
