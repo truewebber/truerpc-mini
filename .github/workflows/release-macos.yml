@@ -128,15 +128,17 @@ jobs:
 
           codesign --verify --deep --strict --verbose=2 "$APP_PATH"
 
-      # 5) Package as DMG
-      - name: Package app (dmg)
+      # 5) Package as DMG + ZIP
+      - name: Package app (dmg + zip)
         run: |
           set -euxo pipefail
           APP_PATH="build/Build/Products/Release/TrueRPCMini.app"
           DMG_NAME="TrueRPCMini-${{ github.ref_name }}.dmg"
+          ZIP_NAME="TrueRPCMini-${{ github.ref_name }}.zip"
           DMG_SRC="dmg_src"
           rm -rf "$DMG_SRC" && mkdir -p "$DMG_SRC"
           cp -R "$APP_PATH" "$DMG_SRC/"
+          ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" "$ZIP_NAME"
           brew install create-dmg
           create-dmg \
             --volname "TrueRPCMini" \
@@ -148,9 +150,38 @@ jobs:
             "$DMG_NAME" \
             "$DMG_SRC"
           echo "DMG_NAME=$DMG_NAME" >> "$GITHUB_ENV"
+          echo "ZIP_NAME=$ZIP_NAME" >> "$GITHUB_ENV"
 
-      # 6) Notarize DMG
-      - name: Notarize (notarytool)
+      # 6) Notarize ZIP (Sparkle auto-update asset)
+      # ZIP cannot be stapled — notarization ticket is verified by Gatekeeper online.
+      - name: Notarize ZIP (notarytool)
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
+        run: |
+          set -euxo pipefail
+          defaults write com.apple.gke.notary.tool nt-upload-connection-timeout 300 2>/dev/null || true
+          OUTPUT=$(xcrun notarytool submit "$ZIP_NAME" \
+            --apple-id "$APPLE_ID" \
+            --password "$APPLE_APP_SPECIFIC_PASSWORD" \
+            --team-id "$APPLE_TEAM_ID" 2>&1)
+          echo "$OUTPUT"
+          SUBMISSION=$(echo "$OUTPUT" | grep -oE '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}' | head -1)
+          xcrun notarytool wait "$SUBMISSION" \
+            --apple-id "$APPLE_ID" \
+            --password "$APPLE_APP_SPECIFIC_PASSWORD" \
+            --team-id "$APPLE_TEAM_ID"
+          STATUS=$(xcrun notarytool info "$SUBMISSION" --apple-id "$APPLE_ID" --password "$APPLE_APP_SPECIFIC_PASSWORD" --team-id "$APPLE_TEAM_ID" 2>&1 | grep "status:" | awk '{print $2}')
+          if [ "$STATUS" != "Accepted" ]; then
+            echo "::error::ZIP notarization failed with status: $STATUS"
+            echo "--- Notary log ---"
+            xcrun notarytool log "$SUBMISSION" --apple-id "$APPLE_ID" --password "$APPLE_APP_SPECIFIC_PASSWORD" --team-id "$APPLE_TEAM_ID" 2>&1 || true
+            exit 1
+          fi
+
+      # 7) Notarize DMG
+      - name: Notarize DMG (notarytool)
         env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
@@ -174,21 +205,22 @@ jobs:
           # Fail if not Accepted (notarytool wait exits 0 even on Invalid)
           STATUS=$(xcrun notarytool info "$SUBMISSION" --apple-id "$APPLE_ID" --password "$APPLE_APP_SPECIFIC_PASSWORD" --team-id "$APPLE_TEAM_ID" 2>&1 | grep "status:" | awk '{print $2}')
           if [ "$STATUS" != "Accepted" ]; then
-            echo "::error::Notarization failed with status: $STATUS"
+            echo "::error::DMG notarization failed with status: $STATUS"
             echo "--- Notary log ---"
             xcrun notarytool log "$SUBMISSION" --apple-id "$APPLE_ID" --password "$APPLE_APP_SPECIFIC_PASSWORD" --team-id "$APPLE_TEAM_ID" 2>&1 || true
             exit 1
           fi
 
-      # 7) Staple notarization ticket onto DMG
-      - name: Staple
+      # 8) Staple notarization ticket onto DMG (ZIP cannot be stapled)
+      - name: Staple DMG
         run: |
           set -euxo pipefail
           xcrun stapler staple "$DMG_NAME"
 
-      # 8) Create GitHub Release + upload DMG
+      # 9) Create GitHub Release + upload assets
       - name: Create GitHub Release + upload assets
         uses: softprops/action-gh-release@v2
         with:
           files: |
             TrueRPCMini-${{ github.ref_name }}.dmg
+            TrueRPCMini-${{ github.ref_name }}.zip
