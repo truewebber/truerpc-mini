@@ -145,8 +145,12 @@ jobs:
           # 4. Sign standalone Mach-O executables inside frameworks
           # Skips files already covered by .app or .xpc bundle signing above
           # (e.g. signs Sparkle's Autoupdate helper binary)
-          find "$APP_PATH/Contents/Frameworks" -type f | while read -r f; do
-            if echo "$f" | grep -Eq '\.(app|xpc)/'; then continue; fi
+          # NOTE: strip the prefix up to Contents/Frameworks/ before matching
+          # so the main app's own .app/ component does not trigger the skip.
+          FRAMEWORKS_PATH="$APP_PATH/Contents/Frameworks"
+          find "$FRAMEWORKS_PATH" -type f | while read -r f; do
+            relative="${f#$FRAMEWORKS_PATH/}"
+            if echo "$relative" | grep -Eq '\.(app|xpc)/'; then continue; fi
             if file "$f" 2>/dev/null | grep -q "Mach-O"; then
               codesign --force --options runtime --timestamp --sign "$CODESIGN_IDENTITY" "$f"
             fi
