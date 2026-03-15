@@ -47,6 +47,7 @@ targets:
         DEVELOPER_EMAIL: "support-mini@truerpc.app"
         INFOPLIST_KEY_CFBundleDisplayName: "TrueRPC-mini"
         INFOPLIST_KEY_LSApplicationCategoryType: "public.app-category.developer-tools"
+        ENABLE_USER_SCRIPT_SANDBOXING: NO
       configs:
         Debug:
           SWIFT_ACTIVE_COMPILATION_CONDITIONS: DEBUG
@@ -56,6 +57,15 @@ targets:
           CODE_SIGN_STYLE: Manual
           CODE_SIGN_IDENTITY: "Apple Development"
           ENABLE_HARDENED_RUNTIME: YES
+    postBuildScripts:
+      - name: Inject Build Tool Versions
+        basedOnDependencyAnalysis: false
+        script: |
+          set -e
+          XCODE_VER=$(xcodebuild -version 2>/dev/null | head -1 | grep -oE '[0-9]+\.[0-9]+(\.[0-9]+)?')
+          SWIFT_VER=$(xcrun swift --version 2>&1 | grep -oE 'Swift version [0-9]+\.[0-9]+(\.[0-9]+)?' | grep -oE '[0-9]+\.[0-9]+(\.[0-9]+)?')
+          /usr/libexec/PlistBuddy -c "Set :XcodeVersion ${XCODE_VER}" "${TARGET_BUILD_DIR}/${INFOPLIST_PATH}"
+          /usr/libexec/PlistBuddy -c "Set :SwiftVersion ${SWIFT_VER}" "${TARGET_BUILD_DIR}/${INFOPLIST_PATH}"
     dependencies:
       - package: SwiftProtoReflect
       - package: SwiftProtoParser

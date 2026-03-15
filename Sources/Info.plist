@@ -44,7 +44,7 @@
 	<string>$(SPARKLE_ED_PUBLIC_KEY)</string>
 	<key>SUScheduledCheckInterval</key>
 	<integer>86400</integer>
-	<key>SwiftLanguageVersion</key>
+	<key>SwiftVersion</key>
 	<string>$(SWIFT_VERSION)</string>
 	<key>XcodeVersion</key>
 	<string>$(XCODE_VERSION_ACTUAL)</string>

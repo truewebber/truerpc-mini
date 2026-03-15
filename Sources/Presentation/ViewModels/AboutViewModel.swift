@@ -21,7 +21,7 @@ public struct AboutInfo: Equatable {
                 fallback: "No description available."),
             marketingVersion: stringValue(for: "CFBundleShortVersionString", in: infoDictionary),
             buildVersion: stringValue(for: "CFBundleVersion", in: infoDictionary),
-            swiftVersion: stringValue(for: "SwiftLanguageVersion", in: infoDictionary),
+            swiftVersion: stringValue(for: "SwiftVersion", in: infoDictionary),
             xcodeVersion: stringValue(for: "XcodeVersion", in: infoDictionary),
             developerName: stringValue(for: "DeveloperName", in: infoDictionary),
             developerWebsiteURL: stringValue(for: "DeveloperWebsiteURL", in: infoDictionary),

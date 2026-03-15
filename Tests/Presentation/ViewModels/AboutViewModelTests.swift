@@ -8,8 +8,8 @@ final class AboutViewModelTests: XCTestCase {
                 "CFBundleShortVersionString": "1.2.3",
                 "CFBundleVersion": "456",
                 "AppShortDescription": "Dynamic gRPC client for .proto files.",
-                "SwiftLanguageVersion": "5.10",
-                "XcodeVersion": "1630",
+                "SwiftVersion": "6.2.4",
+                "XcodeVersion": "16.3",
                 "DeveloperName": "TrueWebber",
                 "DeveloperWebsiteURL": "https://truewebber.com",
                 "AppGitHubURL": "https://github.com/truewebber/truerpc-mini",
@@ -21,8 +21,8 @@ final class AboutViewModelTests: XCTestCase {
         XCTAssertEqual(info.shortDescription, "Dynamic gRPC client for .proto files.")
         XCTAssertEqual(info.marketingVersion, "1.2.3")
         XCTAssertEqual(info.buildVersion, "456")
-        XCTAssertEqual(info.swiftVersion, "5.10")
-        XCTAssertEqual(info.xcodeVersion, "1630")
+        XCTAssertEqual(info.swiftVersion, "6.2.4")
+        XCTAssertEqual(info.xcodeVersion, "16.3")
         XCTAssertEqual(info.developerName, "TrueWebber")
         XCTAssertEqual(info.developerWebsiteURL, "https://truewebber.com")
         XCTAssertEqual(info.githubURL, "https://github.com/truewebber/truerpc-mini")
