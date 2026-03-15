@@ -47,6 +47,14 @@ final class ReleaseWorkflowTests: XCTestCase {
             "CURRENT_PROJECT_VERSION must NOT use a git SHA — Sparkle cannot compare non-numeric strings")
     }
 
+    func test_releaseWorkflow_checkoutFetchesFullHistory() throws {
+        let workflow = try loadReleaseWorkflow()
+
+        XCTAssertTrue(
+            workflow.contains("fetch-depth: 0"),
+            "Checkout must use fetch-depth: 0 so git rev-list --count HEAD returns the real commit count, not 1 (shallow clone)")
+    }
+
     func test_releaseWorkflow_zipIsNotarized() throws {
         let workflow = try loadReleaseWorkflow()
 

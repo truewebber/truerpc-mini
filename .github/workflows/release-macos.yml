@@ -39,6 +39,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0  # full history required for git rev-list --count HEAD build number
 
       # 0) Create Secrets.xcconfig from env (AMPLITUDE_API_KEY, SENTRY_DSN, Sparkle keys)
       #
