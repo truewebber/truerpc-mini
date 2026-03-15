@@ -16,8 +16,9 @@ final class SparkleUpdaterDelegate: NSObject {
     // MARK: - Testable logging helpers
 
     func logUpdateFound(version: String, build: String) {
-        logger.info("Sparkle: update available \(version)",
-                    metadata: ["version": version, "build": build])
+        logger.info(
+            "Sparkle: update available \(version)",
+            metadata: ["version": version, "build": build])
     }
 
     func logNoUpdateFound() {
@@ -25,23 +26,24 @@ final class SparkleUpdaterDelegate: NSObject {
     }
 
     func logUpdateError(_ error: Error) {
-        logger.error("Sparkle: update check failed",
-                     metadata: ["error": error.localizedDescription])
+        logger.error(
+            "Sparkle: update check failed",
+            metadata: ["error": error.localizedDescription])
     }
 }
 
 // MARK: - SPUUpdaterDelegate
 
 extension SparkleUpdaterDelegate: SPUUpdaterDelegate {
-    func updater(_ updater: SPUUpdater, didFindValidUpdate item: SUAppcastItem) {
+    func updater(_: SPUUpdater, didFindValidUpdate item: SUAppcastItem) {
         logUpdateFound(version: item.displayVersionString, build: item.versionString)
     }
 
-    func updaterDidNotFindUpdate(_ updater: SPUUpdater) {
+    func updaterDidNotFindUpdate(_: SPUUpdater) {
         logNoUpdateFound()
     }
 
-    func updater(_ updater: SPUUpdater, didAbortWithError error: Error) {
+    func updater(_: SPUUpdater, didAbortWithError error: Error) {
         logUpdateError(error)
     }
 }

@@ -75,7 +75,9 @@ final class SparkleUpdaterDelegateTests: XCTestCase {
     // MARK: - Helpers
 
     private func makeError(_ description: String) -> Error {
-        NSError(domain: "SparkleTest", code: 1,
-                userInfo: [NSLocalizedDescriptionKey: description])
+        NSError(
+            domain: "SparkleTest",
+            code: 1,
+            userInfo: [NSLocalizedDescriptionKey: description])
     }
 }
