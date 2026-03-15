@@ -63,6 +63,30 @@ final class ReleaseWorkflowTests: XCTestCase {
             "ZIP must be created using ditto for correct Sparkle-compatible archive structure")
     }
 
+    func test_releaseWorkflow_codesign_signsSparkleXpcServices() throws {
+        let workflow = try loadReleaseWorkflow()
+
+        XCTAssertTrue(
+            workflow.contains("*.xpc"),
+            "Codesign step must explicitly sign XPC services nested in Sparkle.framework")
+    }
+
+    func test_releaseWorkflow_codesign_signsNestedAppBundles() throws {
+        let workflow = try loadReleaseWorkflow()
+
+        XCTAssertTrue(
+            workflow.contains("Contents/Frameworks") && workflow.contains("*.app"),
+            "Codesign step must explicitly sign nested .app bundles (e.g. Sparkle's Updater.app)")
+    }
+
+    func test_releaseWorkflow_codesign_signsStandaloneMachOInsideFrameworks() throws {
+        let workflow = try loadReleaseWorkflow()
+
+        XCTAssertTrue(
+            workflow.contains("Mach-O"),
+            "Codesign step must detect and sign standalone Mach-O executables inside frameworks (e.g. Sparkle's Autoupdate)")
+    }
+
     func test_releaseWorkflow_secretsXcconfig_writesSparkleAppcastUrl() throws {
         let workflow = try loadReleaseWorkflow()
 
