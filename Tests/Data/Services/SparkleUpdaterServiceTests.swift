@@ -44,7 +44,8 @@ final class SparkleUpdaterServiceTests: XCTestCase {
     }
 
     func test_conformsToUpdaterServiceProtocol() {
-        XCTAssertTrue(sut is any UpdaterServiceProtocol)
+        // Compile-time proof: build fails if SparkleUpdaterService drops UpdaterServiceProtocol conformance
+        let _: any UpdaterServiceProtocol = sut
     }
 }
 
