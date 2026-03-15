@@ -21,6 +21,9 @@ struct TrueRPCMiniApp: App {
     /// Global environment selection (singleton)
     @StateObject private var globalEnvironmentViewModel: GlobalEnvironmentViewModel
 
+    /// Updater ViewModel for the "Check for Updates..." menu item
+    @StateObject private var updaterViewModel: UpdaterViewModel
+
     @Environment(\.scenePhase) private var scenePhase
     @State private var hasRestoredTabs = false
 
@@ -143,6 +146,10 @@ struct TrueRPCMiniApp: App {
             SparkleUpdaterService(updater: updaterController)
         }
 
+        di.register(UpdaterViewModel.self) {
+            UpdaterViewModel(updaterService: di.resolve(UpdaterServiceProtocol.self)!)
+        }
+
         // Register Domain Layer dependencies
         di.register(ImportProtoFileUseCaseProtocol.self) {
             ImportProtoFileUseCase(repository: di.resolve(ProtoRepositoryProtocol.self)!)
@@ -232,6 +239,7 @@ struct TrueRPCMiniApp: App {
         _sidebarViewModel = StateObject(wrappedValue: sidebarVM)
         _appViewModel = StateObject(wrappedValue: appVM)
         _globalEnvironmentViewModel = StateObject(wrappedValue: globalEnvVM)
+        _updaterViewModel = StateObject(wrappedValue: di.resolve(UpdaterViewModel.self)!)
     }
 
     // MARK: - Scene
@@ -287,6 +295,15 @@ struct TrueRPCMiniApp: App {
             }
             .onChange(of: appViewModel.tabManager.tabs.count) { _, _ in
                 applyWindowConstraints(hasTab: !appViewModel.tabManager.tabs.isEmpty, animate: true)
+            }
+        }
+        .commands {
+            CommandGroup(after: .appInfo) {
+                Divider()
+                Button("Check for Updates...") {
+                    updaterViewModel.checkForUpdates()
+                }
+                .disabled(!updaterViewModel.canCheckForUpdates)
             }
         }
         .defaultSize(width: 1100, height: 700)
