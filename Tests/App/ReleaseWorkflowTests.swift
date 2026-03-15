@@ -36,6 +36,17 @@ final class ReleaseWorkflowTests: XCTestCase {
             "ZIP artifact name must derive version from github.ref_name tag")
     }
 
+    func test_releaseWorkflow_buildNumberIsCommitCount_notGitSha() throws {
+        let workflow = try loadReleaseWorkflow()
+
+        XCTAssertTrue(
+            workflow.contains("git rev-list --count HEAD"),
+            "CURRENT_PROJECT_VERSION must use commit count (monotonically increasing integer) so Sparkle can compare versions")
+        XCTAssertFalse(
+            workflow.contains("git rev-parse --short HEAD"),
+            "CURRENT_PROJECT_VERSION must NOT use a git SHA — Sparkle cannot compare non-numeric strings")
+    }
+
     func test_releaseWorkflow_zipIsNotarized() throws {
         let workflow = try loadReleaseWorkflow()
 

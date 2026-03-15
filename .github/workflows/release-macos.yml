@@ -95,10 +95,13 @@ jobs:
           security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
 
       # 2) Set version from tag and commit
+      # CURRENT_PROJECT_VERSION must be a monotonically increasing integer so that
+      # Sparkle's version comparator can determine which build is newer.
+      # git rev-list --count HEAD gives total commit count which always grows.
       - name: Set version
         run: |
           MARKETING_VERSION="${GITHUB_REF_NAME#v}"  # v0.3.0 → 0.3.0
-          CURRENT_PROJECT_VERSION="$(git rev-parse --short HEAD)"
+          CURRENT_PROJECT_VERSION="$(git rev-list --count HEAD)"
           echo "MARKETING_VERSION=$MARKETING_VERSION" >> "$GITHUB_ENV"
           echo "CURRENT_PROJECT_VERSION=$CURRENT_PROJECT_VERSION" >> "$GITHUB_ENV"
 
