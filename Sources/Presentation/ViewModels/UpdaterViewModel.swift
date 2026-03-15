@@ -35,6 +35,7 @@ public final class UpdaterViewModel: ObservableObject {
     /// After the call, `canCheckForUpdates` is refreshed from the service.
     public func checkForUpdates() {
         guard updaterService.canCheckForUpdates else { return }
+
         updaterService.checkForUpdates()
         canCheckForUpdates = updaterService.canCheckForUpdates
     }

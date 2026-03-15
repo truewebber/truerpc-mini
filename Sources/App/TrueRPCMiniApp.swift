@@ -39,7 +39,7 @@ struct TrueRPCMiniApp: App {
             startingUpdater: true,
             updaterDelegate: nil,
             userDriverDelegate: nil)
-        sparkleUpdaterController = updaterController
+        self.sparkleUpdaterController = updaterController
 
         // === LOGGING ===
         #if DEBUG

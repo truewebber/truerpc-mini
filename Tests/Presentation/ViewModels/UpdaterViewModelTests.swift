@@ -41,8 +41,9 @@ final class UpdaterViewModelTests: XCTestCase {
 
         sut.checkForUpdates()
 
-        XCTAssertTrue(mockService.checkForUpdatesCalled,
-                      "checkForUpdates() must delegate to UpdaterServiceProtocol")
+        XCTAssertTrue(
+            mockService.checkForUpdatesCalled,
+            "checkForUpdates() must delegate to UpdaterServiceProtocol")
     }
 
     func test_checkForUpdates_whenCannotCheck_doesNotCallService() {
@@ -51,8 +52,9 @@ final class UpdaterViewModelTests: XCTestCase {
 
         sut.checkForUpdates()
 
-        XCTAssertFalse(mockService.checkForUpdatesCalled,
-                       "checkForUpdates() must not call service when canCheckForUpdates is false")
+        XCTAssertFalse(
+            mockService.checkForUpdatesCalled,
+            "checkForUpdates() must not call service when canCheckForUpdates is false")
     }
 
     func test_checkForUpdates_refreshesCanCheckForUpdates_afterCall() {
@@ -65,8 +67,9 @@ final class UpdaterViewModelTests: XCTestCase {
         }
         sut.checkForUpdates()
 
-        XCTAssertFalse(sut.canCheckForUpdates,
-                       "canCheckForUpdates must reflect updated service state after calling checkForUpdates()")
+        XCTAssertFalse(
+            sut.canCheckForUpdates,
+            "canCheckForUpdates must reflect updated service state after calling checkForUpdates()")
     }
 
     func test_checkForUpdates_calledOnce_delegatesExactlyOnce() {
@@ -76,7 +79,9 @@ final class UpdaterViewModelTests: XCTestCase {
         sut.checkForUpdates()
         sut.checkForUpdates()
 
-        XCTAssertEqual(mockService.checkForUpdatesCallCount, 2,
-                       "Each checkForUpdates() call that passes the guard must delegate once")
+        XCTAssertEqual(
+            mockService.checkForUpdatesCallCount,
+            2,
+            "Each checkForUpdates() call that passes the guard must delegate once")
     }
 }

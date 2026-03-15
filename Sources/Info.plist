@@ -32,5 +32,7 @@
 	<string>https://$(SPARKLE_APPCAST_URL_REMAINDER)</string>
 	<key>SUPublicEDKey</key>
 	<string>$(SPARKLE_ED_PUBLIC_KEY)</string>
+	<key>SUScheduledCheckInterval</key>
+	<integer>86400</integer>
 </dict>
 </plist>

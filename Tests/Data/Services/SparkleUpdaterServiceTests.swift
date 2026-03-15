@@ -20,7 +20,9 @@ final class SparkleUpdaterServiceTests: XCTestCase {
     func test_checkForUpdates_delegatesToSparkleUpdating() {
         sut.checkForUpdates()
 
-        XCTAssertTrue(mockUpdating.checkForUpdatesCalled, "checkForUpdates() must delegate to the underlying SparkleUpdating")
+        XCTAssertTrue(
+            mockUpdating.checkForUpdatesCalled,
+            "checkForUpdates() must delegate to the underlying SparkleUpdating")
     }
 
     func test_checkForUpdates_doesNotCallTwice_whenCalledOnce() {
@@ -49,11 +51,16 @@ final class SparkleUpdaterServiceTests: XCTestCase {
 // MARK: - Test Double
 
 final class MockSparkleUpdating: SparkleUpdating {
-    var checkForUpdatesCalled: Bool { checkForUpdatesCallCount > 0 }
+    var checkForUpdatesCalled: Bool {
+        checkForUpdatesCallCount > 0
+    }
+
     var checkForUpdatesCallCount = 0
     var canCheckForUpdatesValue = false
 
-    var canCheckForUpdates: Bool { canCheckForUpdatesValue }
+    var canCheckForUpdates: Bool {
+        canCheckForUpdatesValue
+    }
 
     func checkForUpdates() {
         checkForUpdatesCallCount += 1
