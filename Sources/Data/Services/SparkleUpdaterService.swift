@@ -19,6 +19,9 @@ extension SPUStandardUpdaterController: SparkleUpdating {
     }
 }
 
+@MainActor
+extension SPUUpdater: SparkleUpdating {}
+
 /// Concrete updater service that delegates to Sparkle 2.
 ///
 /// Inject `SparkleUpdating` directly in unit tests (using `MockSparkleUpdating`);

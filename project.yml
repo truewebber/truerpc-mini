@@ -24,7 +24,8 @@ schemes:
     test:
       config: Debug
       targets:
-        - TrueRPCMiniTests
+        - TrueRPCMiniUnitTests
+        - TrueRPCMiniIntegrationTests
 targets:
   TrueRPCMini:
     type: application
@@ -77,11 +78,34 @@ targets:
         product: Sentry
       - package: Sparkle
         product: Sparkle
-  TrueRPCMiniTests:
+  TrueRPCMiniUnitTests:
     type: bundle.unit-test
     platform: macOS
     deploymentTarget: "15.0"
-    sources: [Tests]
+    sources:
+      - path: Tests
+        excludes:
+          - Data/DataSources/FSEventsProtoFileWatcherTests.swift
+          - Data/Clients/GrpcSwiftDynamicClientTests.swift
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+      configs:
+        Debug:
+          SWIFT_ACTIVE_COMPILATION_CONDITIONS: DEBUG
+          CODE_SIGN_STYLE: Automatic
+        Release:
+          CODE_SIGN_STYLE: Automatic
+    dependencies:
+      - target: TrueRPCMini
+  TrueRPCMiniIntegrationTests:
+    type: bundle.unit-test
+    platform: macOS
+    deploymentTarget: "15.0"
+    sources:
+      - Tests/Data/DataSources/FSEventsProtoFileWatcherTests.swift
+      - Tests/Data/Clients/GrpcSwiftDynamicClientTests.swift
+      - Tests/Mocks/MockAppLogger.swift
     settings:
       base:
         GENERATE_INFOPLIST_FILE: YES

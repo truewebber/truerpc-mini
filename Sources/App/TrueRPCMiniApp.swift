@@ -9,10 +9,13 @@ struct TrueRPCMiniApp: App {
     /// Dependency Injection container
     private let di: AppDI
 
-    /// Sparkle updater controller — must be retained for the app's lifetime.
-    private let sparkleUpdaterController: SPUStandardUpdaterController
+    /// Sparkle updater — must be retained for the app's lifetime.
+    private let sparkleUpdater: SPUUpdater
 
-    /// Sparkle delegate — must be retained; SPUStandardUpdaterController holds it weakly.
+    /// Sparkle user driver — must be retained; SPUUpdater holds it weakly.
+    private let sparkleUserDriver: SilentOnErrorSparkleUserDriver
+
+    /// Sparkle delegate — must be retained; SPUUpdater holds it weakly.
     private let sparkleUpdaterDelegate: SparkleUpdaterDelegate
 
     /// Sidebar ViewModel (created once and reused)
@@ -60,11 +63,19 @@ struct TrueRPCMiniApp: App {
         // === SPARKLE ===
         let sparkleDelegate = SparkleUpdaterDelegate(logger: logger)
         self.sparkleUpdaterDelegate = sparkleDelegate
-        let updaterController = SPUStandardUpdaterController(
-            startingUpdater: true,
-            updaterDelegate: sparkleDelegate,
-            userDriverDelegate: nil)
-        self.sparkleUpdaterController = updaterController
+        let userDriver = SilentOnErrorSparkleUserDriver(hostBundle: .main, delegate: nil, logger: logger)
+        self.sparkleUserDriver = userDriver
+        let updater = SPUUpdater(
+            hostBundle: .main,
+            applicationBundle: .main,
+            userDriver: userDriver,
+            delegate: sparkleDelegate)
+        do {
+            try updater.start()
+        } catch {
+            logger.error("Sparkle: failed to start updater", metadata: ["error": error.localizedDescription])
+        }
+        self.sparkleUpdater = updater
 
         let di = AppDI()
         self.di = di
@@ -153,7 +164,7 @@ struct TrueRPCMiniApp: App {
 
         // === UPDATER ===
         di.register(UpdaterServiceProtocol.self) {
-            SparkleUpdaterService(updater: updaterController)
+            SparkleUpdaterService(updater: updater)
         }
 
         di.register(UpdaterViewModel.self) {
