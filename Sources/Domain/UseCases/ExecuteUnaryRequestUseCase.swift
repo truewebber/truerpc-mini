@@ -28,7 +28,8 @@ public final class ExecuteUnaryRequestUseCase: ExecuteUnaryRequestUseCaseProtoco
             jsonBody: normalizedJson,
             url: request.url,
             method: request.method,
-            metadata: request.metadata)
+            metadata: request.metadata,
+            tlsConfiguration: request.tlsConfiguration)
 
         await telemetry.track(.requestSent(serviceName: method.serviceName, methodName: method.name))
 
@@ -64,6 +65,7 @@ public final class ExecuteUnaryRequestUseCase: ExecuteUnaryRequestUseCaseProtoco
         case .invalidJSON: "INVALID_ARGUMENT"
         case .invalidResponse: "INTERNAL"
         case .unknown: "UNKNOWN"
+        case .tlsConfigurationFailed: "INVALID_ARGUMENT"
         }
     }
 

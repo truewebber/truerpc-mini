@@ -57,15 +57,16 @@ public final class GrpcSwiftDynamicClient: GrpcClientProtocol, Sendable {
         // 3. Parse URL to extract host and port
         let (host, port) = try parseServerAddress(request.url)
 
-        // 4. Determine if TLS should be used (default for 443)
-        let useTLS = shouldUseTLS(port: port, url: request.url)
+        // 4. Build transport security from TLSConfiguration
+        let transportSecurity = try buildTransportSecurity(from: request.tlsConfiguration)
+        let targetHost = request.tlsConfiguration.sniOverride ?? host
 
         do {
             // 5. Create transport and execute with client
             return try await withGRPCClient(
                 transport: .http2NIOPosix(
-                    target: .dns(host: host, port: port),
-                    transportSecurity: useTLS ? .tls : .plaintext,
+                    target: .dns(host: targetHost, port: port),
+                    transportSecurity: transportSecurity,
                     config: .defaults))
             { client in
                 // 5. Create method descriptor for gRPC
@@ -154,10 +155,54 @@ public final class GrpcSwiftDynamicClient: GrpcClientProtocol, Sendable {
         }
     }
 
-    /// Determine if TLS should be used based on port
-    /// Standard gRPC convention: port 443 = TLS, other ports = plaintext
-    func shouldUseTLS(port: Int, url _: String) -> Bool {
-        port == 443
+    /// Translate a domain TLSConfiguration into the gRPC transport security value.
+    /// Checks file existence for custom CA and mTLS scenarios before returning.
+    func buildTransportSecurity(
+        from tlsConfig: TrueRPCMini.TLSConfiguration)
+        throws -> HTTP2ClientTransport.Posix.TransportSecurity
+    {
+        guard tlsConfig.isTLSEnabled else {
+            return .plaintext
+        }
+
+        if tlsConfig.allowInsecure {
+            return .tls { config in
+                config.serverCertificateVerification = .noVerification
+            }
+        }
+
+        if let clientCertURL = tlsConfig.clientCertURL,
+           let clientKeyURL = tlsConfig.clientKeyURL
+        {
+            let certPath = clientCertURL.path
+            let keyPath = clientKeyURL.path
+            guard FileManager.default.fileExists(atPath: certPath) else {
+                throw GrpcClientError.tlsConfigurationFailed(
+                    reason: "Client certificate not found: \(certPath)")
+            }
+            guard FileManager.default.fileExists(atPath: keyPath) else {
+                throw GrpcClientError.tlsConfigurationFailed(
+                    reason: "Client key not found: \(keyPath)")
+            }
+
+            return .mTLS(
+                certificateChain: [.file(path: certPath, format: .pem)],
+                privateKey: .file(path: keyPath, format: .pem))
+        }
+
+        if let customCAURL = tlsConfig.customCAURL {
+            let caPath = customCAURL.path
+            guard FileManager.default.fileExists(atPath: caPath) else {
+                throw GrpcClientError.tlsConfigurationFailed(
+                    reason: "Custom CA certificate not found: \(caPath)")
+            }
+
+            return .tls { config in
+                config.trustRoots = .certificates([.file(path: caPath, format: .pem)])
+            }
+        }
+
+        return .tls
     }
 
     /// Parse server address into host and port

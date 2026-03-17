@@ -198,6 +198,8 @@ public final class EditorTabViewModel: ObservableObject {
             "gRPC error: \(message)"
         case let .unknown(message):
             "Error: \(message)"
+        case let .tlsConfigurationFailed(reason):
+            "TLS configuration error: \(reason)"
         }
     }
 

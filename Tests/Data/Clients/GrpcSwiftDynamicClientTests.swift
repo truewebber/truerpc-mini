@@ -156,54 +156,59 @@ final class GrpcSwiftDynamicClientTests: XCTestCase {
         XCTAssertEqual(port, 443)
     }
 
-    // MARK: - TLS Detection Tests
+    // MARK: - buildTransportSecurity Tests
 
-    func test_shouldUseTLS_withPort443_returnsTrue() {
-        // Given
-        let port = 443
-        let url = "example.com:443"
-
-        // When
-        let result = sut.shouldUseTLS(port: port, url: url)
-
-        // Then
-        XCTAssertTrue(result, "Port 443 should use TLS")
+    func test_buildTransportSecurity_whenPlaintext_returnsPlaintext() throws {
+        let tlsConfig = TLSConfiguration.defaults
+        XCTAssertNoThrow(try sut.buildTransportSecurity(from: tlsConfig))
     }
 
-    func test_shouldUseTLS_withPort50051_returnsFalse() {
-        // Given
-        let port = 50051
-        let url = "localhost:50051"
-
-        // When
-        let result = sut.shouldUseTLS(port: port, url: url)
-
-        // Then
-        XCTAssertFalse(result, "Port 50051 should use plaintext")
+    func test_buildTransportSecurity_whenStandardTLS_returnsTLS() throws {
+        let tlsConfig = TLSConfiguration(isTLSEnabled: true)
+        XCTAssertNoThrow(try sut.buildTransportSecurity(from: tlsConfig))
     }
 
-    func test_shouldUseTLS_withPort80_returnsFalse() {
-        // Given
-        let port = 80
-        let url = "example.com:80"
-
-        // When
-        let result = sut.shouldUseTLS(port: port, url: url)
-
-        // Then
-        XCTAssertFalse(result, "Port 80 should use plaintext")
+    func test_buildTransportSecurity_whenInsecure_returnsTLSWithSkipVerify() throws {
+        let tlsConfig = TLSConfiguration(isTLSEnabled: true, allowInsecure: true)
+        XCTAssertNoThrow(try sut.buildTransportSecurity(from: tlsConfig))
     }
 
-    func test_shouldUseTLS_withPort8080_returnsFalse() {
-        // Given
-        let port = 8080
-        let url = "example.com:8080"
+    func test_buildTransportSecurity_whenCustomCA_loadsCertificate() throws {
+        let caURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString + "-ca.pem")
+        FileManager.default.createFile(atPath: caURL.path, contents: Data("stub".utf8))
+        defer { try? FileManager.default.removeItem(at: caURL) }
 
-        // When
-        let result = sut.shouldUseTLS(port: port, url: url)
+        let tlsConfig = TLSConfiguration(isTLSEnabled: true, customCAURL: caURL)
+        XCTAssertNoThrow(try sut.buildTransportSecurity(from: tlsConfig))
+    }
 
-        // Then
-        XCTAssertFalse(result, "Custom port should use plaintext unless it's 443")
+    func test_buildTransportSecurity_whenMTLS_loadsClientCertAndKey() throws {
+        let certURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString + "-cert.pem")
+        let keyURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString + "-key.pem")
+        FileManager.default.createFile(atPath: certURL.path, contents: Data("stub".utf8))
+        FileManager.default.createFile(atPath: keyURL.path, contents: Data("stub".utf8))
+        defer {
+            try? FileManager.default.removeItem(at: certURL)
+            try? FileManager.default.removeItem(at: keyURL)
+        }
+
+        let tlsConfig = TLSConfiguration(isTLSEnabled: true, clientCertURL: certURL, clientKeyURL: keyURL)
+        XCTAssertNoThrow(try sut.buildTransportSecurity(from: tlsConfig))
+    }
+
+    func test_buildTransportSecurity_whenInvalidCAURL_throwsTLSConfigurationFailed() {
+        let nonExistentURL = URL(fileURLWithPath: "/nonexistent/path/ca.pem")
+        let tlsConfig = TLSConfiguration(isTLSEnabled: true, customCAURL: nonExistentURL)
+
+        XCTAssertThrowsError(try sut.buildTransportSecurity(from: tlsConfig)) { error in
+            guard case GrpcClientError.tlsConfigurationFailed = error else {
+                XCTFail("Expected tlsConfigurationFailed, got \(error)")
+                return
+            }
+        }
     }
 
     func test_parseServerAddress_withEmptyString_throwsError() {

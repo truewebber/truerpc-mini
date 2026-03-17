@@ -24,6 +24,7 @@ public enum GrpcClientError: Error, Equatable {
     case invalidResponse
     case grpcError(String, response: GrpcResponse)
     case unknown(String)
+    case tlsConfigurationFailed(reason: String)
 
     public static func == (lhs: GrpcClientError, rhs: GrpcClientError) -> Bool {
         switch (lhs, rhs) {
@@ -40,6 +41,8 @@ public enum GrpcClientError: Error, Equatable {
         case let (.grpcError(lMsg, lResp), .grpcError(rMsg, rResp)):
             lMsg == rMsg && lResp == rResp
         case let (.unknown(l), .unknown(r)):
+            l == r
+        case let (.tlsConfigurationFailed(l), .tlsConfigurationFailed(r)):
             l == r
         default:
             false
