@@ -21,6 +21,7 @@ public final class EditorTabViewModel: ObservableObject {
     // MARK: - Properties
 
     public let editorTab: EditorTab
+    public let connectionSecurity: ConnectionSecurityViewModel
 
     // MARK: - Dependencies
 
@@ -35,6 +36,7 @@ public final class EditorTabViewModel: ObservableObject {
         editorTab: EditorTab,
         initialEnvironment: ServerEnvironment? = nil,
         customUrl: String? = nil,
+        restoredTabState: EditorTabState? = nil,
         availableEnvironments: [ServerEnvironment] = [],
         generateMockDataUseCase: GenerateMockDataUseCaseProtocol,
         executeRequestUseCase: ExecuteUnaryRequestUseCaseProtocol,
@@ -49,6 +51,26 @@ public final class EditorTabViewModel: ObservableObject {
         self.executeRequestUseCase = executeRequestUseCase
         self.exportResponseUseCase = exportResponseUseCase
         self.logger = logger
+
+        let security = ConnectionSecurityViewModel()
+        security.update(
+            activeEnvironment: initialEnvironment,
+            restoredAdHocConfig: restoredTabState?.adHocTLSConfiguration)
+        self.connectionSecurity = security
+    }
+
+    // MARK: - Computed Properties
+
+    /// A snapshot of the current tab state for persistence.
+    public var currentTabState: EditorTabState {
+        EditorTabState(
+            id: editorTab.id,
+            protoFilePath: editorTab.protoFile.path.path,
+            serviceName: editorTab.serviceName,
+            methodName: editorTab.methodName,
+            selectedEnvironmentId: tabEnvironment?.id,
+            customUrl: tabEnvironment == nil ? (url.isEmpty ? nil : url) : nil,
+            adHocTLSConfiguration: tabEnvironment == nil ? connectionSecurity.adHocConfig : nil)
     }
 
     // MARK: - Public Methods
@@ -84,12 +106,14 @@ public final class EditorTabViewModel: ObservableObject {
     public func selectTabEnvironment(_ environment: ServerEnvironment) {
         tabEnvironment = environment
         url = environment.url
+        connectionSecurity.update(activeEnvironment: environment, restoredAdHocConfig: nil)
     }
 
     /// Switches to custom URL mode; clears the active tab environment
     public func useCustomUrl(_ customUrl: String) {
         tabEnvironment = nil
         url = customUrl
+        connectionSecurity.update(activeEnvironment: nil, restoredAdHocConfig: nil)
     }
 
     /// Updates the metadata JSON
@@ -122,7 +146,8 @@ public final class EditorTabViewModel: ObservableObject {
                 jsonBody: requestJson,
                 url: url,
                 method: editorTab.method,
-                metadata: metadata)
+                metadata: metadata,
+                tlsConfiguration: connectionSecurity.effectiveTLSConfiguration)
 
             // Execute request
             let grpcResponse = try await executeRequestUseCase.execute(

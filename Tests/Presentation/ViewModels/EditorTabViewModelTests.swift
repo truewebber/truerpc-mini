@@ -667,4 +667,82 @@ extension EditorTabViewModelTests {
         XCTAssertNil(sut.tabEnvironment)
         XCTAssertEqual(sut.url, "my-server:9090")
     }
+
+    // MARK: - TLS / ConnectionSecurity integration
+
+    func test_executeRequest_setsEffectiveTLSConfigOnRequestDraft() async {
+        let tlsConfig = TLSConfiguration(isTLSEnabled: true)
+        sut.connectionSecurity.update(activeEnvironment: nil, restoredAdHocConfig: tlsConfig)
+        sut.requestJson = "{}"
+        sut.url = "localhost:50051"
+        mockExecuteRequestUseCase.stubbedResponse = GrpcResponse(
+            jsonBody: "{}",
+            responseTime: 0.1,
+            statusCode: 0,
+            statusMessage: "OK")
+
+        await sut.executeRequest()
+
+        XCTAssertEqual(mockExecuteRequestUseCase.capturedRequest?.tlsConfiguration, tlsConfig)
+    }
+
+    func test_setTabEnvironment_updatesConnectionSecurityMode() {
+        let env = ServerEnvironment(name: "Production", host: "localhost", port: 50051)
+        XCTAssertFalse(sut.connectionSecurity.isEnvironmentMode)
+
+        sut.selectTabEnvironment(env)
+
+        XCTAssertTrue(sut.connectionSecurity.isEnvironmentMode)
+    }
+
+    func test_useCustomUrl_clearsConnectionSecurityEnvironmentMode() {
+        let env = ServerEnvironment(name: "Production", host: "localhost", port: 50051)
+        sut.selectTabEnvironment(env)
+        XCTAssertTrue(sut.connectionSecurity.isEnvironmentMode)
+
+        sut.useCustomUrl("localhost:9090")
+
+        XCTAssertFalse(sut.connectionSecurity.isEnvironmentMode)
+    }
+
+    func test_init_withRestoredTabState_restoresAdHocTLSConfig() {
+        let adHocTLS = TLSConfiguration(isTLSEnabled: true, allowInsecure: true)
+        let tabState = EditorTabState(
+            id: testEditorTab.id,
+            protoFilePath: "/test/users.proto",
+            serviceName: "UserService",
+            methodName: "GetUser",
+            adHocTLSConfiguration: adHocTLS)
+
+        let vm = EditorTabViewModel(
+            editorTab: testEditorTab,
+            restoredTabState: tabState,
+            generateMockDataUseCase: mockGenerateMockDataUseCase,
+            executeRequestUseCase: mockExecuteRequestUseCase,
+            exportResponseUseCase: mockExportResponseUseCase,
+            logger: mockLogger)
+
+        XCTAssertEqual(vm.connectionSecurity.adHocConfig, adHocTLS)
+    }
+
+    func test_saveTabState_includesAdHocTLSConfigurationForCustomURLTabs() {
+        let adHocTLS = TLSConfiguration(isTLSEnabled: true, allowInsecure: true)
+        sut.connectionSecurity.update(activeEnvironment: nil, restoredAdHocConfig: adHocTLS)
+        sut.useCustomUrl("localhost:9090")
+
+        let state = sut.currentTabState
+
+        XCTAssertEqual(state.adHocTLSConfiguration, adHocTLS)
+    }
+
+    func test_saveTabState_omitsAdHocTLSConfigurationForEnvironmentTabs() {
+        let adHocTLS = TLSConfiguration(isTLSEnabled: true, allowInsecure: true)
+        let env = ServerEnvironment(name: "Production", host: "localhost", port: 50051)
+        sut.connectionSecurity.update(activeEnvironment: nil, restoredAdHocConfig: adHocTLS)
+        sut.selectTabEnvironment(env)
+
+        let state = sut.currentTabState
+
+        XCTAssertNil(state.adHocTLSConfiguration)
+    }
 }

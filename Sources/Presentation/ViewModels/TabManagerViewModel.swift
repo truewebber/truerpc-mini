@@ -69,12 +69,7 @@ public final class TabManagerViewModel: ObservableObject {
     }
 
     private func saveTabs() {
-        let states = tabs.map {
-            EditorTabState(
-                editorTab: $0.editorTab,
-                tabEnvironment: $0.tabEnvironment,
-                customUrl: $0.tabEnvironment == nil ? $0.url : nil)
-        }
+        let states = tabs.map { $0.currentTabState }
         saveTabStateUseCase.execute(states)
     }
 }
