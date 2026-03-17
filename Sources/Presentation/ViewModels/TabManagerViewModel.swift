@@ -69,7 +69,7 @@ public final class TabManagerViewModel: ObservableObject {
     }
 
     private func saveTabs() {
-        let states = tabs.map { $0.currentTabState }
+        let states = tabs.map(\.currentTabState)
         saveTabStateUseCase.execute(states)
     }
 }
