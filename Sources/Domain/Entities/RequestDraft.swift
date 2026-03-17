@@ -7,16 +7,19 @@ public struct RequestDraft: Equatable, Sendable {
     public let url: String
     public let method: Method
     public let metadata: GrpcMetadata?
+    public let tlsConfiguration: TLSConfiguration
 
     public init(
         jsonBody: String,
         url: String,
         method: Method,
-        metadata: GrpcMetadata? = nil)
+        metadata: GrpcMetadata? = nil,
+        tlsConfiguration: TLSConfiguration = .defaults)
     {
         self.jsonBody = jsonBody
         self.url = url
         self.method = method
         self.metadata = metadata
+        self.tlsConfiguration = tlsConfiguration
     }
 }
