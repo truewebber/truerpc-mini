@@ -8,7 +8,7 @@ import XCTest
 final class ExportResponseUseCaseTests: XCTestCase {
     // MARK: - Test: Successful export
 
-    func test_execute_whenValidResponse_savesToFile() async throws {
+    func test_execute_whenValidResponse_savesToFile() throws {
         // Given
         let mockFileManager = MockFileManager()
         let useCase = ExportResponseUseCase(fileManager: mockFileManager)
@@ -27,7 +27,7 @@ final class ExportResponseUseCaseTests: XCTestCase {
         let destinationURL = URL(fileURLWithPath: "/tmp/response.json")
 
         // When
-        try await useCase.execute(response: response, destination: destinationURL)
+        try useCase.execute(response: response, destination: destinationURL)
 
         // Then
         XCTAssertTrue(mockFileManager.writeWasCalled)
@@ -37,7 +37,7 @@ final class ExportResponseUseCaseTests: XCTestCase {
 
     // MARK: - Test: Export with metadata
 
-    func test_execute_whenExportWithMetadata_includesResponseInfo() async throws {
+    func test_execute_whenExportWithMetadata_includesResponseInfo() throws {
         // Given
         let mockFileManager = MockFileManager()
         let useCase = ExportResponseUseCase(fileManager: mockFileManager)
@@ -51,7 +51,7 @@ final class ExportResponseUseCaseTests: XCTestCase {
         let destinationURL = URL(fileURLWithPath: "/tmp/response_with_meta.json")
 
         // When
-        try await useCase.execute(
+        try useCase.execute(
             response: response,
             destination: destinationURL,
             includeMetadata: true)
@@ -68,7 +68,7 @@ final class ExportResponseUseCaseTests: XCTestCase {
 
     // MARK: - Test: File write error
 
-    func test_execute_whenFileWriteFails_throwsError() async throws {
+    func test_execute_whenFileWriteFails_throwsError() throws {
         // Given
         let mockFileManager = MockFileManager()
         mockFileManager.shouldFail = true
@@ -84,7 +84,7 @@ final class ExportResponseUseCaseTests: XCTestCase {
 
         // When/Then
         do {
-            try await useCase.execute(response: response, destination: destinationURL)
+            try useCase.execute(response: response, destination: destinationURL)
             XCTFail("Expected error to be thrown")
         } catch {
             // Expected error
@@ -94,7 +94,7 @@ final class ExportResponseUseCaseTests: XCTestCase {
 
     // MARK: - Test: Empty response
 
-    func test_execute_whenEmptyResponse_savesEmptyObject() async throws {
+    func test_execute_whenEmptyResponse_savesEmptyObject() throws {
         // Given
         let mockFileManager = MockFileManager()
         let useCase = ExportResponseUseCase(fileManager: mockFileManager)
@@ -108,7 +108,7 @@ final class ExportResponseUseCaseTests: XCTestCase {
         let destinationURL = URL(fileURLWithPath: "/tmp/empty.json")
 
         // When
-        try await useCase.execute(response: response, destination: destinationURL)
+        try useCase.execute(response: response, destination: destinationURL)
 
         // Then
         XCTAssertTrue(mockFileManager.writeWasCalled)

@@ -12,8 +12,8 @@ final class TabManagerViewModelTests: XCTestCase {
     var mockExportResponse: ExportResponseUseCase!
     var mockLogger: MockAppLogger!
 
-    override func setUp() {
-        super.setUp()
+    override func setUp() async throws {
+        try await super.setUp()
         mockSaveTabState = MockSaveTabStateUseCase()
         mockRestoreTabs = MockRestoreTabsUseCase()
         mockGenerateMockData = GenerateMockDataUseCase(mockDataGenerator: MockDataGenerator())
@@ -25,7 +25,7 @@ final class TabManagerViewModelTests: XCTestCase {
             restoreTabsUseCase: mockRestoreTabs)
     }
 
-    override func tearDown() {
+    override func tearDown() async throws {
         sut = nil
         mockSaveTabState = nil
         mockRestoreTabs = nil
@@ -33,7 +33,7 @@ final class TabManagerViewModelTests: XCTestCase {
         mockExecuteRequest = nil
         mockExportResponse = nil
         mockLogger = nil
-        super.tearDown()
+        try await super.tearDown()
     }
 
     func makeEditorTabViewModel(

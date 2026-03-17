@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// View for managing saved server environments (named gRPC endpoint configurations)
 public struct EnvironmentPickerView: View {
@@ -141,6 +142,7 @@ struct EnvironmentFormView: View {
     @State private var name: String
     @State private var host: String
     @State private var portText: String
+    @State private var tlsConfig: TLSConfiguration
 
     private let existingId: UUID?
     let onSave: (ServerEnvironment) -> Void
@@ -155,6 +157,7 @@ struct EnvironmentFormView: View {
         _name = State(initialValue: environment?.name ?? "")
         _host = State(initialValue: environment?.host ?? "")
         _portText = State(initialValue: environment.map { String($0.port) } ?? "")
+        _tlsConfig = State(initialValue: environment?.tlsConfiguration ?? .defaults)
         self.onSave = onSave
         self.onCancel = onCancel
     }
@@ -169,6 +172,22 @@ struct EnvironmentFormView: View {
             && port != nil
     }
 
+    private var tlsModeBinding: Binding<TLSMode> {
+        Binding(
+            get: { tlsConfig.isTLSEnabled ? .tls : .plaintext },
+            set: { tlsConfig.isTLSEnabled = $0 == .tls })
+    }
+
+    private var certificateContentTypes: [UTType] {
+        [
+            UTType(filenameExtension: "pem"),
+            UTType(filenameExtension: "crt"),
+            UTType(filenameExtension: "cer"),
+            UTType(filenameExtension: "key"),
+            .data,
+        ].compactMap(\.self)
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             HStack {
@@ -179,14 +198,49 @@ struct EnvironmentFormView: View {
             .padding()
             Divider()
             Form {
-                TextField("Name", text: $name)
-                    .textFieldStyle(.roundedBorder)
-                TextField("Host", text: $host)
-                    .textFieldStyle(.roundedBorder)
-                TextField("Port", text: $portText)
-                    .textFieldStyle(.roundedBorder)
+                Section("Connection") {
+                    TextField("Name", text: $name)
+                        .textFieldStyle(.roundedBorder)
+                    TextField("Host", text: $host)
+                        .textFieldStyle(.roundedBorder)
+                    TextField("Port", text: $portText)
+                        .textFieldStyle(.roundedBorder)
+                }
+                Section("Security") {
+                    Picker("Mode", selection: tlsModeBinding) {
+                        Text("Plaintext").tag(TLSMode.plaintext)
+                        Text("TLS").tag(TLSMode.tls)
+                    }
+                    .pickerStyle(.segmented)
+
+                    if tlsConfig.isTLSEnabled {
+                        Toggle("Allow Insecure (Skip Verify)", isOn: $tlsConfig.allowInsecure)
+                        SecurityScopedFilePickerButton(
+                            label: "Custom CA Certificate",
+                            placeholder: "None",
+                            url: $tlsConfig.customCAURL,
+                            contentTypes: certificateContentTypes)
+                        SecurityScopedFilePickerButton(
+                            label: "Client Certificate",
+                            placeholder: "None",
+                            url: $tlsConfig.clientCertURL,
+                            contentTypes: certificateContentTypes)
+                        SecurityScopedFilePickerButton(
+                            label: "Private Key",
+                            placeholder: "None",
+                            url: $tlsConfig.clientKeyURL,
+                            contentTypes: certificateContentTypes)
+                        HStack {
+                            Text("SNI Host Override")
+                            Spacer()
+                            TextField("Optional", text: sniBinding)
+                                .textFieldStyle(.roundedBorder)
+                                .frame(width: 180)
+                        }
+                    }
+                }
             }
-            .padding()
+            .formStyle(.grouped)
             Divider()
             HStack {
                 Spacer()
@@ -199,7 +253,8 @@ struct EnvironmentFormView: View {
                         id: existingId ?? UUID(),
                         name: name.trimmingCharacters(in: .whitespaces),
                         host: host.trimmingCharacters(in: .whitespaces),
-                        port: port)
+                        port: port,
+                        tlsConfiguration: tlsConfig)
                     onSave(env)
                 }
                 .keyboardShortcut(.defaultAction)
@@ -207,8 +262,21 @@ struct EnvironmentFormView: View {
             }
             .padding()
         }
-        .frame(minWidth: 340, minHeight: 200)
+        .frame(minWidth: 400, minHeight: 300)
     }
+
+    private var sniBinding: Binding<String> {
+        Binding(
+            get: { tlsConfig.sniOverride ?? "" },
+            set: { tlsConfig.sniOverride = $0.isEmpty ? nil : $0 })
+    }
+}
+
+// MARK: - TLSMode
+
+private enum TLSMode: Hashable {
+    case plaintext
+    case tls
 }
 
 #if DEBUG

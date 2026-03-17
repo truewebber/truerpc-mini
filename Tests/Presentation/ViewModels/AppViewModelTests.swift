@@ -13,9 +13,8 @@ final class AppViewModelTests: XCTestCase {
     fileprivate var mockLogger: MockAppLogger!
     fileprivate var mockTelemetry: MockTelemetryService!
 
-    override func setUp() {
-        super.setUp()
-
+    override func setUp() async throws {
+        try await super.setUp()
         createTabUseCase = CreateEditorTabUseCase()
         generateMockDataUseCase = GenerateMockDataUseCase(
             mockDataGenerator: MockDataGenerator())
@@ -41,7 +40,7 @@ final class AppViewModelTests: XCTestCase {
             logger: mockLogger)
     }
 
-    override func tearDown() {
+    override func tearDown() async throws {
         sut = nil
         createTabUseCase = nil
         generateMockDataUseCase = nil
@@ -49,7 +48,7 @@ final class AppViewModelTests: XCTestCase {
         exportResponseUseCase = nil
         mockTelemetry = nil
         mockLogger = nil
-        super.tearDown()
+        try await super.tearDown()
     }
 
     // MARK: - Initial State

@@ -96,7 +96,7 @@ public struct ConnectionSettingsPopoverView: View {
 
 /// A button that shows the selected file's name and opens a file picker on tap.
 /// Uses SwiftUI's `.fileImporter` which handles security-scoped resources automatically.
-private struct SecurityScopedFilePickerButton: View {
+struct SecurityScopedFilePickerButton: View {
     let label: String
     let placeholder: String
     @Binding var url: URL?

@@ -11,9 +11,8 @@ final class GrpcSwiftDynamicClientTests: XCTestCase {
     var fileDescriptor: FileDescriptor!
     var messageDescriptor: MessageDescriptor!
 
-    override func setUp() {
-        super.setUp()
-
+    override func setUp() async throws {
+        try await super.setUp()
         fileDescriptor = FileDescriptor(name: "test.proto", package: "test")
 
         var tempDescriptor = MessageDescriptor(name: "Person", parent: fileDescriptor)
@@ -30,13 +29,13 @@ final class GrpcSwiftDynamicClientTests: XCTestCase {
         sut = GrpcSwiftDynamicClient(protoRepository: mockRepository, logger: mockLogger)
     }
 
-    override func tearDown() {
+    override func tearDown() async throws {
         sut = nil
         mockRepository = nil
         mockLogger = nil
         messageDescriptor = nil
         fileDescriptor = nil
-        super.tearDown()
+        try await super.tearDown()
     }
 
     // MARK: - JSON Parsing

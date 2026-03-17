@@ -6,16 +6,16 @@ final class SparkleUpdaterServiceTests: XCTestCase {
     private var mockUpdating: MockSparkleUpdating!
     private var sut: SparkleUpdaterService!
 
-    override func setUp() {
-        super.setUp()
+    override func setUp() async throws {
+        try await super.setUp()
         mockUpdating = MockSparkleUpdating()
         sut = SparkleUpdaterService(updater: mockUpdating)
     }
 
-    override func tearDown() {
+    override func tearDown() async throws {
         sut = nil
         mockUpdating = nil
-        super.tearDown()
+        try await super.tearDown()
     }
 
     func test_checkForUpdates_delegatesToSparkleUpdating() {

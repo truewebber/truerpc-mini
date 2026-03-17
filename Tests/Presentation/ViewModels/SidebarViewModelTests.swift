@@ -14,8 +14,8 @@ final class SidebarViewModelTests: XCTestCase {
     var mockLogger: MockAppLogger!
     var mockTelemetry: MockTelemetryService!
 
-    override func setUp() {
-        super.setUp()
+    override func setUp() async throws {
+        try await super.setUp()
         mockUseCase = MockImportProtoFileUseCase()
         mockRefreshUseCase = MockRefreshProtoFileUseCase()
         mockWatcher = MockProtoFileWatcher()
@@ -35,7 +35,7 @@ final class SidebarViewModelTests: XCTestCase {
             telemetry: mockTelemetry)
     }
 
-    override func tearDown() {
+    override func tearDown() async throws {
         sut = nil
         mockUseCase = nil
         mockRefreshUseCase = nil
@@ -45,7 +45,7 @@ final class SidebarViewModelTests: XCTestCase {
         mockLoadSavedProtosUseCase = nil
         mockLogger = nil
         mockTelemetry = nil
-        super.tearDown()
+        try await super.tearDown()
     }
 
     // MARK: - Initial State Tests

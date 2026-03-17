@@ -8,18 +8,18 @@ final class ExecuteUnaryRequestUseCaseTests: XCTestCase {
     var mockTelemetry: MockTelemetryService!
     var sut: ExecuteUnaryRequestUseCase!
 
-    override func setUp() {
-        super.setUp()
+    override func setUp() async throws {
+        try await super.setUp()
         mockGrpcClient = MockGrpcClient()
         mockTelemetry = MockTelemetryService()
         sut = ExecuteUnaryRequestUseCase(grpcClient: mockGrpcClient, telemetry: mockTelemetry)
     }
 
-    override func tearDown() {
+    override func tearDown() async throws {
         mockGrpcClient = nil
         mockTelemetry = nil
         sut = nil
-        super.tearDown()
+        try await super.tearDown()
     }
 
     // MARK: - Success Cases

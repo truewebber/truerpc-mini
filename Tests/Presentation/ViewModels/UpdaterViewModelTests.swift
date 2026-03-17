@@ -6,15 +6,15 @@ final class UpdaterViewModelTests: XCTestCase {
     private var sut: UpdaterViewModel!
     private var mockService: MockUpdaterService!
 
-    override func setUp() {
-        super.setUp()
+    override func setUp() async throws {
+        try await super.setUp()
         mockService = MockUpdaterService()
     }
 
-    override func tearDown() {
+    override func tearDown() async throws {
         sut = nil
         mockService = nil
-        super.tearDown()
+        try await super.tearDown()
     }
 
     // MARK: - Init

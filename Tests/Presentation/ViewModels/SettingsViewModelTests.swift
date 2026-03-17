@@ -6,16 +6,16 @@ final class SettingsViewModelTests: XCTestCase {
     private var sut: SettingsViewModel!
     private var mockTelemetry: MockTelemetryService!
 
-    override func setUp() {
-        super.setUp()
+    override func setUp() async throws {
+        try await super.setUp()
         mockTelemetry = MockTelemetryService()
         sut = SettingsViewModel(telemetry: mockTelemetry)
     }
 
-    override func tearDown() {
+    override func tearDown() async throws {
         sut = nil
         mockTelemetry = nil
-        super.tearDown()
+        try await super.tearDown()
     }
 
     // MARK: - onAppear

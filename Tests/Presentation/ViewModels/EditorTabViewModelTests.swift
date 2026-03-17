@@ -14,8 +14,8 @@ final class EditorTabViewModelTests: XCTestCase {
     var testProtoFile: ProtoFile!
     var testEditorTab: EditorTab!
 
-    override func setUp() {
-        super.setUp()
+    override func setUp() async throws {
+        try await super.setUp()
         mockGenerateMockDataUseCase = MockGenerateMockDataUseCase()
         mockExecuteRequestUseCase = MockExecuteUnaryRequestUseCase()
         mockExportResponseUseCase = MockExportResponseUseCase()
@@ -46,7 +46,7 @@ final class EditorTabViewModelTests: XCTestCase {
             logger: mockLogger)
     }
 
-    override func tearDown() {
+    override func tearDown() async throws {
         sut = nil
         mockGenerateMockDataUseCase = nil
         mockExecuteRequestUseCase = nil
@@ -55,7 +55,7 @@ final class EditorTabViewModelTests: XCTestCase {
         testService = nil
         testProtoFile = nil
         testEditorTab = nil
-        super.tearDown()
+        try await super.tearDown()
     }
 
     // MARK: - Initial State

@@ -8,18 +8,18 @@ final class LoadSavedProtosUseCaseTests: XCTestCase {
     var mockImportUseCase: MockImportProtoFileUseCase!
     var mockLogger: MockAppLogger!
 
-    override func setUp() {
-        super.setUp()
+    override func setUp() async throws {
+        try await super.setUp()
         mockImportUseCase = MockImportProtoFileUseCase()
         mockLogger = MockAppLogger()
         sut = LoadSavedProtosUseCase(importProtoFileUseCase: mockImportUseCase, logger: mockLogger)
     }
 
-    override func tearDown() {
+    override func tearDown() async throws {
         sut = nil
         mockImportUseCase = nil
         mockLogger = nil
-        super.tearDown()
+        try await super.tearDown()
     }
 
     // MARK: - Happy Path

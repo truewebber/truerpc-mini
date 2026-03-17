@@ -17,12 +17,12 @@ final class MockDataGeneratorTests: XCTestCase {
 
     // MARK: - Happy Path
 
-    func test_generate_returnsValidJSON() async throws {
+    func test_generate_returnsValidJSON() throws {
         // Given
         let messageType = "TestMessage"
 
         // When
-        let json = try await sut.generate(for: messageType)
+        let json = try sut.generate(for: messageType)
 
         // Then
         XCTAssertFalse(json.isEmpty)
@@ -30,25 +30,25 @@ final class MockDataGeneratorTests: XCTestCase {
         XCTAssertNoThrow(try JSONSerialization.jsonObject(with: XCTUnwrap(json.data(using: .utf8))))
     }
 
-    func test_generate_returnsJSONObject() async throws {
+    func test_generate_returnsJSONObject() throws {
         // Given
         let messageType = "TestMessage"
 
         // When
-        let json = try await sut.generate(for: messageType)
+        let json = try sut.generate(for: messageType)
 
         // Then
         XCTAssertTrue(json.contains("{"))
         XCTAssertTrue(json.contains("}"))
     }
 
-    func test_generate_multipleCalls_returnsConsistentFormat() async throws {
+    func test_generate_multipleCalls_returnsConsistentFormat() throws {
         // Given
         let messageType = "TestMessage"
 
         // When
-        let json1 = try await sut.generate(for: messageType)
-        let json2 = try await sut.generate(for: messageType)
+        let json1 = try sut.generate(for: messageType)
+        let json2 = try sut.generate(for: messageType)
 
         // Then
         // Both should be valid JSON

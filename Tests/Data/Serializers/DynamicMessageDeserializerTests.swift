@@ -29,7 +29,7 @@ final class DynamicMessageDeserializerTests: XCTestCase {
 
     func test_deserialize_withValidBinaryData_returnsDynamicMessage() throws {
         // Given
-        var originalMessage = try MessageFactory().createMessage(from: messageDescriptor)
+        var originalMessage = MessageFactory().createMessage(from: messageDescriptor)
         try originalMessage.set("Alice", forField: "name")
         try originalMessage.set(Int32(30), forField: "age")
 

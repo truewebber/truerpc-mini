@@ -10,8 +10,8 @@ final class GlobalEnvironmentViewModelTests: XCTestCase {
     var mockSelectUseCase: MockSelectEnvironmentUseCase!
     var mockGetSelectedUseCase: MockGetSelectedEnvironmentUseCase!
 
-    override func setUp() {
-        super.setUp()
+    override func setUp() async throws {
+        try await super.setUp()
         mockLoadUseCase = MockLoadEnvironmentsUseCase()
         mockSaveUseCase = MockSaveEnvironmentUseCase()
         mockDeleteUseCase = MockDeleteEnvironmentUseCase()
@@ -19,14 +19,14 @@ final class GlobalEnvironmentViewModelTests: XCTestCase {
         mockGetSelectedUseCase = MockGetSelectedEnvironmentUseCase()
     }
 
-    override func tearDown() {
+    override func tearDown() async throws {
         sut = nil
         mockLoadUseCase = nil
         mockSaveUseCase = nil
         mockDeleteUseCase = nil
         mockSelectUseCase = nil
         mockGetSelectedUseCase = nil
-        super.tearDown()
+        try await super.tearDown()
     }
 
     private func makeSUT() -> GlobalEnvironmentViewModel {

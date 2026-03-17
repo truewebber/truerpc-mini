@@ -5,7 +5,7 @@ import XCTest
 final class AmplitudeTelemetryServiceTests: XCTestCase {
     // MARK: - track
 
-    func test_track_whenEnabled_callsTrackerWithSanitizedEvent() async {
+    func test_track_whenEnabled_callsTrackerWithSanitizedEvent() {
         let spy = MockAnalyticsTracker()
         let sut = AmplitudeTelemetryService(
             apiKey: "test-key",
@@ -13,7 +13,7 @@ final class AmplitudeTelemetryServiceTests: XCTestCase {
             responseHandler: MockTrackerResponseHandler(),
             tracker: spy)
 
-        await sut.track(.appLaunched(appVersion: "1.0.0", osVersion: "15.0"))
+        sut.track(.appLaunched(appVersion: "1.0.0", osVersion: "15.0"))
 
         XCTAssertEqual(spy.trackedEventTypes.count, 1)
         XCTAssertEqual(spy.trackedEventTypes[0], "app_launched")
@@ -23,7 +23,7 @@ final class AmplitudeTelemetryServiceTests: XCTestCase {
 
     // MARK: - sanitize
 
-    func test_sanitize_stripsUnknownKeys() async {
+    func test_sanitize_stripsUnknownKeys() {
         let spy = MockAnalyticsTracker()
         let sut = AmplitudeTelemetryService(
             apiKey: "test-key",
@@ -36,7 +36,7 @@ final class AmplitudeTelemetryServiceTests: XCTestCase {
             "service_name": "MyService",
         ])
 
-        await sut.track(event)
+        sut.track(event)
 
         let props = spy.trackedEventProperties[0] ?? [:]
         XCTAssertNotNil(props["app_version"])
@@ -44,7 +44,7 @@ final class AmplitudeTelemetryServiceTests: XCTestCase {
         XCTAssertNil(props["unknown_key"])
     }
 
-    func test_sanitize_truncatesServiceNameTo64Chars() async {
+    func test_sanitize_truncatesServiceNameTo64Chars() {
         let spy = MockAnalyticsTracker()
         let sut = AmplitudeTelemetryService(
             apiKey: "test-key",
@@ -53,14 +53,14 @@ final class AmplitudeTelemetryServiceTests: XCTestCase {
             tracker: spy)
         let longName = String(repeating: "a", count: 100)
 
-        await sut.track(.requestSent(serviceName: longName, methodName: "M"))
+        sut.track(.requestSent(serviceName: longName, methodName: "M"))
 
         let props = spy.trackedEventProperties[0] ?? [:]
         let serviceName = props["service_name"] as? String ?? ""
         XCTAssertLessThanOrEqual(serviceName.count, 64)
     }
 
-    func test_sanitize_truncatesMethodNameTo64Chars() async {
+    func test_sanitize_truncatesMethodNameTo64Chars() {
         let spy = MockAnalyticsTracker()
         let sut = AmplitudeTelemetryService(
             apiKey: "test-key",
@@ -69,7 +69,7 @@ final class AmplitudeTelemetryServiceTests: XCTestCase {
             tracker: spy)
         let longName = String(repeating: "b", count: 80)
 
-        await sut.track(.requestSent(serviceName: "S", methodName: longName))
+        sut.track(.requestSent(serviceName: "S", methodName: longName))
 
         let props = spy.trackedEventProperties[0] ?? [:]
         let methodName = props["method_name"] as? String ?? ""
@@ -78,7 +78,7 @@ final class AmplitudeTelemetryServiceTests: XCTestCase {
 
     // MARK: - isEnabled closure
 
-    func test_isEnabledClosure_reflectsUserDefaultsAnalyticsIsEnabled() async throws {
+    func test_isEnabledClosure_reflectsUserDefaultsAnalyticsIsEnabled() throws {
         let userDefaults = try XCTUnwrap(UserDefaults(suiteName: "test.amplitude.analytics.integration"))
         userDefaults.removePersistentDomain(forName: "test.amplitude.analytics.integration")
         defer { userDefaults.removePersistentDomain(forName: "test.amplitude.analytics.integration") }
@@ -92,13 +92,13 @@ final class AmplitudeTelemetryServiceTests: XCTestCase {
             tracker: spy)
 
         userDefaults.analyticsIsEnabled = false
-        await sut.track(.settingsOpened())
+        sut.track(.settingsOpened())
         XCTAssertTrue(spy.trackedEventTypes.isEmpty, "When analyticsIsEnabled=false, no events should fire")
 
         spy.trackedEventTypes.removeAll()
         spy.trackedEventProperties.removeAll()
         userDefaults.analyticsIsEnabled = true
-        await sut.track(.appLaunched(appVersion: "1.0", osVersion: "15.0"))
+        sut.track(.appLaunched(appVersion: "1.0", osVersion: "15.0"))
         XCTAssertEqual(spy.trackedEventTypes.count, 1)
         XCTAssertEqual(spy.trackedEventTypes[0], "app_launched")
     }
@@ -114,7 +114,7 @@ final class AmplitudeTelemetryServiceTests: XCTestCase {
 
     // MARK: - all factory events
 
-    func test_track_allFactoryEvents_successfullyTracked() async {
+    func test_track_allFactoryEvents_successfullyTracked() {
         let spy = MockAnalyticsTracker()
         let sut = AmplitudeTelemetryService(
             apiKey: "test-key",
@@ -122,16 +122,16 @@ final class AmplitudeTelemetryServiceTests: XCTestCase {
             responseHandler: MockTrackerResponseHandler(),
             tracker: spy)
 
-        await sut.track(.appLaunched(appVersion: "1.0.0", osVersion: "15.0"))
-        await sut.track(.appBackgrounded())
-        await sut.track(.appForegrounded())
-        await sut.track(.protoAdded(source: "file"))
-        await sut.track(.protoRemoved())
-        await sut.track(.requestSent(serviceName: "Svc", methodName: "Mth"))
-        await sut.track(.requestSucceeded(serviceName: "Svc", methodName: "Mth", durationMs: 100))
-        await sut.track(.requestFailed(serviceName: "Svc", methodName: "Mth", errorCode: "UNAVAILABLE"))
-        await sut.track(.tabSwitched(tabName: "protos"))
-        await sut.track(.settingsOpened())
+        sut.track(.appLaunched(appVersion: "1.0.0", osVersion: "15.0"))
+        sut.track(.appBackgrounded())
+        sut.track(.appForegrounded())
+        sut.track(.protoAdded(source: "file"))
+        sut.track(.protoRemoved())
+        sut.track(.requestSent(serviceName: "Svc", methodName: "Mth"))
+        sut.track(.requestSucceeded(serviceName: "Svc", methodName: "Mth", durationMs: 100))
+        sut.track(.requestFailed(serviceName: "Svc", methodName: "Mth", errorCode: "UNAVAILABLE"))
+        sut.track(.tabSwitched(tabName: "protos"))
+        sut.track(.settingsOpened())
 
         let expectedNames = [
             "app_launched", "app_backgrounded", "app_foregrounded",

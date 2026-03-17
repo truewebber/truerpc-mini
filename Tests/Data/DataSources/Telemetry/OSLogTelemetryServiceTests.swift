@@ -3,21 +3,21 @@ import XCTest
 
 @MainActor
 final class OSLogTelemetryServiceTests: XCTestCase {
-    func test_track_logsMessageContainingEventName() async {
+    func test_track_logsMessageContainingEventName() {
         var capturedMessage: String?
         let sut = OSLogTelemetryService(testSink: { capturedMessage = $0 })
 
-        await sut.track(.settingsOpened())
+        sut.track(.settingsOpened())
 
         XCTAssertNotNil(capturedMessage)
         XCTAssertTrue(capturedMessage?.contains("settings_opened") ?? false)
     }
 
-    func test_track_logsMessageContainingAllProperties() async {
+    func test_track_logsMessageContainingAllProperties() {
         var capturedMessage: String?
         let sut = OSLogTelemetryService(testSink: { capturedMessage = $0 })
 
-        await sut.track(.appLaunched(appVersion: "1.0.0", osVersion: "15.0"))
+        sut.track(.appLaunched(appVersion: "1.0.0", osVersion: "15.0"))
 
         XCTAssertNotNil(capturedMessage)
         let message = capturedMessage ?? ""
@@ -26,11 +26,11 @@ final class OSLogTelemetryServiceTests: XCTestCase {
         XCTAssertTrue(message.contains("os_version=15.0"))
     }
 
-    func test_track_includesEventPrefix() async {
+    func test_track_includesEventPrefix() {
         var capturedMessage: String?
         let sut = OSLogTelemetryService(testSink: { capturedMessage = $0 })
 
-        await sut.track(.protoRemoved())
+        sut.track(.protoRemoved())
 
         XCTAssertTrue(capturedMessage?.hasPrefix("[event]") ?? false)
     }

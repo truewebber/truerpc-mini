@@ -6,15 +6,15 @@ final class ImportPathsViewModelTests: XCTestCase {
     var sut: ImportPathsViewModel!
     var mockRepository: MockImportPathsRepositorySpy!
 
-    override func setUp() {
-        super.setUp()
+    override func setUp() async throws {
+        try await super.setUp()
         mockRepository = MockImportPathsRepositorySpy()
     }
 
-    override func tearDown() {
+    override func tearDown() async throws {
         sut = nil
         mockRepository = nil
-        super.tearDown()
+        try await super.tearDown()
     }
 
     // MARK: - Initial State

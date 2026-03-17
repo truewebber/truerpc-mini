@@ -32,7 +32,7 @@ final class DynamicMessageSerializerTests: XCTestCase {
 
     func test_serialize_withSimpleMessage_returnsValidBinaryData() throws {
         // Given
-        var message = try MessageFactory().createMessage(from: messageDescriptor)
+        var message = MessageFactory().createMessage(from: messageDescriptor)
         try message.set("Alice", forField: "name")
         try message.set(Int32(30), forField: "age")
 
@@ -54,7 +54,7 @@ final class DynamicMessageSerializerTests: XCTestCase {
 
     func test_serialize_withEmptyMessage_returnsMinimalBytes() throws {
         // Given
-        let message = try MessageFactory().createMessage(from: messageDescriptor)
+        let message = MessageFactory().createMessage(from: messageDescriptor)
 
         // When
         let bytes: [UInt8] = try sut.serialize(message)
@@ -69,7 +69,7 @@ final class DynamicMessageSerializerTests: XCTestCase {
         let emailsField = FieldDescriptor(name: "emails", number: 1, type: .string, isRepeated: true)
         listDescriptor.addField(emailsField)
 
-        var message = try MessageFactory().createMessage(from: listDescriptor)
+        var message = MessageFactory().createMessage(from: listDescriptor)
         try message.set(["alice@example.com", "bob@example.com"], forField: "emails")
 
         // When
