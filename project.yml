@@ -4,12 +4,16 @@ options:
   generateEmptyDirectories: true
   developmentLanguage: en
   useBaseInternationalization: true
+attributes:
+  LastUpgradeCheck: "2630"
 settings:
   base:
     DEAD_CODE_STRIPPING: YES
     ENABLE_USER_SCRIPT_SANDBOXING: YES
     DEVELOPMENT_TEAM: "57UWRPUUGM"
+    LOCALIZATION_EXPORT_SUPPORTED: YES
     STRINGS_FILE_GENERATE_SWIFT_SYMBOL: YES
+    SWIFT_EMIT_LOC_STRINGS: YES
     SWIFT_VERSION: "6"
 configFiles:
   Debug: Config/Debug.xcconfig
