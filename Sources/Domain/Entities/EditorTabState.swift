@@ -8,6 +8,18 @@ public struct EditorTabState: Identifiable, Equatable, Codable, Sendable {
     public let methodName: String
     public let selectedEnvironmentId: UUID?
     public let customUrl: String?
+    /// Per-tab TLS override used in Custom URL mode. Nil means TLSConfiguration.defaults (plaintext).
+    public let adHocTLSConfiguration: TLSConfiguration?
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case protoFilePath
+        case serviceName
+        case methodName
+        case selectedEnvironmentId
+        case customUrl
+        case adHocTLSConfiguration
+    }
 
     public init(
         id: UUID = UUID(),
@@ -15,7 +27,8 @@ public struct EditorTabState: Identifiable, Equatable, Codable, Sendable {
         serviceName: String,
         methodName: String,
         selectedEnvironmentId: UUID? = nil,
-        customUrl: String? = nil)
+        customUrl: String? = nil,
+        adHocTLSConfiguration: TLSConfiguration? = nil)
     {
         self.id = id
         self.protoFilePath = protoFilePath
@@ -23,6 +36,7 @@ public struct EditorTabState: Identifiable, Equatable, Codable, Sendable {
         self.methodName = methodName
         self.selectedEnvironmentId = selectedEnvironmentId
         self.customUrl = customUrl
+        self.adHocTLSConfiguration = adHocTLSConfiguration
     }
 
     public init(editorTab: EditorTab, tabEnvironment: ServerEnvironment? = nil, customUrl: String? = nil) {
@@ -32,5 +46,6 @@ public struct EditorTabState: Identifiable, Equatable, Codable, Sendable {
         self.methodName = editorTab.methodName
         self.selectedEnvironmentId = tabEnvironment?.id
         self.customUrl = tabEnvironment == nil ? (customUrl?.isEmpty == false ? customUrl : nil) : nil
+        self.adHocTLSConfiguration = nil
     }
 }

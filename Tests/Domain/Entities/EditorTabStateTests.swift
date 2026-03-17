@@ -234,4 +234,36 @@ final class EditorTabStateTests: XCTestCase {
 
         XCTAssertEqual(state.id, id)
     }
+
+    // MARK: - adHocTLSConfiguration
+
+    func test_editorTabState_decodesLegacyJSON_withNilAdHocTLS() throws {
+        let legacyJSON = """
+        {
+            "id": "A0B1C2D3-E4F5-1234-5678-9ABCDEF01234",
+            "protoFilePath": "/p.proto",
+            "serviceName": "S",
+            "methodName": "M"
+        }
+        """.data(using: .utf8)!
+
+        let decoded = try JSONDecoder().decode(EditorTabState.self, from: legacyJSON)
+
+        XCTAssertNil(decoded.adHocTLSConfiguration)
+    }
+
+    func test_editorTabState_encodesAndDecodes_adHocTLSConfiguration() throws {
+        let tls = TLSConfiguration(isTLSEnabled: true, allowInsecure: false)
+        let original = EditorTabState(
+            id: UUID(),
+            protoFilePath: "/p.proto",
+            serviceName: "S",
+            methodName: "M",
+            adHocTLSConfiguration: tls)
+
+        let data = try JSONEncoder().encode(original)
+        let decoded = try JSONDecoder().decode(EditorTabState.self, from: data)
+
+        XCTAssertEqual(decoded.adHocTLSConfiguration, tls)
+    }
 }
