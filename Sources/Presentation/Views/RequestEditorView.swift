@@ -10,6 +10,7 @@ struct RequestEditorView: View {
     @State private var showExportError: Bool = false
     @State private var exportErrorMessage: String = ""
     @State private var showCopySuccess: Bool = false
+    @State private var editingEnvironment: ServerEnvironment?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -51,6 +52,15 @@ struct RequestEditorView: View {
             Button("OK", role: .cancel) {}
         } message: {
             Text(exportErrorMessage)
+        }
+        .sheet(item: $editingEnvironment) { env in
+            EnvironmentFormView(environment: env, onSave: { updated in
+                globalEnvironmentViewModel.saveEnvironment(updated)
+                viewModel.selectTabEnvironment(updated)
+                editingEnvironment = nil
+            }, onCancel: {
+                editingEnvironment = nil
+            })
         }
         .overlay(alignment: .top) {
             if showCopySuccess {
@@ -153,6 +163,13 @@ struct RequestEditorView: View {
 
     private var urlInputView: some View {
         HStack(spacing: 8) {
+            ConnectionSecurityIndicatorView(
+                connectionSecurity: viewModel.connectionSecurity,
+                activeEnvironmentName: viewModel.tabEnvironment?.name,
+                onEditEnvironment: viewModel.tabEnvironment != nil
+                    ? { editingEnvironment = viewModel.tabEnvironment }
+                    : nil)
+
             if !globalEnvironmentViewModel.environments.isEmpty {
                 envPicker
             } else {
