@@ -21,6 +21,9 @@ public class GlobalEnvironmentViewModel: ObservableObject {
     /// Called when an environment is deleted; tabs can switch to custom URL using the deleted env's address
     public var onEnvironmentDeleted: ((ServerEnvironment) -> Void)?
 
+    /// Called when an existing environment is updated so open tabs can refresh their TLS state
+    public var onEnvironmentUpdated: ((ServerEnvironment) -> Void)?
+
     // MARK: - Initialization
 
     public init(
@@ -59,10 +62,15 @@ public class GlobalEnvironmentViewModel: ObservableObject {
         selectEnvironmentUseCase.execute(nil)
     }
 
-    /// Saves (creates or updates) an environment and reloads the list
+    /// Saves (creates or updates) an environment and reloads the list.
+    /// When updating an existing environment, notifies `onEnvironmentUpdated` so open tabs can refresh.
     public func saveEnvironment(_ environment: ServerEnvironment) {
+        let isUpdate = environments.contains { $0.id == environment.id }
         saveEnvironmentUseCase.execute(environment)
         loadEnvironments()
+        if isUpdate {
+            onEnvironmentUpdated?(environment)
+        }
     }
 
     /// Deletes an environment. Clears selection if the deleted env was selected.

@@ -140,6 +140,40 @@ final class GlobalEnvironmentViewModelTests: XCTestCase {
         XCTAssertEqual(mockLoadUseCase.executeCallCount, 1)
     }
 
+    func test_saveEnvironment_whenUpdatingExistingEnv_callsOnEnvironmentUpdated() {
+        let existingEnv = ServerEnvironment(name: "Local", host: "localhost", port: 50051)
+        mockLoadUseCase.stubbedResult = [existingEnv]
+        sut = makeSUT()
+        sut.loadEnvironments()
+
+        var capturedEnv: ServerEnvironment?
+        sut.onEnvironmentUpdated = { capturedEnv = $0 }
+
+        let modified = ServerEnvironment(
+            id: existingEnv.id,
+            name: "Local Updated",
+            host: "localhost",
+            port: 50051,
+            tlsConfiguration: TLSConfiguration(isTLSEnabled: true))
+        sut.saveEnvironment(modified)
+
+        XCTAssertEqual(capturedEnv?.id, existingEnv.id)
+        XCTAssertEqual(capturedEnv?.name, "Local Updated")
+    }
+
+    func test_saveEnvironment_whenCreatingNewEnv_doesNotCallOnEnvironmentUpdated() {
+        sut = makeSUT()
+        sut.loadEnvironments()
+
+        var wasCalled = false
+        sut.onEnvironmentUpdated = { _ in wasCalled = true }
+
+        let newEnv = ServerEnvironment(name: "New", host: "new.host", port: 9090)
+        sut.saveEnvironment(newEnv)
+
+        XCTAssertFalse(wasCalled)
+    }
+
     // MARK: - deleteEnvironment
 
     func test_deleteEnvironment_callsDeleteUseCase() {

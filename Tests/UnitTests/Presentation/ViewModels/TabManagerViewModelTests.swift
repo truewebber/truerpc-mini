@@ -236,6 +236,47 @@ final class TabManagerViewModelTests: XCTestCase {
         XCTAssertEqual(tab1.url, "localhost:50051")
     }
 
+    func test_handleEnvironmentUpdated_updatesTabsUsingThatEnv() {
+        let originalEnv = ServerEnvironment(
+            id: UUID(),
+            name: "Staging",
+            host: "staging.local",
+            port: 50052)
+        let tab1 = makeEditorTabViewModel(methodName: "GetUser")
+        tab1.selectTabEnvironment(originalEnv)
+        sut.addTab(tab1)
+
+        let updatedEnv = ServerEnvironment(
+            id: originalEnv.id,
+            name: "Staging Updated",
+            host: "staging.new",
+            port: 50052,
+            tlsConfiguration: TLSConfiguration(isTLSEnabled: true))
+        sut.handleEnvironmentUpdated(updatedEnv)
+
+        XCTAssertEqual(tab1.tabEnvironment?.name, "Staging Updated")
+        XCTAssertEqual(tab1.tabEnvironment?.host, "staging.new")
+        XCTAssertEqual(tab1.connectionSecurity.effectiveTLSConfiguration, TLSConfiguration(isTLSEnabled: true))
+    }
+
+    func test_handleEnvironmentUpdated_doesNotAffectTabsUsingOtherEnv() {
+        let envA = ServerEnvironment(id: UUID(), name: "Dev", host: "localhost", port: 50051)
+        let envB = ServerEnvironment(id: UUID(), name: "Staging", host: "staging.local", port: 50052)
+        let tab1 = makeEditorTabViewModel(methodName: "GetUser")
+        tab1.selectTabEnvironment(envA)
+        sut.addTab(tab1)
+
+        let updatedEnvB = ServerEnvironment(
+            id: envB.id,
+            name: "Staging Updated",
+            host: "staging.new",
+            port: 9999)
+        sut.handleEnvironmentUpdated(updatedEnvB)
+
+        XCTAssertEqual(tab1.tabEnvironment?.id, envA.id)
+        XCTAssertEqual(tab1.url, "localhost:50051")
+    }
+
     func test_selectedTab_returnsMatchingViewModel() {
         let tabVM = makeEditorTabViewModel()
         sut.addTab(tabVM)

@@ -173,6 +173,7 @@ final class ReleaseWorkflowTests: XCTestCase {
         let filePath = URL(fileURLWithPath: #filePath)
         let repositoryRoot = filePath
             .deletingLastPathComponent() // App
+            .deletingLastPathComponent() // UnitTests
             .deletingLastPathComponent() // Tests
             .deletingLastPathComponent() // repo root
         let workflowURL = repositoryRoot

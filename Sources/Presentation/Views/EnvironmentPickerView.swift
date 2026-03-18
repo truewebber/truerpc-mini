@@ -212,14 +212,19 @@ struct EnvironmentFormView: View {
                         Text("TLS").tag(TLSMode.tls)
                     }
                     .pickerStyle(.segmented)
+                }
 
-                    if tlsConfig.isTLSEnabled {
+                if tlsConfig.isTLSEnabled {
+                    Section("Server Authentication") {
                         Toggle("Allow Insecure (Skip Verify)", isOn: $tlsConfig.allowInsecure)
                         SecurityScopedFilePickerButton(
                             label: "Custom CA Certificate",
                             placeholder: "None",
                             url: $tlsConfig.customCAURL,
                             contentTypes: certificateContentTypes)
+                    }
+
+                    Section("Client Authentication (mTLS)") {
                         SecurityScopedFilePickerButton(
                             label: "Client Certificate",
                             placeholder: "None",
@@ -230,12 +235,15 @@ struct EnvironmentFormView: View {
                             placeholder: "None",
                             url: $tlsConfig.clientKeyURL,
                             contentTypes: certificateContentTypes)
+                    }
+
+                    Section("Advanced") {
                         HStack {
                             Text("SNI Host Override")
                             Spacer()
                             TextField("Optional", text: sniBinding)
                                 .textFieldStyle(.roundedBorder)
-                                .frame(width: 180)
+                                .frame(width: 160)
                         }
                     }
                 }

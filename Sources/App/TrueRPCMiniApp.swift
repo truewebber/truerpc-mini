@@ -255,6 +255,9 @@ struct TrueRPCMiniApp: App {
         globalEnvVM.onEnvironmentDeleted = { [weak tabManagerVM] env in
             tabManagerVM?.handleEnvironmentDeleted(env)
         }
+        globalEnvVM.onEnvironmentUpdated = { [weak tabManagerVM] env in
+            tabManagerVM?.handleEnvironmentUpdated(env)
+        }
 
         // Use _StateObject to initialize @StateObject properties
         _sidebarViewModel = StateObject(wrappedValue: sidebarVM)

@@ -30,10 +30,10 @@ struct ConnectionSecurityIndicatorView: View {
         }
         .buttonStyle(.borderless)
         .help(lockHelp)
-        .popover(isPresented: $isInfoPopoverPresented) {
+        .popover(isPresented: $isInfoPopoverPresented, arrowEdge: .bottom) {
             environmentInfoPopover
         }
-        .popover(isPresented: $connectionSecurity.isPopoverPresented) {
+        .popover(isPresented: $connectionSecurity.isPopoverPresented, arrowEdge: .bottom) {
             ConnectionSettingsPopoverView(viewModel: connectionSecurity)
         }
     }

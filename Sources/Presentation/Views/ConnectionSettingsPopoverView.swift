@@ -12,65 +12,62 @@ public struct ConnectionSettingsPopoverView: View {
     }
 
     public var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
+        VStack(spacing: 0) {
             Text("Connection Security")
                 .font(.headline)
+                .frame(maxWidth: .infinity, alignment: .leading)
                 .padding()
 
             Divider()
 
             Form {
-                Toggle("Enable TLS", isOn: $viewModel.adHocConfig.isTLSEnabled)
+                Section("Security") {
+                    Picker("Mode", selection: $viewModel.adHocConfig.isTLSEnabled) {
+                        Text("Plaintext").tag(false)
+                        Text("TLS").tag(true)
+                    }
+                    .pickerStyle(.segmented)
+                }
 
                 if viewModel.adHocConfig.isTLSEnabled {
-                    serverAuthSection
-                    clientAuthSection
-                    advancedSection
+                    Section("Server Authentication") {
+                        Toggle("Allow Insecure (Skip Verify)", isOn: $viewModel.adHocConfig.allowInsecure)
+                        SecurityScopedFilePickerButton(
+                            label: "Custom CA Certificate",
+                            placeholder: "None",
+                            url: $viewModel.adHocConfig.customCAURL,
+                            contentTypes: certificateContentTypes)
+                    }
+
+                    Section("Client Authentication (mTLS)") {
+                        SecurityScopedFilePickerButton(
+                            label: "Client Certificate",
+                            placeholder: "None",
+                            url: $viewModel.adHocConfig.clientCertURL,
+                            contentTypes: certificateContentTypes)
+                        SecurityScopedFilePickerButton(
+                            label: "Private Key",
+                            placeholder: "None",
+                            url: $viewModel.adHocConfig.clientKeyURL,
+                            contentTypes: certificateContentTypes)
+                    }
+
+                    Section("Advanced") {
+                        HStack {
+                            Text("SNI Host Override")
+                            Spacer()
+                            TextField("Optional", text: sniBinding)
+                                .textFieldStyle(.roundedBorder)
+                                .frame(width: 160)
+                        }
+                    }
                 }
             }
             .formStyle(.grouped)
+            .frame(height: viewModel.adHocConfig.isTLSEnabled ? 400 : 92)
+            .animation(.easeInOut(duration: 0.2), value: viewModel.adHocConfig.isTLSEnabled)
         }
         .frame(width: 360)
-    }
-
-    // MARK: - Sections
-
-    private var serverAuthSection: some View {
-        Section("Server Authentication") {
-            Toggle("Allow Insecure (Skip Verify)", isOn: $viewModel.adHocConfig.allowInsecure)
-            SecurityScopedFilePickerButton(
-                label: "Custom CA Certificate",
-                placeholder: "None",
-                url: $viewModel.adHocConfig.customCAURL,
-                contentTypes: certificateContentTypes)
-        }
-    }
-
-    private var clientAuthSection: some View {
-        Section("Client Authentication (mTLS)") {
-            SecurityScopedFilePickerButton(
-                label: "Client Certificate",
-                placeholder: "None",
-                url: $viewModel.adHocConfig.clientCertURL,
-                contentTypes: certificateContentTypes)
-            SecurityScopedFilePickerButton(
-                label: "Private Key",
-                placeholder: "None",
-                url: $viewModel.adHocConfig.clientKeyURL,
-                contentTypes: certificateContentTypes)
-        }
-    }
-
-    private var advancedSection: some View {
-        Section("Advanced") {
-            HStack {
-                Text("SNI Host Override")
-                Spacer()
-                TextField("Optional", text: sniBinding)
-                    .textFieldStyle(.roundedBorder)
-                    .frame(width: 180)
-            }
-        }
     }
 
     // MARK: - Helpers

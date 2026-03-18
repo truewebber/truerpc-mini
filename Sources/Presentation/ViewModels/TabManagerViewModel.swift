@@ -64,6 +64,13 @@ public final class TabManagerViewModel: ObservableObject {
         }
     }
 
+    /// Refreshes all tabs bound to the updated environment so their URL and TLS state reflect the new config
+    public func handleEnvironmentUpdated(_ environment: ServerEnvironment) {
+        for tab in tabs where tab.tabEnvironment?.id == environment.id {
+            tab.selectTabEnvironment(environment)
+        }
+    }
+
     public func restoredStates() -> [EditorTabState] {
         restoreTabsUseCase.execute()
     }
