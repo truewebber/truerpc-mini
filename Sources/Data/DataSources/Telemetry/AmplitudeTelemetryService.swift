@@ -36,13 +36,25 @@ final class AmplitudeTelemetryService: TelemetryServiceProtocol {
         } else {
             self.tracker = Amplitude(configuration: Configuration(
                 apiKey: apiKey,
-                callback: { event, code, message in
-                    responseHandler.handleResponse(
-                        eventType: event.eventType,
-                        code: code,
-                        message: message)
-                },
+                callback: Self.makeCallback(responseHandler: responseHandler),
                 minTimeBetweenSessionsMillis: AmplitudeTelemetryService.sessionTimeoutMs))
+        }
+    }
+
+    /// Returns a callback closure that is NOT `@MainActor`-isolated.
+    ///
+    /// Amplitude invokes the callback on its own background queue (`com.amplitude.analytics`).
+    /// A closure created inside a `@MainActor` context inherits that isolation; Swift 6 runtime
+    /// then crashes with `_dispatch_assert_queue_fail` when Amplitude calls it off-main-thread.
+    /// Extracting the closure into a `nonisolated static` function breaks the inheritance.
+    nonisolated static func makeCallback(
+        responseHandler: TrackerResponseHandlerProtocol
+    ) -> @Sendable (BaseEvent, Int, String) -> Void {
+        { event, code, message in
+            responseHandler.handleResponse(
+                eventType: event.eventType,
+                code: code,
+                message: message)
         }
     }
 

@@ -1,3 +1,5 @@
+import AmplitudeSwift
+import os.lock
 import XCTest
 @testable import TrueRPCMini
 
@@ -140,6 +142,89 @@ final class AmplitudeTelemetryServiceTests: XCTestCase {
         ]
         XCTAssertEqual(spy.trackedEventTypes, expectedNames)
     }
+
+    // MARK: - makeCallback: argument forwarding (positive)
+
+    func test_makeCallback_forwardsEventTypeToHandler() {
+        let spy = SpyTrackerResponseHandler()
+        let callback = AmplitudeTelemetryService.makeCallback(responseHandler: spy)
+
+        callback(BaseEvent(eventType: "my_event"), 200, "OK")
+
+        XCTAssertEqual(spy.receivedEventType, "my_event")
+    }
+
+    func test_makeCallback_forwardsCodeToHandler() {
+        let spy = SpyTrackerResponseHandler()
+        let callback = AmplitudeTelemetryService.makeCallback(responseHandler: spy)
+
+        callback(BaseEvent(eventType: "e"), 429, "Too Many Requests")
+
+        XCTAssertEqual(spy.receivedCode, 429)
+    }
+
+    func test_makeCallback_forwardsMessageToHandler() {
+        let spy = SpyTrackerResponseHandler()
+        let callback = AmplitudeTelemetryService.makeCallback(responseHandler: spy)
+
+        callback(BaseEvent(eventType: "e"), 500, "Internal Server Error")
+
+        XCTAssertEqual(spy.receivedMessage, "Internal Server Error")
+    }
+
+    // MARK: - makeCallback: thread safety (regression — was crashing before the fix)
+
+    /// Simulates the exact scenario from the crash report:
+    /// Amplitude calls the callback on `com.amplitude.analytics` (a background queue).
+    /// Before the fix the closure inherited `@MainActor` isolation and Swift 6 runtime
+    /// called `_dispatch_assert_queue_fail` → SIGTRAP.
+    func test_makeCallback_calledFromAmplitudeQueue_invokesHandlerWithoutCrashing() async {
+        let spy = SpyTrackerResponseHandler()
+        let callback = AmplitudeTelemetryService.makeCallback(responseHandler: spy)
+        let amplitudeQueue = DispatchQueue(label: "com.amplitude.analytics")
+
+        await withCheckedContinuation { continuation in
+            amplitudeQueue.async {
+                callback(BaseEvent(eventType: "queued_event"), 200, "OK")
+                continuation.resume()
+            }
+        }
+
+        XCTAssertEqual(spy.receivedEventType, "queued_event")
+        XCTAssertEqual(spy.receivedCode, 200)
+    }
+
+    /// Verifies the callback is safe to invoke from a Swift Concurrency detached task
+    /// (which runs on the cooperative thread pool, never on the main actor).
+    func test_makeCallback_calledFromDetachedTask_invokesHandlerWithoutCrashing() async {
+        let spy = SpyTrackerResponseHandler()
+        let callback = AmplitudeTelemetryService.makeCallback(responseHandler: spy)
+
+        await Task.detached {
+            callback(BaseEvent(eventType: "detached_event"), 400, "Bad Request")
+        }.value
+
+        XCTAssertEqual(spy.receivedEventType, "detached_event")
+        XCTAssertEqual(spy.receivedCode, 400)
+        XCTAssertEqual(spy.receivedMessage, "Bad Request")
+    }
+
+    /// Non-200 codes must still be forwarded so the handler can log failures.
+    func test_makeCallback_withNon200Code_stillCallsHandler() async {
+        let spy = SpyTrackerResponseHandler()
+        let callback = AmplitudeTelemetryService.makeCallback(responseHandler: spy)
+        let amplitudeQueue = DispatchQueue(label: "com.amplitude.analytics")
+
+        await withCheckedContinuation { continuation in
+            amplitudeQueue.async {
+                callback(BaseEvent(eventType: "failed_event"), 503, "Service Unavailable")
+                continuation.resume()
+            }
+        }
+
+        XCTAssertEqual(spy.receivedCode, 503)
+        XCTAssertEqual(spy.receivedMessage, "Service Unavailable")
+    }
 }
 
 // MARK: - Mocks
@@ -156,4 +241,29 @@ private final class MockAnalyticsTracker: AnalyticsTrackerProtocol {
 
 private final class MockTrackerResponseHandler: TrackerResponseHandlerProtocol {
     func handleResponse(eventType _: String, code _: Int, message _: String) {}
+}
+
+/// Thread-safe spy for `TrackerResponseHandlerProtocol`.
+/// Guards mutable state with `OSAllocatedUnfairLock` so it can be safely captured
+/// in closures invoked from background threads (per Swift 6 concurrency rules).
+private final class SpyTrackerResponseHandler: TrackerResponseHandlerProtocol, Sendable {
+    private struct State: Sendable {
+        var eventType: String?
+        var code: Int?
+        var message: String?
+    }
+
+    private let storage = OSAllocatedUnfairLock(initialState: State())
+
+    var receivedEventType: String? { storage.withLock { $0.eventType } }
+    var receivedCode: Int? { storage.withLock { $0.code } }
+    var receivedMessage: String? { storage.withLock { $0.message } }
+
+    func handleResponse(eventType: String, code: Int, message: String) {
+        storage.withLock {
+            $0.eventType = eventType
+            $0.code = code
+            $0.message = message
+        }
+    }
 }
