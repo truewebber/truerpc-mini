@@ -210,6 +210,57 @@ final class GrpcSwiftDynamicClientTests: XCTestCase {
         }
     }
 
+    func test_buildTransportSecurity_whenMTLSWithCustomCA_loadsAllThreePaths() throws {
+        let certURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString + "-cert.pem")
+        let keyURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString + "-key.pem")
+        let caURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString + "-ca.pem")
+        FileManager.default.createFile(atPath: certURL.path, contents: Data("stub".utf8))
+        FileManager.default.createFile(atPath: keyURL.path, contents: Data("stub".utf8))
+        FileManager.default.createFile(atPath: caURL.path, contents: Data("stub".utf8))
+        defer {
+            try? FileManager.default.removeItem(at: certURL)
+            try? FileManager.default.removeItem(at: keyURL)
+            try? FileManager.default.removeItem(at: caURL)
+        }
+
+        let tlsConfig = TLSConfiguration(
+            isTLSEnabled: true,
+            customCAURL: caURL,
+            clientCertURL: certURL,
+            clientKeyURL: keyURL)
+        XCTAssertNoThrow(try sut.buildTransportSecurity(from: tlsConfig))
+    }
+
+    func test_buildTransportSecurity_whenMTLSWithMissingCustomCA_throwsTLSConfigurationFailed() {
+        let certURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString + "-cert.pem")
+        let keyURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString + "-key.pem")
+        let nonExistentCAURL = URL(fileURLWithPath: "/nonexistent/path/ca.pem")
+        FileManager.default.createFile(atPath: certURL.path, contents: Data("stub".utf8))
+        FileManager.default.createFile(atPath: keyURL.path, contents: Data("stub".utf8))
+        defer {
+            try? FileManager.default.removeItem(at: certURL)
+            try? FileManager.default.removeItem(at: keyURL)
+        }
+
+        let tlsConfig = TLSConfiguration(
+            isTLSEnabled: true,
+            customCAURL: nonExistentCAURL,
+            clientCertURL: certURL,
+            clientKeyURL: keyURL)
+
+        XCTAssertThrowsError(try sut.buildTransportSecurity(from: tlsConfig)) { error in
+            guard case GrpcClientError.tlsConfigurationFailed = error else {
+                XCTFail("Expected tlsConfigurationFailed, got \(error)")
+                return
+            }
+        }
+    }
+
     func test_parseServerAddress_withEmptyString_throwsError() {
         // Given
         let address = ""

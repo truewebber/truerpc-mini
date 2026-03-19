@@ -139,6 +139,7 @@ public final class AppViewModel: ObservableObject {
                 editorTab: editorTab,
                 initialEnvironment: initialEnvironment,
                 customUrl: customUrl,
+                restoredTabState: state,
                 availableEnvironments: availableEnvironments,
                 generateMockDataUseCase: generateMockDataUseCase,
                 executeRequestUseCase: executeRequestUseCase,

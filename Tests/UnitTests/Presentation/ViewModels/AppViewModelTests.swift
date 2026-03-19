@@ -297,6 +297,51 @@ final class AppViewModelTests: XCTestCase {
         XCTAssertEqual(tabManager.tabs[0].url, customEndpoint)
     }
 
+    func test_restoreTabs_withAdHocTLSConfiguration_restoresTLSSettings() throws {
+        let method = TrueRPCMini.Method(
+            name: "GetUser",
+            serviceName: "UserService",
+            inputType: ".test.GetUserRequest",
+            outputType: ".test.User")
+        let service = Service(name: "UserService", methods: [method])
+        let protoFile = ProtoFile(
+            name: "test.proto",
+            path: URL(fileURLWithPath: "/test/test.proto"),
+            services: [service])
+
+        let savedTLS = TLSConfiguration(isTLSEnabled: true, allowInsecure: true)
+        let state = EditorTabState(
+            id: UUID(),
+            protoFilePath: "/test/test.proto",
+            serviceName: "UserService",
+            methodName: "GetUser",
+            selectedEnvironmentId: nil,
+            customUrl: "localhost:50051",
+            adHocTLSConfiguration: savedTLS)
+
+        let tabRepo = try UserDefaultsTabRepository(
+            userDefaults: XCTUnwrap(UserDefaults(suiteName: "test-restore-tls")))
+        tabRepo.saveTabStates([state])
+
+        let tabManager = TabManagerViewModel(
+            saveTabStateUseCase: SaveTabStateUseCase(repository: tabRepo),
+            restoreTabsUseCase: RestoreTabsUseCase(repository: tabRepo))
+
+        let appVM = AppViewModel(
+            tabManager: tabManager,
+            createEditorTabUseCase: createTabUseCase,
+            generateMockDataUseCase: generateMockDataUseCase,
+            executeRequestUseCase: executeRequestUseCase,
+            exportResponseUseCase: exportResponseUseCase,
+            telemetry: mockTelemetry,
+            logger: mockLogger)
+
+        appVM.restoreTabs(protoFiles: [protoFile], availableEnvironments: [])
+
+        XCTAssertEqual(tabManager.tabs.count, 1)
+        XCTAssertEqual(tabManager.tabs[0].connectionSecurity.adHocConfig, savedTLS)
+    }
+
     func test_restoreTabs_whenSavedEnvDeleted_fallsBackToNilEnvironment() throws {
         let method = TrueRPCMini.Method(
             name: "GetUser",

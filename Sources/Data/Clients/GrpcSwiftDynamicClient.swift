@@ -185,6 +185,20 @@ public final class GrpcSwiftDynamicClient: GrpcClientProtocol, Sendable {
                     reason: "Client key not found: \(keyPath)")
             }
 
+            if let customCAURL = tlsConfig.customCAURL {
+                let caPath = customCAURL.path
+                guard FileManager.default.fileExists(atPath: caPath) else {
+                    throw GrpcClientError.tlsConfigurationFailed(
+                        reason: "Custom CA certificate not found: \(caPath)")
+                }
+                return .mTLS(
+                    certificateChain: [.file(path: certPath, format: .pem)],
+                    privateKey: .file(path: keyPath, format: .pem)
+                ) { config in
+                    config.trustRoots = .certificates([.file(path: caPath, format: .pem)])
+                }
+            }
+
             return .mTLS(
                 certificateChain: [.file(path: certPath, format: .pem)],
                 privateKey: .file(path: keyPath, format: .pem))
