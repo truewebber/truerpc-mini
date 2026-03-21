@@ -247,7 +247,7 @@ private final class MockTrackerResponseHandler: TrackerResponseHandlerProtocol {
 /// Guards mutable state with `OSAllocatedUnfairLock` so it can be safely captured
 /// in closures invoked from background threads (per Swift 6 concurrency rules).
 private final class SpyTrackerResponseHandler: TrackerResponseHandlerProtocol, Sendable {
-    private struct State: Sendable {
+    private struct State {
         var eventType: String?
         var code: Int?
         var message: String?
@@ -255,9 +255,17 @@ private final class SpyTrackerResponseHandler: TrackerResponseHandlerProtocol, S
 
     private let storage = OSAllocatedUnfairLock(initialState: State())
 
-    var receivedEventType: String? { storage.withLock { $0.eventType } }
-    var receivedCode: Int? { storage.withLock { $0.code } }
-    var receivedMessage: String? { storage.withLock { $0.message } }
+    var receivedEventType: String? {
+        storage.withLock { $0.eventType }
+    }
+
+    var receivedCode: Int? {
+        storage.withLock { $0.code }
+    }
+
+    var receivedMessage: String? {
+        storage.withLock { $0.message }
+    }
 
     func handleResponse(eventType: String, code: Int, message: String) {
         storage.withLock {

@@ -48,8 +48,9 @@ final class AmplitudeTelemetryService: TelemetryServiceProtocol {
     /// then crashes with `_dispatch_assert_queue_fail` when Amplitude calls it off-main-thread.
     /// Extracting the closure into a `nonisolated static` function breaks the inheritance.
     nonisolated static func makeCallback(
-        responseHandler: TrackerResponseHandlerProtocol
-    ) -> @Sendable (BaseEvent, Int, String) -> Void {
+        responseHandler: TrackerResponseHandlerProtocol)
+        -> @Sendable (BaseEvent, Int, String) -> Void
+    {
         { event, code, message in
             responseHandler.handleResponse(
                 eventType: event.eventType,
