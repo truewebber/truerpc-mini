@@ -17,41 +17,42 @@ final class MockDataGeneratorTests: XCTestCase {
 
     // MARK: - Happy Path
 
-    func test_generate_returnsValidJSON() throws {
-        // Given
+    func test_generate_returnsValidJSON() async throws {
         let messageType = "TestMessage"
+        let protoFile = ProtoFile(
+            name: "test.proto",
+            path: URL(fileURLWithPath: "/test/test.proto"),
+            services: [])
 
-        // When
-        let json = try sut.generate(for: messageType)
+        let json = try await sut.generate(for: messageType, in: protoFile)
 
-        // Then
         XCTAssertFalse(json.isEmpty)
-        // Verify it's valid JSON
         XCTAssertNoThrow(try JSONSerialization.jsonObject(with: XCTUnwrap(json.data(using: .utf8))))
     }
 
-    func test_generate_returnsJSONObject() throws {
-        // Given
+    func test_generate_returnsJSONObject() async throws {
         let messageType = "TestMessage"
+        let protoFile = ProtoFile(
+            name: "test.proto",
+            path: URL(fileURLWithPath: "/test/test.proto"),
+            services: [])
 
-        // When
-        let json = try sut.generate(for: messageType)
+        let json = try await sut.generate(for: messageType, in: protoFile)
 
-        // Then
         XCTAssertTrue(json.contains("{"))
         XCTAssertTrue(json.contains("}"))
     }
 
-    func test_generate_multipleCalls_returnsConsistentFormat() throws {
-        // Given
+    func test_generate_multipleCalls_returnsConsistentFormat() async throws {
         let messageType = "TestMessage"
+        let protoFile = ProtoFile(
+            name: "test.proto",
+            path: URL(fileURLWithPath: "/test/test.proto"),
+            services: [])
 
-        // When
-        let json1 = try sut.generate(for: messageType)
-        let json2 = try sut.generate(for: messageType)
+        let json1 = try await sut.generate(for: messageType, in: protoFile)
+        let json2 = try await sut.generate(for: messageType, in: protoFile)
 
-        // Then
-        // Both should be valid JSON
         XCTAssertNoThrow(try JSONSerialization.jsonObject(with: XCTUnwrap(json1.data(using: .utf8))))
         XCTAssertNoThrow(try JSONSerialization.jsonObject(with: XCTUnwrap(json2.data(using: .utf8))))
     }

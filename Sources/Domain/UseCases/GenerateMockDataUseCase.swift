@@ -10,10 +10,12 @@ public final class GenerateMockDataUseCase: GenerateMockDataUseCaseProtocol {
     }
 
     /// Executes mock data generation for a method's input type
-    /// - Parameter method: The gRPC method to generate data for
+    /// - Parameters:
+    ///   - method: The gRPC method to generate data for
+    ///   - protoFile: The proto file that contains the method
     /// - Returns: JSON string with mock data for the method's input type
     /// - Throws: Error if generation fails
-    public func execute(method: Method) async throws -> String {
-        try await mockDataGenerator.generate(for: method.inputType)
+    public func execute(method: Method, protoFile: ProtoFile) async throws -> String {
+        try await mockDataGenerator.generate(for: method.inputType, in: protoFile)
     }
 }

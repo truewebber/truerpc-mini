@@ -9,7 +9,7 @@ final class MockGenerateMockDataUseCase: GenerateMockDataUseCaseProtocol {
 
     init() {}
 
-    func execute(method _: TrueRPCMini.Method) throws -> String {
+    func execute(method _: TrueRPCMini.Method, protoFile _: TrueRPCMini.ProtoFile) throws -> String {
         executeCallCount += 1
         if shouldThrow {
             throw NSError(domain: "mock", code: 0, userInfo: [NSLocalizedDescriptionKey: "mock generation failed"])

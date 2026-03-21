@@ -80,7 +80,9 @@ public final class EditorTabViewModel: ObservableObject {
         isLoading = true
 
         do {
-            let mockJson = try await generateMockDataUseCase.execute(method: editorTab.method)
+            let mockJson = try await generateMockDataUseCase.execute(
+                method: editorTab.method,
+                protoFile: editorTab.protoFile)
             requestJson = mockJson
         } catch {
             logger.warning("Mock data generation failed", metadata: [
