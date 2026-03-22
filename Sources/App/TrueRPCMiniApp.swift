@@ -137,7 +137,7 @@ struct TrueRPCMiniApp: App {
         }
 
         di.register(MockDataGeneratorProtocol.self) {
-            MockDataGenerator()
+            MockDataGenerator(protoRepository: di.resolve(ProtoRepositoryProtocol.self)!)
         }
 
         di.register(GrpcClientProtocol.self) {

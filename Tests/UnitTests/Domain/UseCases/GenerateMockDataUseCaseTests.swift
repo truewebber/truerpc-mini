@@ -140,7 +140,8 @@ private final class SpyMockDataGenerator: MockDataGeneratorProtocol, Sendable {
         storage.withLock { $0.lastProtoFile }
     }
 
-    func generate(for messageType: String, in protoFile: ProtoFile) throws -> String {
+    func generate(for messageType: String, in protoFile: ProtoFile) async throws -> String {
+        await Task.yield()
         storage.withLock {
             $0.lastMessageType = messageType
             $0.lastProtoFile = protoFile

@@ -17,7 +17,7 @@ final class AppViewModelTests: XCTestCase {
         try await super.setUp()
         createTabUseCase = CreateEditorTabUseCase()
         generateMockDataUseCase = GenerateMockDataUseCase(
-            mockDataGenerator: MockDataGenerator())
+            mockDataGenerator: MockDataGenerator(protoRepository: StubProtoRepository()))
         exportResponseUseCase = ExportResponseUseCase(
             fileManager: AppMockFileManager())
         executeRequestUseCase = MockExecuteRequestUseCase()

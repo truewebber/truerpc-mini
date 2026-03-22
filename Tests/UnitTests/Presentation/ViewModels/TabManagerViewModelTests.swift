@@ -16,7 +16,8 @@ final class TabManagerViewModelTests: XCTestCase {
         try await super.setUp()
         mockSaveTabState = MockSaveTabStateUseCase()
         mockRestoreTabs = MockRestoreTabsUseCase()
-        mockGenerateMockData = GenerateMockDataUseCase(mockDataGenerator: MockDataGenerator())
+        mockGenerateMockData = GenerateMockDataUseCase(
+            mockDataGenerator: MockDataGenerator(protoRepository: StubProtoRepository()))
         mockExecuteRequest = TabManagerMockExecuteRequestUseCase()
         mockExportResponse = ExportResponseUseCase(fileManager: TabManagerMockFileManager())
         mockLogger = MockAppLogger()

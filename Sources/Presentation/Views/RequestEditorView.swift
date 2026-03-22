@@ -337,7 +337,8 @@ struct RequestEditorView: View {
 
             let viewModel = EditorTabViewModel(
                 editorTab: editorTab,
-                generateMockDataUseCase: GenerateMockDataUseCase(mockDataGenerator: MockDataGenerator()),
+                generateMockDataUseCase: GenerateMockDataUseCase(
+                    mockDataGenerator: RequestEditorView_PreviewStubMockDataGenerator()),
                 executeRequestUseCase: mockExecuteUseCase,
                 exportResponseUseCase: exportUseCase,
                 logger: NullLogger())
@@ -354,6 +355,12 @@ struct RequestEditorView: View {
     }
 
     // MARK: - Preview Mocks
+
+    private struct RequestEditorView_PreviewStubMockDataGenerator: MockDataGeneratorProtocol {
+        func generate(for _: String, in _: ProtoFile) throws -> String {
+            "{}"
+        }
+    }
 
     @MainActor
     private final class RequestEditorView_PreviewEnvViewModel: GlobalEnvironmentViewModel {
