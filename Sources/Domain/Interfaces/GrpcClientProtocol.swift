@@ -7,11 +7,13 @@ public protocol GrpcClientProtocol: Sendable {
     /// - Parameters:
     ///   - request: The request draft containing JSON body, URL, method, and optional metadata
     ///   - method: The gRPC method to invoke
+    ///   - protoFile: The loaded proto file that defines the method (scopes descriptor lookup)
     /// - Returns: The gRPC response with JSON body and timing
     /// - Throws: GrpcClientError for various failure scenarios
     func executeUnary(
         request: RequestDraft,
-        method: TrueRPCMini.Method)
+        method: TrueRPCMini.Method,
+        protoFile: ProtoFile)
         async throws -> GrpcResponse
 }
 

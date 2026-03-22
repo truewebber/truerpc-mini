@@ -170,7 +170,12 @@ final class SpyGrpcClient: GrpcClientProtocol, Sendable {
         storage.withLock { $0.capturedRequest }
     }
 
-    func executeUnary(request: RequestDraft, method _: TrueRPCMini.Method) throws -> GrpcResponse {
+    func executeUnary(
+        request: RequestDraft,
+        method _: TrueRPCMini.Method,
+        protoFile _: ProtoFile)
+        throws -> GrpcResponse
+    {
         storage.withLock { $0.capturedRequest = request }
         return GrpcResponse(jsonBody: "{}", responseTime: 0.01, statusCode: 0, statusMessage: "OK")
     }

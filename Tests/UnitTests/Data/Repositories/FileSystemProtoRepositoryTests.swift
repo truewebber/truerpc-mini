@@ -307,10 +307,10 @@ extension FileSystemProtoRepositoryTests {
         let tempURL = try createTempProtoFile(content: testProtoContent, name: "test_desc.proto")
         defer { try? FileManager.default.removeItem(at: tempURL) }
 
-        _ = try await sut.loadProto(url: tempURL)
+        let proto = try await sut.loadProto(url: tempURL)
 
         // When
-        let descriptor = try await sut.getMessageDescriptor(forType: ".test.TestMessage")
+        let descriptor = try await sut.getMessageDescriptor(forType: ".test.TestMessage", in: proto)
 
         // Then
         XCTAssertEqual(descriptor.name, "TestMessage")
@@ -330,11 +330,11 @@ extension FileSystemProtoRepositoryTests {
         let tempURL = try createTempProtoFile(content: testProtoContent, name: "test_missing.proto")
         defer { try? FileManager.default.removeItem(at: tempURL) }
 
-        _ = try await sut.loadProto(url: tempURL)
+        let proto = try await sut.loadProto(url: tempURL)
 
         // When/Then
         do {
-            _ = try await sut.getMessageDescriptor(forType: ".NonExistent")
+            _ = try await sut.getMessageDescriptor(forType: ".NonExistent", in: proto)
             XCTFail("Expected messageTypeNotFound error")
         } catch let error as ProtoRepositoryError {
             guard case .messageTypeNotFound = error else {
@@ -346,10 +346,14 @@ extension FileSystemProtoRepositoryTests {
 
     func test_getMessageDescriptor_withNoLoadedProtos_throwsError() async throws {
         // Given - no protos loaded
+        let scopeProto = ProtoFile(
+            name: "orphan.proto",
+            path: URL(fileURLWithPath: "/tmp/orphan.proto"),
+            services: [])
 
         // When/Then
         do {
-            _ = try await sut.getMessageDescriptor(forType: ".test.Message")
+            _ = try await sut.getMessageDescriptor(forType: ".test.Message", in: scopeProto)
             XCTFail("Expected messageTypeNotFound error")
         } catch let error as ProtoRepositoryError {
             guard case .messageTypeNotFound = error else {
@@ -374,10 +378,10 @@ extension FileSystemProtoRepositoryTests {
         let emptyProtoURL = googleProtobufDir.appendingPathComponent("empty.proto")
         try emptyProtoContent.write(to: emptyProtoURL, atomically: true, encoding: .utf8)
 
-        _ = try await sut.loadProto(url: emptyProtoURL)
+        let emptyProto = try await sut.loadProto(url: emptyProtoURL)
 
         // When
-        let descriptor = try await sut.getMessageDescriptor(forType: ".google.protobuf.Empty")
+        let descriptor = try await sut.getMessageDescriptor(forType: ".google.protobuf.Empty", in: emptyProto)
 
         // Then - should resolve to google.protobuf.Empty
         XCTAssertEqual(descriptor.name, "Empty")
@@ -503,10 +507,12 @@ extension FileSystemProtoRepositoryTests {
         try serviceProtoContent.write(to: serviceProtoURL, atomically: true, encoding: .utf8)
 
         // When - load service.proto with testDir as import path
-        _ = try await sut.loadProto(url: serviceProtoURL, importPaths: [testDir.path])
+        let loadedServiceProto = try await sut.loadProto(url: serviceProtoURL, importPaths: [testDir.path])
 
         // Then - must find message type from imported file, not just from the main file
-        let descriptor = try await sut.getMessageDescriptor(forType: ".imported.ImportedRequest")
+        let descriptor = try await sut.getMessageDescriptor(
+            forType: ".imported.ImportedRequest",
+            in: loadedServiceProto)
         XCTAssertEqual(descriptor.name, "ImportedRequest")
         XCTAssertEqual(descriptor.fields.count, 1)
     }
@@ -526,11 +532,13 @@ extension FileSystemProtoRepositoryTests {
         let emptyProtoURL = googleProtobufDir.appendingPathComponent("empty.proto")
         try emptyProtoContent.write(to: emptyProtoURL, atomically: true, encoding: .utf8)
 
-        _ = try await sut.loadProto(url: emptyProtoURL)
+        let emptyProto = try await sut.loadProto(url: emptyProtoURL)
 
         // When/Then - wrong package prefix should not resolve
         do {
-            _ = try await sut.getMessageDescriptor(forType: ".mattis.dev.v1.regionspy.google.protobuf.Empty")
+            _ = try await sut.getMessageDescriptor(
+                forType: ".mattis.dev.v1.regionspy.google.protobuf.Empty",
+                in: emptyProto)
             XCTFail("Expected messageTypeNotFound error")
         } catch let error as ProtoRepositoryError {
             guard case .messageTypeNotFound = error else {
@@ -538,6 +546,50 @@ extension FileSystemProtoRepositoryTests {
                 return
             }
         }
+    }
+
+    func test_getMessageDescriptor_whenDuplicateUnqualifiedMessageName_scopedToProtoFile_returnsDistinctDescriptors()
+        async throws
+    {
+        let contentA = """
+        syntax = "proto3";
+
+        message Dup {
+            string field_a = 1;
+        }
+
+        service ServiceA {
+            rpc Call(Dup) returns (Dup);
+        }
+        """
+        let contentB = """
+        syntax = "proto3";
+
+        message Dup {
+            int32 field_b = 1;
+        }
+
+        service ServiceB {
+            rpc Call(Dup) returns (Dup);
+        }
+        """
+        let urlA = try createTempProtoFile(content: contentA, name: "scope_a.proto")
+        let urlB = try createTempProtoFile(content: contentB, name: "scope_b.proto")
+        defer {
+            try? FileManager.default.removeItem(at: urlA)
+            try? FileManager.default.removeItem(at: urlB)
+        }
+
+        let protoA = try await sut.loadProto(url: urlA)
+        let protoB = try await sut.loadProto(url: urlB)
+
+        let descA = try await sut.getMessageDescriptor(forType: "Dup", in: protoA)
+        let descB = try await sut.getMessageDescriptor(forType: "Dup", in: protoB)
+
+        XCTAssertEqual(descA.fields.count, 1)
+        XCTAssertTrue(descA.fields.values.contains { $0.name == "field_a" })
+        XCTAssertEqual(descB.fields.count, 1)
+        XCTAssertTrue(descB.fields.values.contains { $0.name == "field_b" })
     }
 }
 
@@ -578,10 +630,10 @@ extension FileSystemProtoRepositoryTests {
         }
         """
         try v2Content.write(to: tempURL, atomically: true, encoding: .utf8)
-        _ = try await sut.loadProto(url: tempURL)
+        let protoAfterReload = try await sut.loadProto(url: tempURL)
 
         // Then - descriptor must reflect v2 (two fields, not one)
-        let descriptor = try await sut.getMessageDescriptor(forType: ".dedup.DeduplicatedMessage")
+        let descriptor = try await sut.getMessageDescriptor(forType: ".dedup.DeduplicatedMessage", in: protoAfterReload)
         XCTAssertEqual(descriptor.fields.count, 2, "Descriptor should be updated after re-loading the same file")
     }
 
@@ -600,9 +652,9 @@ extension FileSystemProtoRepositoryTests {
         let tempURL = try createTempProtoFile(content: v1Content, name: "changed_test.proto")
         defer { try? FileManager.default.removeItem(at: tempURL) }
 
-        _ = try await sut.loadProto(url: tempURL)
+        let protoBefore = try await sut.loadProto(url: tempURL)
 
-        let descriptorBefore = try await sut.getMessageDescriptor(forType: ".changed.ChangedMessage")
+        let descriptorBefore = try await sut.getMessageDescriptor(forType: ".changed.ChangedMessage", in: protoBefore)
         XCTAssertEqual(descriptorBefore.fields.count, 0)
 
         // When - schema evolves to add three new fields
@@ -621,10 +673,10 @@ extension FileSystemProtoRepositoryTests {
         }
         """
         try v2Content.write(to: tempURL, atomically: true, encoding: .utf8)
-        _ = try await sut.loadProto(url: tempURL)
+        let protoAfter = try await sut.loadProto(url: tempURL)
 
         // Then - getMessageDescriptor must return the new schema
-        let descriptorAfter = try await sut.getMessageDescriptor(forType: ".changed.ChangedMessage")
+        let descriptorAfter = try await sut.getMessageDescriptor(forType: ".changed.ChangedMessage", in: protoAfter)
         XCTAssertEqual(descriptorAfter.fields.count, 3, "getMessageDescriptor must reflect the updated schema")
     }
 
@@ -736,12 +788,12 @@ extension FileSystemProtoRepositoryTests {
         }
 
         // When - load both
-        _ = try await sut.loadProto(url: urlA)
-        _ = try await sut.loadProto(url: urlB)
+        let protoA = try await sut.loadProto(url: urlA)
+        let protoB = try await sut.loadProto(url: urlB)
 
         // Then - both descriptors must be accessible
-        let descriptorA = try await sut.getMessageDescriptor(forType: ".filea.MessageA")
-        let descriptorB = try await sut.getMessageDescriptor(forType: ".fileb.MessageB")
+        let descriptorA = try await sut.getMessageDescriptor(forType: ".filea.MessageA", in: protoA)
+        let descriptorB = try await sut.getMessageDescriptor(forType: ".fileb.MessageB", in: protoB)
 
         XCTAssertEqual(descriptorA.fields.count, 1)
         XCTAssertEqual(descriptorB.fields.count, 2)

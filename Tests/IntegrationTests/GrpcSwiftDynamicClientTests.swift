@@ -5,6 +5,11 @@ import XCTest
 
 @MainActor
 final class GrpcSwiftDynamicClientTests: XCTestCase {
+    let grpcClientScopeProtoFile = ProtoFile(
+        name: "grpc_client_scope.proto",
+        path: URL(fileURLWithPath: "/tmp/grpc_client_scope.proto"),
+        services: [])
+
     var sut: GrpcSwiftDynamicClient!
     fileprivate var mockRepository: MockProtoRepository!
     var mockLogger: MockAppLogger!
@@ -30,6 +35,7 @@ final class GrpcSwiftDynamicClientTests: XCTestCase {
     }
 
     override func tearDown() async throws {
+        mockRepository?.capturedProtoFiles.removeAll()
         sut = nil
         mockRepository = nil
         mockLogger = nil
@@ -353,7 +359,7 @@ final class GrpcSwiftDynamicClientTests: XCTestCase {
         // When - This will fail trying to connect to localhost:50051, but that's ok
         // We're testing that it calls the repository correctly
         do {
-            _ = try await sut.executeUnary(request: request, method: method)
+            _ = try await sut.executeUnary(request: request, method: method, protoFile: grpcClientScopeProtoFile)
             XCTFail("Should throw network error")
         } catch {
             // Expected to fail at network level
@@ -361,6 +367,8 @@ final class GrpcSwiftDynamicClientTests: XCTestCase {
             XCTAssertTrue(mockRepository.getMessageDescriptorCalled)
             XCTAssertTrue(mockRepository.capturedTypeNames.contains(".test.Request"))
             XCTAssertTrue(mockRepository.capturedTypeNames.contains(".test.Response"))
+            XCTAssertEqual(mockRepository.capturedProtoFiles.count, 2)
+            XCTAssertTrue(mockRepository.capturedProtoFiles.allSatisfy { $0.id == grpcClientScopeProtoFile.id })
         }
     }
 
@@ -380,7 +388,7 @@ final class GrpcSwiftDynamicClientTests: XCTestCase {
 
         // When/Then
         do {
-            _ = try await sut.executeUnary(request: request, method: method)
+            _ = try await sut.executeUnary(request: request, method: method, protoFile: grpcClientScopeProtoFile)
             XCTFail("Should throw error")
         } catch {
             // Should get repository error (messageTypeNotFound)
@@ -403,7 +411,7 @@ final class GrpcSwiftDynamicClientTests: XCTestCase {
 
         // When
         do {
-            _ = try await sut.executeUnary(request: request, method: method)
+            _ = try await sut.executeUnary(request: request, method: method, protoFile: grpcClientScopeProtoFile)
             XCTFail("Should throw error")
         } catch {
             // Expected
@@ -435,7 +443,7 @@ final class GrpcSwiftDynamicClientTests: XCTestCase {
 
         // When/Then
         do {
-            _ = try await sut.executeUnary(request: request, method: method)
+            _ = try await sut.executeUnary(request: request, method: method, protoFile: grpcClientScopeProtoFile)
             XCTFail("Should throw error")
         } catch {
             // Should get JSON parsing error
@@ -458,7 +466,7 @@ final class GrpcSwiftDynamicClientTests: XCTestCase {
 
         // When
         do {
-            _ = try await sut.executeUnary(request: request, method: method)
+            _ = try await sut.executeUnary(request: request, method: method, protoFile: grpcClientScopeProtoFile)
             XCTFail("Should throw error")
         } catch {
             // Expected
@@ -492,7 +500,7 @@ final class GrpcSwiftDynamicClientTests: XCTestCase {
 
         // When/Then
         do {
-            _ = try await sut.executeUnary(request: request, method: method)
+            _ = try await sut.executeUnary(request: request, method: method, protoFile: grpcClientScopeProtoFile)
             XCTFail("Should throw error")
         } catch let error as GrpcClientError {
             if case .networkError = error {
@@ -504,6 +512,84 @@ final class GrpcSwiftDynamicClientTests: XCTestCase {
             XCTFail("Expected GrpcClientError, got \(error)")
         }
     }
+
+    /// Regression (OPE-239): `executeUnary` must pass `protoFile` into `getMessageDescriptor` so JSON is validated
+    /// against the tab's schema. Same method + JSON can succeed for one tab and fail serialization for another.
+    func test_executeUnary_whenSameRequestType_scopedByProtoFile_usesMatchingInputDescriptor() async throws {
+        let pkg = FileDescriptor(name: "test.proto", package: "test")
+
+        var inputStringMsg = MessageDescriptor(name: "Request", parent: pkg)
+        inputStringMsg.addField(FieldDescriptor(name: "msg", number: 1, type: .string))
+
+        var inputIntMsg = MessageDescriptor(name: "Request", parent: pkg)
+        inputIntMsg.addField(FieldDescriptor(name: "msg", number: 1, type: .int32))
+
+        var outputDesc = MessageDescriptor(name: "Response", parent: pkg)
+        outputDesc.addField(FieldDescriptor(name: "ok", number: 1, type: .bool))
+
+        mockRepository.inputDescriptor = nil
+        mockRepository.stubbedMessageDescriptor = nil
+        mockRepository.inputDescriptorByProtoBasename = [
+            "tab_a.proto": inputStringMsg,
+            "tab_b.proto": inputIntMsg,
+        ]
+        mockRepository.outputDescriptor = outputDesc
+        defer {
+            mockRepository.inputDescriptorByProtoBasename = nil
+            mockRepository.outputDescriptor = nil
+            mockRepository.stubbedMessageDescriptor = messageDescriptor
+        }
+
+        let method = TrueRPCMini.Method(
+            name: "TestMethod",
+            serviceName: "TestService",
+            inputType: ".test.Request",
+            outputType: ".test.Response")
+        let request = RequestDraft(
+            jsonBody: #"{"msg":"hello"}"#,
+            url: "localhost:50051",
+            method: method)
+
+        let protoB = ProtoFile(
+            name: "tab_b.proto",
+            path: URL(fileURLWithPath: "/tmp/tab_b.proto"),
+            services: [])
+        mockLogger.reset()
+        mockRepository.capturedProtoFiles.removeAll()
+        mockRepository.capturedTypeNames.removeAll()
+
+        do {
+            _ = try await sut.executeUnary(request: request, method: method, protoFile: protoB)
+            XCTFail("Expected request JSON to fail against int32 msg descriptor")
+        } catch {
+            let serializationFailures = mockLogger.errorMessages.filter { $0.message == "Request serialization failed" }
+            XCTAssertEqual(serializationFailures.count, 1, "Wrong-tab schema should reject string JSON for int32 field")
+        }
+        XCTAssertTrue(
+            mockRepository.capturedProtoFiles.contains { $0.path.lastPathComponent == "tab_b.proto" },
+            "Repository must receive tab B proto file for descriptor lookup")
+
+        let protoA = ProtoFile(
+            name: "tab_a.proto",
+            path: URL(fileURLWithPath: "/tmp/tab_a.proto"),
+            services: [])
+        mockLogger.reset()
+        mockRepository.capturedProtoFiles.removeAll()
+        mockRepository.capturedTypeNames.removeAll()
+
+        do {
+            _ = try await sut.executeUnary(request: request, method: method, protoFile: protoA)
+            XCTFail("Expected failure after network (JSON should match tab A descriptor)")
+        } catch {
+            XCTAssertFalse(error is ProtoRepositoryError, "Descriptor lookup for tab A should succeed")
+            let serializationFailures = mockLogger.errorMessages.filter { $0.message == "Request serialization failed" }
+            XCTAssertTrue(
+                serializationFailures.isEmpty,
+                "Same JSON must serialize for tab A (string msg)")
+        }
+        XCTAssertTrue(
+            mockRepository.capturedProtoFiles.allSatisfy { $0.path.lastPathComponent == "tab_a.proto" })
+    }
 }
 
 // MARK: - Mock Repository
@@ -513,9 +599,13 @@ private final class MockProtoRepository: ProtoRepositoryProtocol {
     var stubbedMessageDescriptor: MessageDescriptor?
     var inputDescriptor: MessageDescriptor?
     var outputDescriptor: MessageDescriptor?
+    /// When set, `.test.Request` (any type name containing `Request`) resolves from this map by
+    /// `protoFile.path.lastPathComponent`.
+    var inputDescriptorByProtoBasename: [String: MessageDescriptor]?
     var getMessageDescriptorCalled = false
     var capturedTypeName: String?
     var capturedTypeNames: [String] = []
+    var capturedProtoFiles: [ProtoFile] = []
     var shouldThrow = false
 
     func loadProto(url _: URL) throws -> ProtoFile {
@@ -530,13 +620,21 @@ private final class MockProtoRepository: ProtoRepositoryProtocol {
         []
     }
 
-    func getMessageDescriptor(forType typeName: String) throws -> MessageDescriptor {
+    func getMessageDescriptor(forType typeName: String, in protoFile: ProtoFile) throws -> MessageDescriptor {
         getMessageDescriptorCalled = true
         capturedTypeName = typeName
         capturedTypeNames.append(typeName)
+        capturedProtoFiles.append(protoFile)
 
         if shouldThrow {
             throw ProtoRepositoryError.messageTypeNotFound(typeName)
+        }
+
+        if let map = inputDescriptorByProtoBasename,
+           typeName.contains("Request"),
+           let descriptor = map[protoFile.path.lastPathComponent]
+        {
+            return descriptor
         }
 
         if typeName.contains("Request"), let descriptor = inputDescriptor {

@@ -248,6 +248,7 @@ final class EditorTabViewModelTests: XCTestCase {
 
         // Then
         XCTAssertTrue(mockExecuteRequestUseCase.executeCalled)
+        XCTAssertEqual(mockExecuteRequestUseCase.capturedProtoFile?.id, testEditorTab.protoFile.id)
         XCTAssertEqual(mockExecuteRequestUseCase.capturedRequest?.jsonBody, #"{"test": "data"}"#)
         XCTAssertEqual(mockExecuteRequestUseCase.capturedRequest?.url, "api.example.com:443")
         XCTAssertEqual(mockExecuteRequestUseCase.capturedMethod?.name, "GetUser")

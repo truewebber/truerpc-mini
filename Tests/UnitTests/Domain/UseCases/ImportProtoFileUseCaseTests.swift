@@ -152,7 +152,7 @@ private final class MockProtoRepository: ProtoRepositoryProtocol {
         protoFileToReturn.map { [$0] } ?? []
     }
 
-    func getMessageDescriptor(forType _: String) throws -> SwiftProtoReflect.MessageDescriptor {
+    func getMessageDescriptor(forType _: String, in _: ProtoFile) throws -> SwiftProtoReflect.MessageDescriptor {
         let fileDesc = SwiftProtoReflect.FileDescriptor(name: "mock.proto", package: "mock")
         return SwiftProtoReflect.MessageDescriptor(name: "MockMessage", parent: fileDesc)
     }

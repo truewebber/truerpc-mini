@@ -3,7 +3,7 @@ import Foundation
 /// Use case for executing unary gRPC requests.
 /// Validates input, fires telemetry events at lifecycle points, and delegates to gRPC client.
 public protocol ExecuteUnaryRequestUseCaseProtocol: Sendable {
-    func execute(request: RequestDraft, method: TrueRPCMini.Method) async throws -> GrpcResponse
+    func execute(request: RequestDraft, method: TrueRPCMini.Method, protoFile: ProtoFile) async throws -> GrpcResponse
 }
 
 public final class ExecuteUnaryRequestUseCase: ExecuteUnaryRequestUseCaseProtocol {
@@ -15,7 +15,9 @@ public final class ExecuteUnaryRequestUseCase: ExecuteUnaryRequestUseCaseProtoco
         self.telemetry = telemetry
     }
 
-    public func execute(request: RequestDraft, method: TrueRPCMini.Method) async throws -> GrpcResponse {
+    public func execute(request: RequestDraft, method: TrueRPCMini.Method, protoFile: ProtoFile) async throws
+        -> GrpcResponse
+    {
         let normalizedJson = normalizeSmartQuotes(request.jsonBody)
 
         guard let jsonData = normalizedJson.data(using: .utf8),
@@ -34,7 +36,10 @@ public final class ExecuteUnaryRequestUseCase: ExecuteUnaryRequestUseCaseProtoco
         await telemetry.track(.requestSent(serviceName: method.serviceName, methodName: method.name))
 
         do {
-            let response = try await grpcClient.executeUnary(request: normalizedRequest, method: method)
+            let response = try await grpcClient.executeUnary(
+                request: normalizedRequest,
+                method: method,
+                protoFile: protoFile)
             let durationMs = Int(response.responseTime * 1000)
             await telemetry.track(.requestSucceeded(
                 serviceName: method.serviceName,

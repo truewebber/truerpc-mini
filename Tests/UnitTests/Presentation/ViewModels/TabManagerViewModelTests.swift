@@ -303,7 +303,9 @@ private final class MockSaveTabStateUseCase: SaveTabStateUseCaseProtocol, Sendab
 }
 
 private final class TabManagerMockExecuteRequestUseCase: ExecuteUnaryRequestUseCaseProtocol {
-    func execute(request _: RequestDraft, method _: TrueRPCMini.Method) throws -> GrpcResponse {
+    func execute(request _: RequestDraft, method _: TrueRPCMini.Method, protoFile _: ProtoFile) throws
+        -> GrpcResponse
+    {
         GrpcResponse(jsonBody: "{}", responseTime: 0.1, statusCode: 0, statusMessage: "OK")
     }
 }

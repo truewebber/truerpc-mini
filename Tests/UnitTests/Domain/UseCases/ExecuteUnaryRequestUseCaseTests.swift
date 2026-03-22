@@ -4,6 +4,11 @@ import XCTest
 
 @MainActor
 final class ExecuteUnaryRequestUseCaseTests: XCTestCase {
+    let executeTestProtoFile = ProtoFile(
+        name: "execute_scope.proto",
+        path: URL(fileURLWithPath: "/tmp/execute_scope.proto"),
+        services: [])
+
     var mockGrpcClient: MockGrpcClient!
     var mockTelemetry: MockTelemetryService!
     var sut: ExecuteUnaryRequestUseCase!
@@ -42,15 +47,42 @@ final class ExecuteUnaryRequestUseCaseTests: XCTestCase {
             statusMessage: "OK")
 
         // When
-        let response = try await sut.execute(request: request, method: method)
+        let response = try await sut.execute(request: request, method: method, protoFile: executeTestProtoFile)
 
         // Then
         XCTAssertTrue(mockGrpcClient.executeUnaryCalled)
+        XCTAssertEqual(mockGrpcClient.capturedProtoFile?.path, executeTestProtoFile.path)
         XCTAssertEqual(mockGrpcClient.capturedRequest?.jsonBody, request.jsonBody)
         XCTAssertEqual(mockGrpcClient.capturedRequest?.url, request.url)
         XCTAssertEqual(mockGrpcClient.capturedMethod?.name, method.name)
         XCTAssertEqual(response.jsonBody, #"{"message": "Hello, World!"}"#)
         XCTAssertEqual(response.statusCode, 0)
+    }
+
+    /// Regression (OPE-239): proto tab context must reach the gRPC client unchanged.
+    func test_execute_forwardsProtoFileToGrpcClient() async throws {
+        let proto = ProtoFile(
+            name: "forward.proto",
+            path: URL(fileURLWithPath: "/tmp/forward.proto"),
+            services: [])
+        let method = Method(
+            name: "Call",
+            inputType: "Req",
+            outputType: "Res")
+        let request = RequestDraft(
+            jsonBody: "{}",
+            url: "localhost:50051",
+            method: method)
+        mockGrpcClient.stubbedResponse = GrpcResponse(
+            jsonBody: "{}",
+            responseTime: 0.01,
+            statusCode: 0,
+            statusMessage: "OK")
+
+        _ = try await sut.execute(request: request, method: method, protoFile: proto)
+
+        XCTAssertEqual(mockGrpcClient.capturedProtoFile?.id, proto.id)
+        XCTAssertEqual(mockGrpcClient.capturedProtoFile?.path, proto.path)
     }
 
     func test_execute_withValidRequest_returnsResponseWithTiming() async throws {
@@ -71,7 +103,7 @@ final class ExecuteUnaryRequestUseCaseTests: XCTestCase {
             statusMessage: "OK")
 
         // When
-        let response = try await sut.execute(request: request, method: method)
+        let response = try await sut.execute(request: request, method: method, protoFile: executeTestProtoFile)
 
         // Then
         XCTAssertEqual(response.responseTime, 0.456, accuracy: 0.001)
@@ -93,7 +125,7 @@ final class ExecuteUnaryRequestUseCaseTests: XCTestCase {
 
         // When/Then
         do {
-            _ = try await sut.execute(request: request, method: method)
+            _ = try await sut.execute(request: request, method: method, protoFile: executeTestProtoFile)
             XCTFail("Expected error to be thrown")
         } catch let error as GrpcClientError {
             if case .invalidJSON = error {
@@ -121,7 +153,7 @@ final class ExecuteUnaryRequestUseCaseTests: XCTestCase {
 
         // When/Then
         do {
-            _ = try await sut.execute(request: request, method: method)
+            _ = try await sut.execute(request: request, method: method, protoFile: executeTestProtoFile)
             XCTFail("Expected error to be thrown")
         } catch let error as GrpcClientError {
             if case let .networkError(message) = error {
@@ -149,7 +181,7 @@ final class ExecuteUnaryRequestUseCaseTests: XCTestCase {
 
         // When/Then
         do {
-            _ = try await sut.execute(request: request, method: method)
+            _ = try await sut.execute(request: request, method: method, protoFile: executeTestProtoFile)
             XCTFail("Expected error to be thrown")
         } catch let error as GrpcClientError {
             XCTAssertEqual(error, .timeout)
@@ -178,7 +210,7 @@ final class ExecuteUnaryRequestUseCaseTests: XCTestCase {
             statusMessage: "OK")
 
         // When
-        _ = try await sut.execute(request: request, method: method)
+        _ = try await sut.execute(request: request, method: method, protoFile: executeTestProtoFile)
 
         // Then
         let sentEvent = mockTelemetry.trackedEvents.first { $0.name == "request_sent" }
@@ -205,7 +237,7 @@ final class ExecuteUnaryRequestUseCaseTests: XCTestCase {
             statusMessage: "OK")
 
         // When
-        _ = try await sut.execute(request: request, method: method)
+        _ = try await sut.execute(request: request, method: method, protoFile: executeTestProtoFile)
 
         // Then
         let succeededEvent = mockTelemetry.trackedEvents.first { $0.name == "request_succeeded" }
@@ -233,7 +265,7 @@ final class ExecuteUnaryRequestUseCaseTests: XCTestCase {
             statusMessage: "OK")
 
         // When
-        _ = try await sut.execute(request: request, method: method)
+        _ = try await sut.execute(request: request, method: method, protoFile: executeTestProtoFile)
 
         // Then
         XCTAssertEqual(mockTelemetry.trackedEvents.count, 2)
@@ -261,7 +293,7 @@ final class ExecuteUnaryRequestUseCaseTests: XCTestCase {
 
         // When
         do {
-            _ = try await sut.execute(request: request, method: method)
+            _ = try await sut.execute(request: request, method: method, protoFile: executeTestProtoFile)
             XCTFail("Expected error to be thrown")
         } catch {}
 
@@ -288,7 +320,7 @@ final class ExecuteUnaryRequestUseCaseTests: XCTestCase {
 
         // When
         do {
-            _ = try await sut.execute(request: request, method: method)
+            _ = try await sut.execute(request: request, method: method, protoFile: executeTestProtoFile)
             XCTFail("Expected error to be thrown")
         } catch {}
 
@@ -313,7 +345,7 @@ final class ExecuteUnaryRequestUseCaseTests: XCTestCase {
 
         // When
         do {
-            _ = try await sut.execute(request: request, method: method)
+            _ = try await sut.execute(request: request, method: method, protoFile: executeTestProtoFile)
             XCTFail("Expected error to be thrown")
         } catch {}
 
@@ -338,7 +370,7 @@ final class ExecuteUnaryRequestUseCaseTests: XCTestCase {
 
         // When
         do {
-            _ = try await sut.execute(request: request, method: method)
+            _ = try await sut.execute(request: request, method: method, protoFile: executeTestProtoFile)
             XCTFail("Expected error to be thrown")
         } catch {}
 
@@ -363,7 +395,7 @@ final class ExecuteUnaryRequestUseCaseTests: XCTestCase {
 
         // When
         do {
-            _ = try await sut.execute(request: request, method: method)
+            _ = try await sut.execute(request: request, method: method, protoFile: executeTestProtoFile)
             XCTFail("Expected error to be thrown")
         } catch {}
 
@@ -387,7 +419,7 @@ final class ExecuteUnaryRequestUseCaseTests: XCTestCase {
 
         // When
         do {
-            _ = try await sut.execute(request: request, method: method)
+            _ = try await sut.execute(request: request, method: method, protoFile: executeTestProtoFile)
             XCTFail("Expected error to be thrown")
         } catch {}
 
@@ -415,7 +447,7 @@ final class ExecuteUnaryRequestUseCaseTests: XCTestCase {
             statusMessage: "OK")
 
         // When
-        let response = try await sut.execute(request: request, method: method)
+        let response = try await sut.execute(request: request, method: method, protoFile: executeTestProtoFile)
 
         // Then
         XCTAssertTrue(mockGrpcClient.executeUnaryCalled)
@@ -431,13 +463,20 @@ final class MockGrpcClient: GrpcClientProtocol {
     var executeUnaryCalled = false
     var capturedRequest: RequestDraft?
     var capturedMethod: TrueRPCMini.Method?
+    var capturedProtoFile: ProtoFile?
     var stubbedResponse: GrpcResponse?
     var shouldThrowError: GrpcClientError?
 
-    func executeUnary(request: RequestDraft, method: TrueRPCMini.Method) throws -> GrpcResponse {
+    func executeUnary(
+        request: RequestDraft,
+        method: TrueRPCMini.Method,
+        protoFile: ProtoFile)
+        throws -> GrpcResponse
+    {
         executeUnaryCalled = true
         capturedRequest = request
         capturedMethod = method
+        capturedProtoFile = protoFile
 
         if let error = shouldThrowError {
             throw error

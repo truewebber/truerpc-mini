@@ -91,13 +91,11 @@ public actor FileSystemProtoRepository: ProtoRepositoryProtocol {
         loadedProtos
     }
 
-    public func getMessageDescriptor(forType typeName: String) throws -> MessageDescriptor {
+    public func getMessageDescriptor(forType typeName: String, in protoFile: ProtoFile) throws -> MessageDescriptor {
         // Normalize type name - remove leading dot if present
         let normalizedTypeName = typeName.hasPrefix(".") ? String(typeName.dropFirst()) : typeName
 
-        // Search through all loaded file descriptors
-        for fileDescriptor in fileDescriptors {
-            // Try exact match first
+        for fileDescriptor in fileDescriptors where isDescriptorInScope(fileDescriptor, protoFile: protoFile) {
             if let descriptor = try? findMessageDescriptor(
                 in: fileDescriptor,
                 typeName: normalizedTypeName,
@@ -111,6 +109,27 @@ public actor FileSystemProtoRepository: ProtoRepositoryProtocol {
     }
 
     // MARK: - Private Helpers
+
+    /// File names allowed for descriptor lookup for `protoFile` (main file + dependency basenames).
+    private func allowedDescriptorBasenames(for protoFile: ProtoFile) -> Set<String> {
+        var names = Set<String>()
+        names.insert(protoFile.path.lastPathComponent)
+        for url in protoFile.dependencyPaths {
+            names.insert(url.lastPathComponent)
+        }
+        return names
+    }
+
+    private func isDescriptorInScope(
+        _ fileDescriptor: Google_Protobuf_FileDescriptorProto,
+        protoFile: ProtoFile)
+        -> Bool
+    {
+        let allowed = allowedDescriptorBasenames(for: protoFile)
+        let protoName = fileDescriptor.name
+        let lastComponent = (protoName as NSString).lastPathComponent
+        return allowed.contains(protoName) || allowed.contains(lastComponent)
+    }
 
     /// Recursively find message descriptor by type name
     private func findMessageDescriptor(

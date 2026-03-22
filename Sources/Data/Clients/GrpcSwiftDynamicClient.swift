@@ -17,7 +17,8 @@ public final class GrpcSwiftDynamicClient: GrpcClientProtocol, Sendable {
     /// Execute a unary gRPC request
     public func executeUnary(
         request: RequestDraft,
-        method: TrueRPCMini.Method)
+        method: TrueRPCMini.Method,
+        protoFile: ProtoFile)
         async throws -> GrpcResponse
     {
         let startTime = Date()
@@ -26,8 +27,12 @@ public final class GrpcSwiftDynamicClient: GrpcClientProtocol, Sendable {
         let inputDescriptor: MessageDescriptor
         let outputDescriptor: MessageDescriptor
         do {
-            inputDescriptor = try await protoRepository.getMessageDescriptor(forType: method.inputType)
-            outputDescriptor = try await protoRepository.getMessageDescriptor(forType: method.outputType)
+            inputDescriptor = try await protoRepository.getMessageDescriptor(
+                forType: method.inputType,
+                in: protoFile)
+            outputDescriptor = try await protoRepository.getMessageDescriptor(
+                forType: method.outputType,
+                in: protoFile)
         } catch {
             logger.error("Proto message descriptor not found", metadata: [
                 "inputType": method.inputType,

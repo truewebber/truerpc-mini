@@ -392,7 +392,9 @@ struct RequestEditorView: View {
     }
 
     private final class PreviewMockExecuteUseCase: ExecuteUnaryRequestUseCaseProtocol {
-        func execute(request _: RequestDraft, method _: TrueRPCMini.Method) throws -> GrpcResponse {
+        func execute(request _: RequestDraft, method _: TrueRPCMini.Method, protoFile _: ProtoFile) throws
+            -> GrpcResponse
+        {
             // Return mock response for preview
             GrpcResponse(
                 jsonBody: #"{"id": 1, "name": "Preview User"}"#,

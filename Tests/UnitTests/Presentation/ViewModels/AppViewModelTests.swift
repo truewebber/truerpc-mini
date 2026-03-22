@@ -509,7 +509,9 @@ final class AppViewModelTests: XCTestCase {
 
 @MainActor
 private final class MockExecuteRequestUseCase: ExecuteUnaryRequestUseCaseProtocol {
-    func execute(request _: RequestDraft, method _: TrueRPCMini.Method) throws -> GrpcResponse {
+    func execute(request _: RequestDraft, method _: TrueRPCMini.Method, protoFile _: ProtoFile) throws
+        -> GrpcResponse
+    {
         GrpcResponse(
             jsonBody: "{}",
             responseTime: 0.1,

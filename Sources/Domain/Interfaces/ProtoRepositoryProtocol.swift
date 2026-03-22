@@ -24,9 +24,11 @@ public protocol ProtoRepositoryProtocol: Sendable {
     /// - Returns: Array of loaded ProtoFile entities
     func getLoadedProtos() async -> [ProtoFile]
 
-    /// Gets the message descriptor for a specific message type from loaded protos
-    /// - Parameter typeName: Fully qualified message type name (e.g., ".package.MessageName" or "MessageName")
+    /// Gets the message descriptor for a specific message type from loaded protos scoped to a root file.
+    /// - Parameters:
+    ///   - typeName: Fully qualified message type name (e.g., ".package.MessageName" or "MessageName")
+    ///   - protoFile: The proto file (tab context) whose main file and dependencies bound the search
     /// - Returns: MessageDescriptor for dynamic message creation
-    /// - Throws: ProtoRepositoryError if type not found in loaded protos
-    func getMessageDescriptor(forType typeName: String) async throws -> MessageDescriptor
+    /// - Throws: ProtoRepositoryError if type not found in loaded protos for that scope
+    func getMessageDescriptor(forType typeName: String, in protoFile: ProtoFile) async throws -> MessageDescriptor
 }

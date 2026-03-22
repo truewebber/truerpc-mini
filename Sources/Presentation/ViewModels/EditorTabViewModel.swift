@@ -154,7 +154,8 @@ public final class EditorTabViewModel: ObservableObject {
             // Execute request
             let grpcResponse = try await executeRequestUseCase.execute(
                 request: requestDraft,
-                method: editorTab.method)
+                method: editorTab.method,
+                protoFile: editorTab.protoFile)
 
             // Update state with response
             response = grpcResponse

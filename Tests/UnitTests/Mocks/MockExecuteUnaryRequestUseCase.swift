@@ -6,6 +6,7 @@ final class MockExecuteUnaryRequestUseCase: ExecuteUnaryRequestUseCaseProtocol {
     var executeCalled = false
     var capturedRequest: RequestDraft?
     var capturedMethod: TrueRPCMini.Method?
+    var capturedProtoFile: ProtoFile?
     var stubbedResponse: GrpcResponse?
     var shouldThrowError: GrpcClientError?
     var shouldThrow: Bool = false
@@ -13,10 +14,11 @@ final class MockExecuteUnaryRequestUseCase: ExecuteUnaryRequestUseCaseProtocol {
     var protoErrorToThrow: ProtoRepositoryError?
     var arbitraryErrorToThrow: Error?
 
-    func execute(request: RequestDraft, method: TrueRPCMini.Method) throws -> GrpcResponse {
+    func execute(request: RequestDraft, method: TrueRPCMini.Method, protoFile: ProtoFile) throws -> GrpcResponse {
         executeCalled = true
         capturedRequest = request
         capturedMethod = method
+        capturedProtoFile = protoFile
 
         if let error = protoErrorToThrow {
             throw error
