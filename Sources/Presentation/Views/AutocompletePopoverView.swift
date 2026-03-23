@@ -63,7 +63,7 @@ public struct AutocompletePopoverView: View {
 
     /// Sorts suggestions so `.fillDefaults` entries appear first.
     /// Internal access level allows unit testing without snapshot infrastructure.
-    static func sortSuggestions(_ suggestions: [AutocompleteSuggestion]) -> [AutocompleteSuggestion] {
+    nonisolated static func sortSuggestions(_ suggestions: [AutocompleteSuggestion]) -> [AutocompleteSuggestion] {
         let fillDefaultsItems = suggestions.filter { $0.kind == .fillDefaults }
         let others = suggestions.filter { $0.kind != .fillDefaults }
         return fillDefaultsItems + others
