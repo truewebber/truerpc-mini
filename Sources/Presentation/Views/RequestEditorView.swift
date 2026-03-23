@@ -231,9 +231,12 @@ struct RequestEditorView: View {
                 .font(.subheadline)
                 .foregroundColor(.secondary)
 
-            JSONTextEditor(text: Binding(
-                get: { viewModel.requestJson },
-                set: { viewModel.updateJson($0) }))
+            JSONTextEditor(
+                text: Binding(
+                    get: { viewModel.requestJson },
+                    set: { viewModel.updateJson($0) }),
+                autocompleteViewModel: viewModel.autocompleteViewModel,
+                protoFile: viewModel.editorTab.protoFile)
                 .id("json-editor-\(viewModel.editorTab.id)")
                 .font(.system(.body, design: .monospaced))
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -428,24 +431,36 @@ struct RequestEditorView: View {
 
 // MARK: - JSON Text Editor
 
-/// Custom text editor for JSON with smart quotes disabled
+/// Custom text editor for JSON with smart quotes disabled.
+/// When `autocompleteViewModel` and `protoFile` are provided the editor hooks
+/// into the autocomplete pipeline: it calls the view-model on every keystroke
+/// and hosts an `NSPopover` (anchored at the text cursor) that shows suggestions.
 struct JSONTextEditor: NSViewRepresentable {
     @Binding var text: String
+    var autocompleteViewModel: AutocompleteViewModel?
+    var protoFile: ProtoFile?
+
+    init(
+        text: Binding<String>,
+        autocompleteViewModel: AutocompleteViewModel? = nil,
+        protoFile: ProtoFile? = nil)
+    {
+        _text = text
+        self.autocompleteViewModel = autocompleteViewModel
+        self.protoFile = protoFile
+    }
 
     func makeNSView(context: Context) -> NSScrollView {
         let scrollView = NSTextView.scrollableTextView()
         let textView = scrollView.documentView as! NSTextView
 
-        // Disable smart quotes and dashes
         textView.isAutomaticQuoteSubstitutionEnabled = false
         textView.isAutomaticDashSubstitutionEnabled = false
         textView.isAutomaticSpellingCorrectionEnabled = false
         textView.isAutomaticTextReplacementEnabled = false
 
-        // Set monospaced font
         textView.font = NSFont.monospacedSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)
 
-        // Enable wrapping
         textView.isHorizontallyResizable = false
         textView.textContainer?.widthTracksTextView = true
 
@@ -466,6 +481,9 @@ struct JSONTextEditor: NSViewRepresentable {
         Coordinator(self)
     }
 
+    // MARK: - Coordinator
+
+    @MainActor
     class Coordinator: NSObject, NSTextViewDelegate {
         var parent: JSONTextEditor
 
@@ -473,10 +491,161 @@ struct JSONTextEditor: NSViewRepresentable {
             self.parent = parent
         }
 
-        func textDidChange(_ notification: Notification) {
+        /// Single NSPopover instance owned by this coordinator.
+        /// .applicationDefined prevents AppKit from auto-closing it on the next keystroke.
+        lazy var autocompletePopover: NSPopover = {
+            let popover = NSPopover()
+            popover.behavior = .applicationDefined
+            popover.animates = false
+            if let vm = parent.autocompleteViewModel {
+                popover.contentViewController = NSHostingController(
+                    rootView: AutocompletePopoverView(viewModel: vm))
+            }
+            return popover
+        }()
+
+        // MARK: NSTextViewDelegate — text changes
+
+        nonisolated func textDidChange(_ notification: Notification) {
             guard let textView = notification.object as? NSTextView else { return }
 
-            parent.text = textView.string
+            MainActor.assumeIsolated {
+                let text = textView.string
+                let cursorOffset = textView.selectedRange().location
+                parent.text = text
+
+                guard let vm = parent.autocompleteViewModel,
+                      let protoFile = parent.protoFile
+                else { return }
+
+                Task { @MainActor [weak textView] in
+                    await vm.textDidChange(text, cursorOffset: cursorOffset, protoFile: protoFile)
+                    guard let textView else { return }
+
+                    if vm.isVisible {
+                        self.showPopoverIfNeeded(in: textView)
+                    } else {
+                        self.autocompletePopover.close()
+                    }
+                }
+            }
+        }
+
+        // MARK: NSTextViewDelegate — keyboard commands
+
+        nonisolated func textView(
+            _ textView: NSTextView,
+            doCommandBy commandSelector: Selector)
+            -> Bool
+        {
+            MainActor.assumeIsolated {
+                guard let vm = parent.autocompleteViewModel, vm.isVisible else { return false }
+
+                switch commandSelector {
+                case #selector(NSTextView.moveUp(_:)):
+                    vm.moveUp()
+                    return true
+
+                case #selector(NSTextView.moveDown(_:)):
+                    vm.moveDown()
+                    return true
+
+                case #selector(NSTextView.insertNewline(_:)),
+                     #selector(NSTextView.insertTab(_:)):
+                    guard let suggestion = vm.commitSelection() else { return false }
+
+                    applySmartInsert(suggestion: suggestion, to: textView)
+
+                    if suggestion.kind == .message, let protoFile = parent.protoFile {
+                        let newText = textView.string
+                        let offset = textView.selectedRange().location
+                        Task { @MainActor [weak textView] in
+                            await vm.textDidChange(newText, cursorOffset: offset, protoFile: protoFile)
+                            guard let textView else { return }
+
+                            if vm.isVisible { self.showPopoverIfNeeded(in: textView) }
+                        }
+                    } else {
+                        vm.dismiss()
+                        autocompletePopover.close()
+                    }
+                    return true
+
+                case #selector(NSResponder.cancelOperation(_:)):
+                    vm.dismiss()
+                    autocompletePopover.close()
+                    return true
+
+                default:
+                    return false
+                }
+            }
+        }
+
+        // MARK: - Popover positioning
+
+        private func showPopoverIfNeeded(in textView: NSTextView) {
+            guard let window = textView.window else { return }
+
+            let range = textView.selectedRange()
+            let rect = cursorViewRect(in: textView, range: range, window: window)
+            if !autocompletePopover.isShown {
+                autocompletePopover.show(relativeTo: rect, of: textView, preferredEdge: .maxY)
+            }
+        }
+
+        private func cursorViewRect(
+            in textView: NSTextView,
+            range: NSRange,
+            window: NSWindow)
+            -> NSRect
+        {
+            // Screen coords → window space → textView local space
+            let screenRect = textView.firstRect(forCharacterRange: range, actualRange: nil)
+            let windowRect = window.convertFromScreen(screenRect)
+            return textView.convert(windowRect, from: nil)
+        }
+
+        // MARK: - Smart insert
+
+        private func applySmartInsert(suggestion: AutocompleteSuggestion, to textView: NSTextView) {
+            let (insertText, cursorBack) = Self.smartInsertComponents(for: suggestion)
+            guard !insertText.isEmpty else { return }
+
+            let range = textView.selectedRange()
+            if textView.shouldChangeText(in: range, replacementString: insertText) {
+                textView.replaceCharacters(in: range, with: insertText)
+                textView.didChangeText()
+                parent.text = textView.string
+
+                if cursorBack > 0 {
+                    let newPos = range.location + insertText.utf16.count - cursorBack
+                    textView.setSelectedRange(NSRange(location: max(0, newPos), length: 0))
+                }
+            }
+        }
+
+        /// Returns the snippet text and the number of UTF-16 code units to step
+        /// the cursor back after insertion (for placing the cursor inside quotes/braces).
+        static func smartInsertComponents(
+            for suggestion: AutocompleteSuggestion)
+            -> (text: String, cursorBack: Int)
+        {
+            let name = suggestion.name
+            switch suggestion.kind {
+            case .string:
+                return ("\"\(name)\": \"\"", 1)
+            case .number, .bool:
+                return ("\"\(name)\": ", 0)
+            case .message:
+                return ("\"\(name)\": {\n  \n}", 2)
+            case .enum:
+                return ("\"\(name)\"", 0)
+            case .repeated:
+                return ("\"\(name)\": []", 1)
+            case .fillDefaults:
+                return ("", 0)
+            }
         }
     }
 }
