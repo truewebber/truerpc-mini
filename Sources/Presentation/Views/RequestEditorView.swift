@@ -227,9 +227,22 @@ struct RequestEditorView: View {
 
     private var jsonEditorView: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Request Body")
-                .font(.subheadline)
-                .foregroundColor(.secondary)
+            HStack {
+                Text("Request Body")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+
+                Spacer()
+
+                Button {
+                    Task { await viewModel.resetToPreset() }
+                } label: {
+                    Image(systemName: "arrow.counterclockwise")
+                }
+                .buttonStyle(.borderless)
+                .disabled(viewModel.isLoading)
+                .help("Reset to Preset")
+            }
 
             JSONTextEditor(
                 text: Binding(
