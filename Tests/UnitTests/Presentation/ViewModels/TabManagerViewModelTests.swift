@@ -58,6 +58,8 @@ final class TabManagerViewModelTests: XCTestCase {
             generateMockDataUseCase: mockGenerateMockData,
             executeRequestUseCase: mockExecuteRequest,
             exportResponseUseCase: mockExportResponse,
+            autocompleteProvider: MockAutocompleteProvider(),
+            resolver: JsonPathResolver(),
             logger: mockLogger)
     }
 

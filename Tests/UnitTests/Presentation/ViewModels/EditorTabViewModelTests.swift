@@ -43,6 +43,8 @@ final class EditorTabViewModelTests: XCTestCase {
             generateMockDataUseCase: mockGenerateMockDataUseCase,
             executeRequestUseCase: mockExecuteRequestUseCase,
             exportResponseUseCase: mockExportResponseUseCase,
+            autocompleteProvider: MockAutocompleteProvider(),
+            resolver: JsonPathResolver(),
             logger: mockLogger)
     }
 
@@ -305,6 +307,8 @@ final class EditorTabViewModelTests: XCTestCase {
             generateMockDataUseCase: mockGenerateMockDataUseCase,
             executeRequestUseCase: mockExecuteRequestUseCase,
             exportResponseUseCase: mockExportUseCase,
+            autocompleteProvider: MockAutocompleteProvider(),
+            resolver: JsonPathResolver(),
             logger: mockLogger)
         sutWithExport.response = testResponse
 
@@ -328,6 +332,8 @@ final class EditorTabViewModelTests: XCTestCase {
             generateMockDataUseCase: mockGenerateMockDataUseCase,
             executeRequestUseCase: mockExecuteRequestUseCase,
             exportResponseUseCase: mockExportUseCase,
+            autocompleteProvider: MockAutocompleteProvider(),
+            resolver: JsonPathResolver(),
             logger: mockLogger)
         sutWithExport.response = nil
 
@@ -529,6 +535,8 @@ extension EditorTabViewModelTests {
             generateMockDataUseCase: mockGenerateMockDataUseCase,
             executeRequestUseCase: mockExecuteRequestUseCase,
             exportResponseUseCase: mockExportResponseUseCase,
+            autocompleteProvider: MockAutocompleteProvider(),
+            resolver: JsonPathResolver(),
             logger: mockLogger)
 
         XCTAssertEqual(vm.url, "localhost:50051")
@@ -543,6 +551,8 @@ extension EditorTabViewModelTests {
             generateMockDataUseCase: mockGenerateMockDataUseCase,
             executeRequestUseCase: mockExecuteRequestUseCase,
             exportResponseUseCase: mockExportResponseUseCase,
+            autocompleteProvider: MockAutocompleteProvider(),
+            resolver: JsonPathResolver(),
             logger: mockLogger)
 
         XCTAssertEqual(vm.url, "")
@@ -558,6 +568,8 @@ extension EditorTabViewModelTests {
             generateMockDataUseCase: mockGenerateMockDataUseCase,
             executeRequestUseCase: mockExecuteRequestUseCase,
             exportResponseUseCase: mockExportResponseUseCase,
+            autocompleteProvider: MockAutocompleteProvider(),
+            resolver: JsonPathResolver(),
             logger: mockLogger)
 
         XCTAssertEqual(vm.url, "my-server:9090")
@@ -635,6 +647,8 @@ extension EditorTabViewModelTests {
             generateMockDataUseCase: mockGenerateMockDataUseCase,
             executeRequestUseCase: mockExecuteRequestUseCase,
             exportResponseUseCase: mockExportResponseUseCase,
+            autocompleteProvider: MockAutocompleteProvider(),
+            resolver: JsonPathResolver(),
             logger: mockLogger)
 
         XCTAssertEqual(vm.connectionSecurity.adHocConfig, adHocTLS)
@@ -659,5 +673,34 @@ extension EditorTabViewModelTests {
         let state = sut.currentTabState
 
         XCTAssertNil(state.adHocTLSConfiguration)
+    }
+
+    // MARK: - Preset & Autocomplete (OPE-234)
+
+    func test_loadMockData_passesProtoFileToUseCase() async {
+        // Given
+        mockGenerateMockDataUseCase.mockJSON = "{}"
+
+        // When
+        await sut.loadMockData()
+
+        // Then
+        XCTAssertEqual(mockGenerateMockDataUseCase.capturedProtoFile?.id, testProtoFile.id)
+    }
+
+    func test_resetToPreset_updatesRequestJson() async {
+        // Given
+        mockGenerateMockDataUseCase.mockJSON = "{\"preset\": true}"
+
+        // When
+        await sut.resetToPreset()
+
+        // Then
+        XCTAssertEqual(sut.requestJson, "{\"preset\": true}")
+    }
+
+    func test_init_createsAutocompleteViewModelWithInjectedDependencies() {
+        // Then
+        XCTAssertNotNil(sut.autocompleteViewModel)
     }
 }

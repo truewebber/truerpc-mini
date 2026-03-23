@@ -76,6 +76,8 @@ final class TLSIntegrationTests: XCTestCase {
             generateMockDataUseCase: mockGenerateMock,
             executeRequestUseCase: executeUseCase,
             exportResponseUseCase: mockExport,
+            autocompleteProvider: MockAutocompleteProvider(),
+            resolver: JsonPathResolver(),
             logger: mockLogger)
     }
 

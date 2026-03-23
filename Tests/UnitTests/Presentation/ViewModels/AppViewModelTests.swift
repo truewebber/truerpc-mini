@@ -36,6 +36,8 @@ final class AppViewModelTests: XCTestCase {
             generateMockDataUseCase: generateMockDataUseCase,
             executeRequestUseCase: executeRequestUseCase,
             exportResponseUseCase: exportResponseUseCase,
+            autocompleteProvider: MockAutocompleteProvider(),
+            resolver: JsonPathResolver(),
             telemetry: mockTelemetry,
             logger: mockLogger)
     }
@@ -242,6 +244,8 @@ final class AppViewModelTests: XCTestCase {
             generateMockDataUseCase: generateMockDataUseCase,
             executeRequestUseCase: executeRequestUseCase,
             exportResponseUseCase: exportResponseUseCase,
+            autocompleteProvider: MockAutocompleteProvider(),
+            resolver: JsonPathResolver(),
             telemetry: mockTelemetry,
             logger: mockLogger)
 
@@ -287,6 +291,8 @@ final class AppViewModelTests: XCTestCase {
             generateMockDataUseCase: generateMockDataUseCase,
             executeRequestUseCase: executeRequestUseCase,
             exportResponseUseCase: exportResponseUseCase,
+            autocompleteProvider: MockAutocompleteProvider(),
+            resolver: JsonPathResolver(),
             telemetry: mockTelemetry,
             logger: mockLogger)
 
@@ -333,6 +339,8 @@ final class AppViewModelTests: XCTestCase {
             generateMockDataUseCase: generateMockDataUseCase,
             executeRequestUseCase: executeRequestUseCase,
             exportResponseUseCase: exportResponseUseCase,
+            autocompleteProvider: MockAutocompleteProvider(),
+            resolver: JsonPathResolver(),
             telemetry: mockTelemetry,
             logger: mockLogger)
 
@@ -376,6 +384,8 @@ final class AppViewModelTests: XCTestCase {
             generateMockDataUseCase: generateMockDataUseCase,
             executeRequestUseCase: executeRequestUseCase,
             exportResponseUseCase: exportResponseUseCase,
+            autocompleteProvider: MockAutocompleteProvider(),
+            resolver: JsonPathResolver(),
             telemetry: mockTelemetry,
             logger: mockLogger)
 

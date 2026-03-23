@@ -140,6 +140,14 @@ struct TrueRPCMiniApp: App {
             MockDataGenerator(protoRepository: di.resolve(ProtoRepositoryProtocol.self)!)
         }
 
+        di.register(AutocompleteProviderProtocol.self) {
+            ProtoSchemaAutocompleteProvider(protoRepository: di.resolve(ProtoRepositoryProtocol.self)!)
+        }
+
+        di.register(JsonPathResolver.self) {
+            JsonPathResolver()
+        }
+
         di.register(GrpcClientProtocol.self) {
             GrpcSwiftDynamicClient(
                 protoRepository: di.resolve(ProtoRepositoryProtocol.self)!,
@@ -247,6 +255,8 @@ struct TrueRPCMiniApp: App {
             generateMockDataUseCase: di.resolve(GenerateMockDataUseCase.self)!,
             executeRequestUseCase: di.resolve(ExecuteUnaryRequestUseCaseProtocol.self)!,
             exportResponseUseCase: di.resolve(ExportResponseUseCase.self)!,
+            autocompleteProvider: di.resolve(AutocompleteProviderProtocol.self)!,
+            resolver: di.resolve(JsonPathResolver.self)!,
             telemetry: di.resolve(TelemetryServiceProtocol.self)!,
             logger: logger)
         appVM.onLaunched()

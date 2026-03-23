@@ -19,6 +19,8 @@ public final class AppViewModel: ObservableObject {
     private let generateMockDataUseCase: GenerateMockDataUseCaseProtocol
     private let executeRequestUseCase: ExecuteUnaryRequestUseCaseProtocol
     private let exportResponseUseCase: ExportResponseUseCaseProtocol
+    private let autocompleteProvider: AutocompleteProviderProtocol
+    private let resolver: JsonPathResolver
     private let telemetry: TelemetryServiceProtocol
     private let logger: AppLogger
 
@@ -30,6 +32,8 @@ public final class AppViewModel: ObservableObject {
         generateMockDataUseCase: GenerateMockDataUseCaseProtocol,
         executeRequestUseCase: ExecuteUnaryRequestUseCaseProtocol,
         exportResponseUseCase: ExportResponseUseCaseProtocol,
+        autocompleteProvider: AutocompleteProviderProtocol,
+        resolver: JsonPathResolver,
         telemetry: TelemetryServiceProtocol,
         logger: AppLogger)
     {
@@ -38,6 +42,8 @@ public final class AppViewModel: ObservableObject {
         self.generateMockDataUseCase = generateMockDataUseCase
         self.executeRequestUseCase = executeRequestUseCase
         self.exportResponseUseCase = exportResponseUseCase
+        self.autocompleteProvider = autocompleteProvider
+        self.resolver = resolver
         self.telemetry = telemetry
         self.logger = logger
 
@@ -103,6 +109,8 @@ public final class AppViewModel: ObservableObject {
             generateMockDataUseCase: generateMockDataUseCase,
             executeRequestUseCase: executeRequestUseCase,
             exportResponseUseCase: exportResponseUseCase,
+            autocompleteProvider: autocompleteProvider,
+            resolver: resolver,
             logger: logger)
         tabManager.addTab(tabViewModel)
         Task {
@@ -144,6 +152,8 @@ public final class AppViewModel: ObservableObject {
                 generateMockDataUseCase: generateMockDataUseCase,
                 executeRequestUseCase: executeRequestUseCase,
                 exportResponseUseCase: exportResponseUseCase,
+                autocompleteProvider: autocompleteProvider,
+                resolver: resolver,
                 logger: logger)
             tabManager.addTab(tabViewModel)
         }

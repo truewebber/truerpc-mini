@@ -22,6 +22,7 @@ public final class EditorTabViewModel: ObservableObject {
 
     public let editorTab: EditorTab
     public let connectionSecurity: ConnectionSecurityViewModel
+    public let autocompleteViewModel: AutocompleteViewModel
 
     // MARK: - Dependencies
 
@@ -41,6 +42,8 @@ public final class EditorTabViewModel: ObservableObject {
         generateMockDataUseCase: GenerateMockDataUseCaseProtocol,
         executeRequestUseCase: ExecuteUnaryRequestUseCaseProtocol,
         exportResponseUseCase: ExportResponseUseCaseProtocol,
+        autocompleteProvider: AutocompleteProviderProtocol,
+        resolver: JsonPathResolver,
         logger: AppLogger)
     {
         self.editorTab = editorTab
@@ -50,6 +53,7 @@ public final class EditorTabViewModel: ObservableObject {
         self.generateMockDataUseCase = generateMockDataUseCase
         self.executeRequestUseCase = executeRequestUseCase
         self.exportResponseUseCase = exportResponseUseCase
+        self.autocompleteViewModel = AutocompleteViewModel(provider: autocompleteProvider, resolver: resolver)
         self.logger = logger
 
         let security = ConnectionSecurityViewModel()
@@ -92,6 +96,11 @@ public final class EditorTabViewModel: ObservableObject {
         }
 
         isLoading = false
+    }
+
+    /// Regenerates `requestJson` from the proto schema — semantic alias for `loadMockData()` called by the toolbar.
+    public func resetToPreset() async {
+        await loadMockData()
     }
 
     /// Updates the request JSON

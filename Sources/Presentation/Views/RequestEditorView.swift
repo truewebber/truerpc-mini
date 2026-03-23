@@ -341,6 +341,8 @@ struct RequestEditorView: View {
                     mockDataGenerator: RequestEditorView_PreviewStubMockDataGenerator()),
                 executeRequestUseCase: mockExecuteUseCase,
                 exportResponseUseCase: exportUseCase,
+                autocompleteProvider: RequestEditorView_PreviewStubAutocompleteProvider(),
+                resolver: JsonPathResolver(),
                 logger: NullLogger())
 
             viewModel.url = "localhost:50051"
@@ -359,6 +361,12 @@ struct RequestEditorView: View {
     private struct RequestEditorView_PreviewStubMockDataGenerator: MockDataGeneratorProtocol {
         func generate(for _: String, in _: ProtoFile) throws -> String {
             "{}"
+        }
+    }
+
+    private struct RequestEditorView_PreviewStubAutocompleteProvider: AutocompleteProviderProtocol {
+        func suggestions(for _: AutocompleteContext, in _: ProtoFile) -> [AutocompleteSuggestion] {
+            []
         }
     }
 
