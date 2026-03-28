@@ -53,7 +53,11 @@ public final class EditorTabViewModel: ObservableObject {
         self.generateMockDataUseCase = generateMockDataUseCase
         self.executeRequestUseCase = executeRequestUseCase
         self.exportResponseUseCase = exportResponseUseCase
-        self.autocompleteViewModel = AutocompleteViewModel(provider: autocompleteProvider, resolver: resolver)
+        let acVM = AutocompleteViewModel(
+            provider: autocompleteProvider,
+            resolver: resolver,
+            methodInputType: editorTab.method.inputType)
+        self.autocompleteViewModel = acVM
         self.logger = logger
 
         let security = ConnectionSecurityViewModel()
@@ -61,6 +65,8 @@ public final class EditorTabViewModel: ObservableObject {
             activeEnvironment: initialEnvironment,
             restoredAdHocConfig: restoredTabState?.adHocTLSConfiguration)
         self.connectionSecurity = security
+
+        acVM.fillDefaultsHandler = { [weak self] in await self?.resetToPreset() }
     }
 
     // MARK: - Computed Properties

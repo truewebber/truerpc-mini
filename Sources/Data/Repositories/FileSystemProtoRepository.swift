@@ -125,8 +125,13 @@ public actor FileSystemProtoRepository: ProtoRepositoryProtocol {
         protoFile: ProtoFile)
         -> Bool
     {
-        let allowed = allowedDescriptorBasenames(for: protoFile)
         let protoName = fileDescriptor.name
+        // Well-known types are always in scope: they are excluded from dependencyPaths
+        // intentionally (read-only, no need to watch), but must still be resolvable.
+        if protoName.hasPrefix("google/protobuf/") {
+            return true
+        }
+        let allowed = allowedDescriptorBasenames(for: protoFile)
         let lastComponent = (protoName as NSString).lastPathComponent
         return allowed.contains(protoName) || allowed.contains(lastComponent)
     }

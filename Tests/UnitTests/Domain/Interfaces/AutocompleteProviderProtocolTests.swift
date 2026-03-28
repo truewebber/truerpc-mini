@@ -26,7 +26,7 @@ final class AutocompleteProviderProtocolTests: XCTestCase {
             path: URL(fileURLWithPath: "/tmp/test.proto"),
             services: [])
 
-        let result = await mock.suggestions(for: context, in: proto)
+        let result = await mock.suggestions(for: context, rootMessageType: ".test.Message", in: proto)
 
         XCTAssertEqual(result, stub)
     }

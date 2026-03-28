@@ -12,12 +12,12 @@ public final class ProtoSchemaAutocompleteProvider: AutocompleteProviderProtocol
 
     public func suggestions(
         for context: AutocompleteContext,
+        rootMessageType: String,
         in protoFile: ProtoFile)
         async -> [AutocompleteSuggestion]
     {
-        guard let rootTypeName = rootMessageTypeName(from: protoFile) else { return [] }
         guard let rootDescriptor = try? await protoRepository.getMessageDescriptor(
-            forType: rootTypeName,
+            forType: rootMessageType,
             in: protoFile)
         else { return [] }
 
@@ -167,10 +167,6 @@ public final class ProtoSchemaAutocompleteProvider: AutocompleteProviderProtocol
     }
 
     // MARK: - Type helpers
-
-    private func rootMessageTypeName(from protoFile: ProtoFile) -> String? {
-        protoFile.services.first?.methods.first?.inputType
-    }
 
     private func kind(for field: FieldDescriptor) -> SuggestionKind {
         if field.isRepeated {

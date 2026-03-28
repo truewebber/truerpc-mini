@@ -3,46 +3,141 @@ import XCTest
 @testable import TrueRPCMini
 
 final class AutocompleteEntitiesTests: XCTestCase {
-    func test_autocompleteContext_equality_sameValues_isEqual() {
-        let context = AutocompleteContext(resolvedPath: ["a", "b"], mode: .key)
-        let same = AutocompleteContext(resolvedPath: ["a", "b"], mode: .key)
-        XCTAssertEqual(context, same)
+    // MARK: - AutocompleteContext — equality
+
+    func test_autocompleteContext_samePath_sameMode_isEqual() {
+        let a = AutocompleteContext(resolvedPath: ["a", "b"], mode: .key)
+        let b = AutocompleteContext(resolvedPath: ["a", "b"], mode: .key)
+        XCTAssertEqual(a, b)
     }
 
-    func test_autocompleteContext_equality_differentPath_notEqual() {
+    func test_autocompleteContext_differentPath_notEqual() {
         let a = AutocompleteContext(resolvedPath: ["a"], mode: .key)
         let b = AutocompleteContext(resolvedPath: ["b"], mode: .key)
         XCTAssertNotEqual(a, b)
     }
 
-    func test_autocompleteSuggestion_equality_differentIds_notEqual() {
-        let id1 = UUID()
-        let id2 = UUID()
-        let first = AutocompleteSuggestion(
-            id: id1,
-            name: "foo",
-            typeHint: "string",
-            kind: .string,
-            oneOfGroup: nil)
-        let second = AutocompleteSuggestion(
-            id: id2,
-            name: "foo",
-            typeHint: "string",
-            kind: .string,
-            oneOfGroup: nil)
-        XCTAssertNotEqual(first, second)
+    func test_autocompleteContext_samePath_differentMode_notEqual() {
+        let a = AutocompleteContext(resolvedPath: ["a"], mode: .key)
+        let b = AutocompleteContext(resolvedPath: ["a"], mode: .enumValue)
+        XCTAssertNotEqual(a, b)
     }
 
+    func test_autocompleteContext_emptyPath_key_equalsItself() {
+        let a = AutocompleteContext(resolvedPath: [], mode: .key)
+        let b = AutocompleteContext(resolvedPath: [], mode: .key)
+        XCTAssertEqual(a, b)
+    }
+
+    func test_autocompleteContext_emptyPath_differentModes_notEqual() {
+        let key = AutocompleteContext(resolvedPath: [], mode: .key)
+        let arr = AutocompleteContext(resolvedPath: [], mode: .arrayElement)
+        XCTAssertNotEqual(key, arr)
+    }
+
+    func test_autocompleteContext_longPath_isEqual() {
+        let path = ["a", "b", "c", "d", "e"]
+        let a = AutocompleteContext(resolvedPath: path, mode: .enumValue)
+        let b = AutocompleteContext(resolvedPath: path, mode: .enumValue)
+        XCTAssertEqual(a, b)
+    }
+
+    func test_autocompleteContext_defaultSiblingKeysIsEmpty() {
+        let ctx = AutocompleteContext(resolvedPath: [], mode: .key)
+        XCTAssertTrue(ctx.siblingKeys.isEmpty)
+    }
+
+    func test_autocompleteContext_siblingKeysStored() {
+        let ctx = AutocompleteContext(resolvedPath: ["a"], mode: .key, siblingKeys: ["x", "y"])
+        XCTAssertEqual(ctx.siblingKeys, ["x", "y"])
+    }
+
+    func test_autocompleteContext_sameSiblingKeys_isEqual() {
+        let a = AutocompleteContext(resolvedPath: [], mode: .key, siblingKeys: ["x"])
+        let b = AutocompleteContext(resolvedPath: [], mode: .key, siblingKeys: ["x"])
+        XCTAssertEqual(a, b)
+    }
+
+    func test_autocompleteContext_differentSiblingKeys_notEqual() {
+        let a = AutocompleteContext(resolvedPath: [], mode: .key, siblingKeys: ["x"])
+        let b = AutocompleteContext(resolvedPath: [], mode: .key, siblingKeys: ["y"])
+        XCTAssertNotEqual(a, b)
+    }
+
+    // MARK: - AutocompleteMode — all three cases
+
+    func test_autocompleteMode_allThreeCases_areDistinct() {
+        let modes: Set<AutocompleteMode> = [.key, .enumValue, .arrayElement]
+        XCTAssertEqual(modes.count, 3)
+    }
+
+    func test_autocompleteMode_key_equalsKey() {
+        XCTAssertEqual(AutocompleteMode.key, AutocompleteMode.key)
+    }
+
+    func test_autocompleteMode_enumValue_equalsEnumValue() {
+        XCTAssertEqual(AutocompleteMode.enumValue, AutocompleteMode.enumValue)
+    }
+
+    func test_autocompleteMode_arrayElement_equalsArrayElement() {
+        XCTAssertEqual(AutocompleteMode.arrayElement, AutocompleteMode.arrayElement)
+    }
+
+    // MARK: - AutocompleteSuggestion — equality by id
+
+    func test_suggestion_sameId_sameFields_isEqual() {
+        let id = UUID()
+        let a = AutocompleteSuggestion(id: id, name: "foo", typeHint: "string", kind: .string, oneOfGroup: nil)
+        let b = AutocompleteSuggestion(id: id, name: "foo", typeHint: "string", kind: .string, oneOfGroup: nil)
+        XCTAssertEqual(a, b)
+    }
+
+    func test_suggestion_differentIds_sameNameAndKind_notEqual() {
+        let a = AutocompleteSuggestion(id: UUID(), name: "foo", typeHint: "string", kind: .string, oneOfGroup: nil)
+        let b = AutocompleteSuggestion(id: UUID(), name: "foo", typeHint: "string", kind: .string, oneOfGroup: nil)
+        XCTAssertNotEqual(a, b)
+    }
+
+    func test_suggestion_autoGeneratedId_twoInstances_notEqual() {
+        let a = AutocompleteSuggestion(name: "bar", typeHint: "int32", kind: .number)
+        let b = AutocompleteSuggestion(name: "bar", typeHint: "int32", kind: .number)
+        XCTAssertNotEqual(a, b)
+    }
+
+    // MARK: - AutocompleteSuggestion — oneOfGroup
+
+    func test_suggestion_withOneOfGroup_storesValue() {
+        let s = AutocompleteSuggestion(name: "opt", typeHint: "string", kind: .string, oneOfGroup: "choice")
+        XCTAssertEqual(s.oneOfGroup, "choice")
+    }
+
+    func test_suggestion_withoutOneOfGroup_isNil() {
+        let s = AutocompleteSuggestion(name: "field", typeHint: "string", kind: .string)
+        XCTAssertNil(s.oneOfGroup)
+    }
+
+    // MARK: - AutocompleteSuggestion — Identifiable
+
+    func test_suggestion_identifiable_idMatchesExplicitId() {
+        let id = UUID()
+        let s = AutocompleteSuggestion(id: id, name: "x", typeHint: "", kind: .bool, oneOfGroup: nil)
+        XCTAssertEqual(s.id, id)
+    }
+
+    // MARK: - SuggestionKind — all seven cases
+
     func test_suggestionKind_allSevenCasesExist() {
-        let kinds: [SuggestionKind] = [
-            .message,
-            .string,
-            .number,
-            .bool,
-            .enum,
-            .repeated,
-            .fillDefaults,
-        ]
+        let kinds: [SuggestionKind] = [.message, .string, .number, .bool, .enum, .repeated, .fillDefaults]
         XCTAssertEqual(Set(kinds).count, 7)
+    }
+
+    func test_suggestionKind_equality_sameCase_isEqual() {
+        XCTAssertEqual(SuggestionKind.message, SuggestionKind.message)
+        XCTAssertEqual(SuggestionKind.fillDefaults, SuggestionKind.fillDefaults)
+    }
+
+    func test_suggestionKind_equality_differentCase_notEqual() {
+        XCTAssertNotEqual(SuggestionKind.string, SuggestionKind.number)
+        XCTAssertNotEqual(SuggestionKind.enum, SuggestionKind.fillDefaults)
     }
 }

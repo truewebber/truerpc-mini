@@ -6,25 +6,49 @@ import SwiftUI
 public struct AutocompletePopoverView: View {
     @ObservedObject public var viewModel: AutocompleteViewModel
 
+    /// Called when the user selects a suggestion (tap or keyboard Enter/Tab).
+    /// Wired by `JSONTextEditor.Coordinator` to apply smart-insert or trigger fillDefaults.
+    var onRowTapped: ((AutocompleteSuggestion) -> Void)?
+
+    /// Called when the user presses Escape inside the popover.
+    /// Wired by `JSONTextEditor.Coordinator` to dismiss and close the popover.
+    var onEscape: (() -> Void)?
+
     private let maxHeight: CGFloat = 240
 
-    public init(viewModel: AutocompleteViewModel) {
+    public init(
+        viewModel: AutocompleteViewModel,
+        onRowTapped: ((AutocompleteSuggestion) -> Void)? = nil,
+        onEscape: (() -> Void)? = nil)
+    {
         self.viewModel = viewModel
+        self.onRowTapped = onRowTapped
+        self.onEscape = onEscape
+    }
+
+    private static let rowHeight: CGFloat = 28
+
+    private var contentHeight: CGFloat {
+        min(CGFloat(viewModel.suggestions.count) * Self.rowHeight, maxHeight)
     }
 
     public var body: some View {
         ScrollViewReader { proxy in
             ScrollView(.vertical, showsIndicators: false) {
-                LazyVStack(spacing: 0) {
-                    ForEach(Array(sortedSuggestions.enumerated()), id: \.element.id) { index, suggestion in
+                VStack(spacing: 0) {
+                    ForEach(Array(viewModel.suggestions.enumerated()), id: \.element.id) { index, suggestion in
                         SuggestionRow(
                             suggestion: suggestion,
-                            isSelected: index == viewModel.selectedIndex)
+                            isSelected: index == viewModel.selectedIndex,
+                            index: index)
                             .id(index)
+                            .onTapGesture {
+                                onRowTapped?(suggestion)
+                            }
                     }
                 }
             }
-            .frame(maxHeight: maxHeight)
+            .frame(height: contentHeight)
             .onChange(of: viewModel.selectedIndex) { _, newIndex in
                 withAnimation(.easeInOut(duration: 0.1)) {
                     proxy.scrollTo(newIndex, anchor: .center)
@@ -37,40 +61,7 @@ public struct AutocompletePopoverView: View {
             RoundedRectangle(cornerRadius: 8)
                 .stroke(.separator, lineWidth: 1))
         .frame(width: 320)
-        .onKeyPress(.upArrow) {
-            viewModel.moveUp()
-            return .handled
-        }
-        .onKeyPress(.downArrow) {
-            viewModel.moveDown()
-            return .handled
-        }
-        .onKeyPress(.return) {
-            _ = viewModel.commitSelection()
-            return .handled
-        }
-        .onKeyPress(.tab) {
-            _ = viewModel.commitSelection()
-            return .handled
-        }
-        .onKeyPress(.escape) {
-            viewModel.dismiss()
-            return .handled
-        }
-    }
-
-    // MARK: - Internal Helpers
-
-    /// Sorts suggestions so `.fillDefaults` entries appear first.
-    /// Internal access level allows unit testing without snapshot infrastructure.
-    nonisolated static func sortSuggestions(_ suggestions: [AutocompleteSuggestion]) -> [AutocompleteSuggestion] {
-        let fillDefaultsItems = suggestions.filter { $0.kind == .fillDefaults }
-        let others = suggestions.filter { $0.kind != .fillDefaults }
-        return fillDefaultsItems + others
-    }
-
-    var sortedSuggestions: [AutocompleteSuggestion] {
-        Self.sortSuggestions(viewModel.suggestions)
+        .accessibilityIdentifier("autocomplete_popover")
     }
 }
 
@@ -79,6 +70,7 @@ public struct AutocompletePopoverView: View {
 private struct SuggestionRow: View {
     let suggestion: AutocompleteSuggestion
     let isSelected: Bool
+    let index: Int
 
     var body: some View {
         HStack(spacing: 8) {
@@ -89,16 +81,20 @@ private struct SuggestionRow: View {
                 .font(.system(.body, design: .monospaced))
                 .lineLimit(1)
                 .frame(maxWidth: .infinity, alignment: .leading)
+                .accessibilityIdentifier("suggestion_name_\(index)")
 
             Text(suggestion.typeHint)
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
+                .accessibilityIdentifier("suggestion_type_\(index)")
         }
         .padding(.horizontal, 10)
         .frame(height: 28)
         .background(isSelected ? Color.accentColor.opacity(0.15) : Color.clear)
         .opacity(suggestion.oneOfGroup != nil ? 0.7 : 1.0)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("suggestion_row_\(index)")
     }
 
     @ViewBuilder
@@ -109,7 +105,7 @@ private struct SuggestionRow: View {
                 .foregroundStyle(Color.purple)
 
         case .repeated:
-            Image(systemName: "brackets")
+            Image(systemName: "square.stack")
                 .foregroundStyle(Color.orange)
 
         case .string:
@@ -151,7 +147,8 @@ private struct SuggestionRow: View {
         private static var previewViewModel: AutocompleteViewModel {
             let vm = AutocompleteViewModel(
                 provider: PreviewAutocompleteProvider(),
-                resolver: JsonPathResolver())
+                resolver: JsonPathResolver(),
+                methodInputType: ".preview.PreviewMessage")
             vm.suggestions = [
                 AutocompleteSuggestion(name: "(fill defaults)", typeHint: "all fields", kind: .fillDefaults),
                 AutocompleteSuggestion(name: "firstName", typeHint: "string", kind: .string),
@@ -171,6 +168,7 @@ private struct SuggestionRow: View {
     private struct PreviewAutocompleteProvider: AutocompleteProviderProtocol {
         func suggestions(
             for _: AutocompleteContext,
+            rootMessageType _: String,
             in _: ProtoFile)
             -> [AutocompleteSuggestion]
         {

@@ -12,11 +12,21 @@ final class StubProtoRepository: ProtoRepositoryProtocol, Sendable {
 
     private let storage = OSAllocatedUnfairLock(initialState: State())
 
-    init(descriptors: [String: MessageDescriptor] = [:], defaultDescriptor: MessageDescriptor? = nil) {
-        let fallback: MessageDescriptor? = defaultDescriptor ?? {
+    /// - Parameters:
+    ///   - descriptors: Explicit type-name → descriptor map.
+    ///   - defaultDescriptor: Fallback descriptor returned when type is not in the map.
+    ///     Pass `nil` **and** `useFallback: false` to make all unknown lookups throw.
+    ///   - useFallback: When `true` (default) and `defaultDescriptor` is nil, an empty
+    ///     `"stub.Empty"` descriptor is created automatically. Set to `false` to disable.
+    init(
+        descriptors: [String: MessageDescriptor] = [:],
+        defaultDescriptor: MessageDescriptor? = nil,
+        useFallback: Bool = true)
+    {
+        let fallback: MessageDescriptor? = defaultDescriptor ?? (useFallback ? {
             let file = FileDescriptor(name: "stub.proto", package: "stub")
             return MessageDescriptor(name: "Empty", parent: file)
-        }()
+        }() : nil)
         storage.withLock {
             $0.descriptors = descriptors
             $0.defaultDescriptor = fallback

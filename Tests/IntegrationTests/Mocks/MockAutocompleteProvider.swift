@@ -8,7 +8,12 @@ struct MockAutocompleteProvider: AutocompleteProviderProtocol {
         self.stubSuggestions = stubSuggestions
     }
 
-    func suggestions(for _: AutocompleteContext, in _: ProtoFile) async -> [AutocompleteSuggestion] {
+    func suggestions(
+        for _: AutocompleteContext,
+        rootMessageType _: String,
+        in _: ProtoFile)
+        async -> [AutocompleteSuggestion]
+    {
         await Task.yield()
         return stubSuggestions
     }

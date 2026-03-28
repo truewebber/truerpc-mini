@@ -271,4 +271,214 @@ final class JsonPathResolverTests: XCTestCase {
         XCTAssertEqual(context.resolvedPath, ["user"])
         XCTAssertEqual(context.mode, .key)
     }
+
+    // MARK: - Negative cursor offset
+
+    func test_resolve_negativeCursorOffset_treatedAsZero() {
+        let json = "{\"a\": 1}"
+        let context = sut.resolve(json: json, cursorOffset: -5)
+        XCTAssertEqual(context.resolvedPath, [])
+        XCTAssertEqual(context.mode, .key)
+    }
+
+    // MARK: - Unicode keys
+
+    func test_resolve_unicodeKey_returnsKeyMode() {
+        let json = "{\"名前\": "
+        let context = sut.resolve(json: json, cursorOffset: json.count)
+        XCTAssertEqual(context.resolvedPath, [])
+        XCTAssertEqual(context.mode, .enumValue)
+    }
+
+    func test_resolve_emojiInKey_returnsKeyMode() {
+        let json = "{\"🔑\": "
+        let context = sut.resolve(json: json, cursorOffset: json.count)
+        XCTAssertEqual(context.resolvedPath, [])
+        XCTAssertEqual(context.mode, .enumValue)
+    }
+
+    // MARK: - Empty nested objects / arrays
+
+    func test_resolve_emptyNestedObject_cursorAfterInner_returnsRootKeyMode() {
+        let json = "{\"a\": {}, "
+        let context = sut.resolve(json: json, cursorOffset: json.count)
+        XCTAssertEqual(context.resolvedPath, [])
+        XCTAssertEqual(context.mode, .key)
+    }
+
+    func test_resolve_emptyNestedArray_cursorAfterInner_returnsKeyMode() {
+        let json = "{\"a\": [], "
+        let context = sut.resolve(json: json, cursorOffset: json.count)
+        XCTAssertEqual(context.resolvedPath, [])
+        XCTAssertEqual(context.mode, .key)
+    }
+
+    func test_resolve_cursorInsideEmptyNestedObject_returnsKeyMode() {
+        let json = "{\"a\": {"
+        let context = sut.resolve(json: json, cursorOffset: json.count)
+        XCTAssertEqual(context.resolvedPath, ["a"])
+        XCTAssertEqual(context.mode, .key)
+    }
+
+    func test_resolve_cursorInsideEmptyNestedArray_returnsArrayElementMode() {
+        let json = "{\"a\": ["
+        let context = sut.resolve(json: json, cursorOffset: json.count)
+        XCTAssertEqual(context.resolvedPath, ["a"])
+        XCTAssertEqual(context.mode, .arrayElement)
+    }
+
+    // MARK: - Deep nesting with arrays of objects
+
+    func test_resolve_objectInArrayWithNestedKey_returnsNestedPath() {
+        let json = "{\"items\": [{\"sub\": {"
+        let context = sut.resolve(json: json, cursorOffset: json.count)
+        XCTAssertEqual(context.resolvedPath, ["items", "sub"])
+        XCTAssertEqual(context.mode, .key)
+    }
+
+    func test_resolve_multipleObjectsInArray_secondObject_keyMode() {
+        let json = "{\"items\": [{\"a\": 1}, {"
+        let context = sut.resolve(json: json, cursorOffset: json.count)
+        XCTAssertEqual(context.resolvedPath, ["items"])
+        XCTAssertEqual(context.mode, .key)
+    }
+
+    // MARK: - Cursor at exact positions
+
+    func test_resolve_cursorAtOpeningQuoteOfKey_returnsKeyMode() {
+        let json = "{\"" // cursor right after opening quote
+        let context = sut.resolve(json: json, cursorOffset: 2)
+        XCTAssertEqual(context.resolvedPath, [])
+        XCTAssertEqual(context.mode, .key)
+    }
+
+    func test_resolve_cursorBetweenCommaAndNextKey_returnsKeyMode() {
+        let json = "{\"a\": 1,  "
+        let context = sut.resolve(json: json, cursorOffset: json.count)
+        XCTAssertEqual(context.resolvedPath, [])
+        XCTAssertEqual(context.mode, .key)
+    }
+
+    // MARK: - Completed values then more content
+
+    func test_resolve_afterCompletedStringValue_commaNewKey_returnsKeyMode() {
+        let json = "{\"a\": \"hello\", \"b"
+        let context = sut.resolve(json: json, cursorOffset: json.count)
+        XCTAssertEqual(context.resolvedPath, [])
+        XCTAssertEqual(context.mode, .key)
+    }
+
+    func test_resolve_afterCompletedNumberValue_commaNewKey_returnsKeyMode() {
+        let json = "{\"x\": 42, \"y"
+        let context = sut.resolve(json: json, cursorOffset: json.count)
+        XCTAssertEqual(context.resolvedPath, [])
+        XCTAssertEqual(context.mode, .key)
+    }
+
+    // MARK: - Bare text (no container)
+
+    func test_resolve_bareText_noContainer_returnsDefaultContext() {
+        let json = "hello"
+        let context = sut.resolve(json: json, cursorOffset: json.count)
+        XCTAssertEqual(context.resolvedPath, [])
+        XCTAssertEqual(context.mode, .key)
+    }
+
+    // MARK: - Complex real-world JSON
+
+    func test_resolve_multiFieldJSON_cursorInSecondNestedObject() {
+        let json = "{\"a\": 1, \"b\": {\"c\": \"val\"}, \"d\": {"
+        let context = sut.resolve(json: json, cursorOffset: json.count)
+        XCTAssertEqual(context.resolvedPath, ["d"])
+        XCTAssertEqual(context.mode, .key)
+    }
+
+    func test_resolve_arrayOfArrays_innerArray_returnsArrayElementMode() {
+        let json = "{\"matrix\": [["
+        let context = sut.resolve(json: json, cursorOffset: json.count)
+        XCTAssertEqual(context.resolvedPath, ["matrix"])
+        XCTAssertEqual(context.mode, .arrayElement)
+    }
+
+    // MARK: - siblingKeys
+
+    func test_resolve_rootObjectOneKey_siblingKeysContainsThatKey() {
+        let json = "{\"name\": \"val\", "
+        let context = sut.resolve(json: json, cursorOffset: json.count)
+        XCTAssertEqual(context.mode, .key)
+        XCTAssertEqual(context.siblingKeys, ["name"])
+    }
+
+    func test_resolve_rootObjectTwoKeys_siblingKeysContainsBoth() {
+        let json = "{\"a\": 1, \"b\": 2, "
+        let context = sut.resolve(json: json, cursorOffset: json.count)
+        XCTAssertEqual(context.siblingKeys, ["a", "b"])
+    }
+
+    func test_resolve_nestedObject_siblingKeysFromInnerScope() {
+        let json = "{\"outer\": {\"inner1\": 1, \"inner2\": 2, "
+        let context = sut.resolve(json: json, cursorOffset: json.count)
+        XCTAssertEqual(context.resolvedPath, ["outer"])
+        XCTAssertEqual(context.siblingKeys, ["inner1", "inner2"])
+    }
+
+    func test_resolve_emptyObject_siblingKeysEmpty() {
+        let json = "{"
+        let context = sut.resolve(json: json, cursorOffset: json.count)
+        XCTAssertEqual(context.mode, .key)
+        XCTAssertTrue(context.siblingKeys.isEmpty)
+    }
+
+    func test_resolve_arrayContext_siblingKeysEmpty() {
+        let json = "{\"items\": ["
+        let context = sut.resolve(json: json, cursorOffset: json.count)
+        XCTAssertEqual(context.mode, .arrayElement)
+        XCTAssertTrue(context.siblingKeys.isEmpty)
+    }
+
+    func test_resolve_objectInsideArray_siblingKeysFromNestedObject() {
+        let json = "{\"items\": [{\"x\": 1, "
+        let context = sut.resolve(json: json, cursorOffset: json.count)
+        XCTAssertEqual(context.mode, .key)
+        XCTAssertEqual(context.siblingKeys, ["x"])
+    }
+
+    // MARK: - collectKeysAfterCursor
+
+    func test_collectKeysAfterCursor_findsKeysInSameObject() {
+        let json = "{\"a\": 1, \"b\": 2, \"c\": 3}"
+        let keys = sut.collectKeysAfterCursor(json: json, cursorOffset: 9) // after "a": 1,
+        XCTAssertEqual(keys, ["b", "c"])
+    }
+
+    func test_collectKeysAfterCursor_stopsAtClosingBrace() {
+        let json = "{\"inner\": 1}, \"outer\": 2}"
+        let keys = sut.collectKeysAfterCursor(json: json, cursorOffset: 1) // inside first object
+        XCTAssertEqual(keys, ["inner"])
+    }
+
+    func test_collectKeysAfterCursor_skipsNestedObjects() {
+        let json = "{\"a\": {\"nested\": 1}, \"b\": 2}"
+        let keys = sut.collectKeysAfterCursor(json: json, cursorOffset: 1) // right after root {
+        XCTAssertEqual(keys, ["a", "b"])
+    }
+
+    func test_collectKeysAfterCursor_atEndOfText_returnsEmpty() {
+        let json = "{\"a\": 1}"
+        let keys = sut.collectKeysAfterCursor(json: json, cursorOffset: json.count)
+        XCTAssertTrue(keys.isEmpty)
+    }
+
+    func test_collectKeysAfterCursor_handlesEscapedQuotes() {
+        let json = "{\"k\\\"ey\": 1, \"b\": 2}"
+        let keys = sut.collectKeysAfterCursor(json: json, cursorOffset: 1)
+        XCTAssertTrue(keys.contains("b"))
+        XCTAssertTrue(keys.contains("k\\\"ey") || keys.contains("k\"ey"))
+    }
+
+    func test_collectKeysAfterCursor_emptyObject_returnsEmpty() {
+        let json = "{}"
+        let keys = sut.collectKeysAfterCursor(json: json, cursorOffset: 1)
+        XCTAssertTrue(keys.isEmpty)
+    }
 }

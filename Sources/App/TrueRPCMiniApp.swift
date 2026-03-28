@@ -40,6 +40,8 @@ struct TrueRPCMiniApp: App {
     // MARK: - Initialization
 
     init() {
+        let isUITesting = ProcessInfo.processInfo.arguments.contains("--uitesting")
+
         UserDefaults.runAnalyticsMigration()
 
         let config = Config.fromBundle
@@ -141,7 +143,12 @@ struct TrueRPCMiniApp: App {
         }
 
         di.register(AutocompleteProviderProtocol.self) {
-            ProtoSchemaAutocompleteProvider(protoRepository: di.resolve(ProtoRepositoryProtocol.self)!)
+            #if DEBUG
+                if isUITesting {
+                    return UITestAutocompleteProvider()
+                }
+            #endif
+            return ProtoSchemaAutocompleteProvider(protoRepository: di.resolve(ProtoRepositoryProtocol.self)!)
         }
 
         di.register(JsonPathResolver.self) {
@@ -260,6 +267,22 @@ struct TrueRPCMiniApp: App {
             telemetry: di.resolve(TelemetryServiceProtocol.self)!,
             logger: logger)
         appVM.onLaunched()
+
+        #if DEBUG
+            if isUITesting {
+                let testMethod = Method(
+                    name: "TestMethod",
+                    inputType: ".uitest.TestRequest",
+                    outputType: ".uitest.TestResponse",
+                    isStreaming: false)
+                let testService = Service(name: "TestService", methods: [testMethod])
+                let testProto = ProtoFile(
+                    name: "uitest.proto",
+                    path: URL(fileURLWithPath: "/tmp/uitest.proto"),
+                    services: [testService])
+                appVM.openMethod(method: testMethod, service: testService, protoFile: testProto)
+            }
+        #endif
 
         let globalEnvVM = di.resolve(GlobalEnvironmentViewModel.self)!
         globalEnvVM.onEnvironmentDeleted = { [weak tabManagerVM] env in

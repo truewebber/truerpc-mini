@@ -77,6 +77,7 @@ public final class JsonPathResolver: Sendable {
         var pendingKey = ""
         var escapeNext = false
         var popsPathOnClose = false
+        var seenKeys: Set<String> = []
     }
 
     private struct ArrayFrame {
@@ -99,14 +100,15 @@ public final class JsonPathResolver: Sendable {
         case .array:
             return AutocompleteContext(resolvedPath: path, mode: .arrayElement)
         case let .object(frame):
+            let siblings = frame.seenKeys
             if frame.inString {
                 let mode: AutocompleteMode = frame.stringIsKey ? .key : .enumValue
-                return AutocompleteContext(resolvedPath: path, mode: mode)
+                return AutocompleteContext(resolvedPath: path, mode: mode, siblingKeys: siblings)
             }
             if frame.afterColon {
-                return AutocompleteContext(resolvedPath: path, mode: .enumValue)
+                return AutocompleteContext(resolvedPath: path, mode: .enumValue, siblingKeys: siblings)
             }
-            return AutocompleteContext(resolvedPath: path, mode: .key)
+            return AutocompleteContext(resolvedPath: path, mode: .key, siblingKeys: siblings)
         }
     }
 
@@ -137,7 +139,10 @@ public final class JsonPathResolver: Sendable {
             }
             if ch == "\"" {
                 frame.inString = false
-                if frame.stringIsKey { frame.lastKey = frame.pendingKey }
+                if frame.stringIsKey {
+                    frame.lastKey = frame.pendingKey
+                    frame.seenKeys.insert(frame.pendingKey)
+                }
                 frame.pendingKey = ""
                 return true
             }
@@ -350,6 +355,81 @@ public final class JsonPathResolver: Sendable {
             return
         }
         advance(json: json, index: &index, processed: &processed)
+    }
+
+    // MARK: - Full sibling key collection
+
+    /// Collects additional keys in the current object scope AFTER `cursorOffset`.
+    /// Scans forward from the cursor, tracking brace/bracket depth. Keys at depth 0
+    /// (same level) are collected. Stops when depth goes negative (exiting the object).
+    public func collectKeysAfterCursor(json: String, cursorOffset: Int) -> Set<String> {
+        let startIdx = json.index(json.startIndex, offsetBy: min(cursorOffset, json.count))
+        guard startIdx < json.endIndex else { return [] }
+
+        var keys: Set<String> = []
+        var depth = 0
+        var inString = false
+        var escaped = false
+        var isKey = false
+        var afterColon = false
+        var pendingKey = ""
+        var i = startIdx
+
+        while i < json.endIndex {
+            let ch = json[i]
+            i = json.index(after: i)
+
+            if escaped {
+                escaped = false
+                if inString, isKey { pendingKey.append(ch) }
+                continue
+            }
+
+            if ch == "\\" {
+                if inString { escaped = true }
+                continue
+            }
+
+            if ch == "\"" {
+                if inString {
+                    inString = false
+                    if depth == 0, isKey {
+                        keys.insert(pendingKey)
+                    }
+                    pendingKey = ""
+                } else {
+                    inString = true
+                    isKey = depth == 0 && !afterColon
+                    pendingKey = ""
+                }
+                continue
+            }
+
+            if inString {
+                if isKey { pendingKey.append(ch) }
+                continue
+            }
+
+            switch ch {
+            case "{", "[":
+                depth += 1
+
+            case "}", "]":
+                if depth == 0 { return keys }
+                depth -= 1
+
+            case ":":
+                if depth == 0 { afterColon = true }
+
+            case ",":
+                if depth == 0 { afterColon = false }
+
+            default:
+                break
+            }
+        }
+
+        return keys
     }
 
     // MARK: - Low-level helpers

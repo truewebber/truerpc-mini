@@ -753,6 +753,158 @@ extension FileSystemProtoRepositoryTests {
         XCTAssertTrue(result.dependencyPaths.isEmpty, "Paths under wellKnownResourcePath must be excluded")
     }
 
+    // MARK: - Well-Known Type Scope Tests (regression: google/protobuf/* excluded from dependencyPaths but must remain resolvable)
+
+    /// Regression: proto imports google.protobuf.Empty via well-known bundle path.
+    /// dependencyPaths must be empty (no watching), yet getMessageDescriptor must succeed.
+    func test_getMessageDescriptor_whenWellKnownEmptyImported_isResolvableDespiteExcludedDependencyPath()
+        async throws
+    {
+        // Given - set up a fake "bundle resource" directory containing google/protobuf/empty.proto
+        let bundleDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("wkt_bundle_\(UUID().uuidString)")
+        let googleProtobufDir = bundleDir
+            .appendingPathComponent("google")
+            .appendingPathComponent("protobuf")
+        try FileManager.default.createDirectory(at: googleProtobufDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: bundleDir) }
+
+        let emptyProtoContent = """
+        syntax = "proto3";
+        package google.protobuf;
+        option java_package = "com.google.protobuf";
+        option java_outer_classname = "EmptyProto";
+        option java_multiple_files = true;
+        option go_package = "google.golang.org/protobuf/types/known/emptypb";
+        option objc_class_prefix = "GPB";
+        option csharp_namespace = "Google.Protobuf.WellKnownTypes";
+        message Empty {}
+        """
+        let emptyProtoURL = googleProtobufDir.appendingPathComponent("empty.proto")
+        try emptyProtoContent.write(to: emptyProtoURL, atomically: true, encoding: .utf8)
+
+        let userProtoContent = """
+        syntax = "proto3";
+        package example;
+        import "google/protobuf/empty.proto";
+        service HelloService {
+            rpc Hello (google.protobuf.Empty) returns (google.protobuf.Empty);
+        }
+        """
+        let userProtoURL = bundleDir.appendingPathComponent("hello.proto")
+        try userProtoContent.write(to: userProtoURL, atomically: true, encoding: .utf8)
+
+        sut = FileSystemProtoRepository(logger: mockLogger, wellKnownResourcePath: bundleDir.path)
+        let protoFile = try await sut.loadProto(url: userProtoURL, importPaths: [bundleDir.path])
+
+        // Well-known path must NOT appear in dependencyPaths (no file-watching)
+        XCTAssertTrue(protoFile.dependencyPaths.isEmpty, "Well-known paths must be excluded from dependencyPaths")
+
+        // When
+        let descriptor = try await sut.getMessageDescriptor(forType: ".google.protobuf.Empty", in: protoFile)
+
+        // Then - must resolve even though google/protobuf/empty.proto is not in dependencyPaths
+        XCTAssertEqual(descriptor.name, "Empty")
+        XCTAssertEqual(descriptor.fields.count, 0)
+    }
+
+    func test_getMessageDescriptor_whenWellKnownTimestampImported_isResolvableDespiteExcludedDependencyPath()
+        async throws
+    {
+        // Given - fake bundle with google/protobuf/timestamp.proto
+        let bundleDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("wkt_ts_bundle_\(UUID().uuidString)")
+        let googleProtobufDir = bundleDir
+            .appendingPathComponent("google")
+            .appendingPathComponent("protobuf")
+        try FileManager.default.createDirectory(at: googleProtobufDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: bundleDir) }
+
+        let timestampProtoContent = """
+        syntax = "proto3";
+        package google.protobuf;
+        message Timestamp {
+            int64 seconds = 1;
+            int32 nanos = 2;
+        }
+        """
+        let timestampProtoURL = googleProtobufDir.appendingPathComponent("timestamp.proto")
+        try timestampProtoContent.write(to: timestampProtoURL, atomically: true, encoding: .utf8)
+
+        let userProtoContent = """
+        syntax = "proto3";
+        package example;
+        import "google/protobuf/timestamp.proto";
+        message Event {
+            google.protobuf.Timestamp created_at = 1;
+        }
+        service EventService {
+            rpc GetEvent (Event) returns (Event);
+        }
+        """
+        let userProtoURL = bundleDir.appendingPathComponent("event.proto")
+        try userProtoContent.write(to: userProtoURL, atomically: true, encoding: .utf8)
+
+        sut = FileSystemProtoRepository(logger: mockLogger, wellKnownResourcePath: bundleDir.path)
+        let protoFile = try await sut.loadProto(url: userProtoURL, importPaths: [bundleDir.path])
+
+        XCTAssertTrue(protoFile.dependencyPaths.isEmpty, "Well-known paths must be excluded from dependencyPaths")
+
+        // When
+        let descriptor = try await sut.getMessageDescriptor(forType: ".google.protobuf.Timestamp", in: protoFile)
+
+        // Then
+        XCTAssertEqual(descriptor.name, "Timestamp")
+        XCTAssertEqual(descriptor.fields.count, 2)
+    }
+
+    func test_getMessageDescriptor_whenWellKnownTypeImported_userTypeAlsoResolvable() async throws {
+        // Given - user proto imports well-known type AND defines its own message
+        let bundleDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("wkt_mix_bundle_\(UUID().uuidString)")
+        let googleProtobufDir = bundleDir
+            .appendingPathComponent("google")
+            .appendingPathComponent("protobuf")
+        try FileManager.default.createDirectory(at: googleProtobufDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: bundleDir) }
+
+        let emptyProtoContent = """
+        syntax = "proto3";
+        package google.protobuf;
+        message Empty {}
+        """
+        try emptyProtoContent.write(
+            to: googleProtobufDir.appendingPathComponent("empty.proto"),
+            atomically: true, encoding: .utf8)
+
+        let userProtoContent = """
+        syntax = "proto3";
+        package myapp;
+        import "google/protobuf/empty.proto";
+        message CreateRequest {
+            string name = 1;
+        }
+        service MyService {
+            rpc Create (CreateRequest) returns (google.protobuf.Empty);
+        }
+        """
+        let userProtoURL = bundleDir.appendingPathComponent("myservice.proto")
+        try userProtoContent.write(to: userProtoURL, atomically: true, encoding: .utf8)
+
+        sut = FileSystemProtoRepository(logger: mockLogger, wellKnownResourcePath: bundleDir.path)
+        let protoFile = try await sut.loadProto(url: userProtoURL, importPaths: [bundleDir.path])
+
+        // When - resolve both the user type and the well-known type
+        let userDescriptor = try await sut.getMessageDescriptor(forType: ".myapp.CreateRequest", in: protoFile)
+        let wktDescriptor = try await sut.getMessageDescriptor(forType: ".google.protobuf.Empty", in: protoFile)
+
+        // Then
+        XCTAssertEqual(userDescriptor.name, "CreateRequest")
+        XCTAssertEqual(userDescriptor.fields.count, 1)
+        XCTAssertEqual(wktDescriptor.name, "Empty")
+        XCTAssertEqual(wktDescriptor.fields.count, 0)
+    }
+
     func test_loadProto_whenDifferentFiles_bothDescriptorsStored() async throws {
         // Given - two independent proto files
         let fileAContent = """

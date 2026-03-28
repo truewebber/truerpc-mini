@@ -15,16 +15,31 @@ public final class AutocompleteViewModel: ObservableObject {
 
     private let provider: AutocompleteProviderProtocol
     private let resolver: JsonPathResolver
+    private let methodInputType: String
+
+    // MARK: - Handlers
+
+    /// Called when the user commits the `fillDefaults` suggestion (keyboard or click).
+    /// Wired by `EditorTabViewModel` to `resetToPreset()`.
+    public var fillDefaultsHandler: (@MainActor @Sendable () async -> Void)?
 
     // MARK: - Private State
 
     private var inflightTask: Task<Void, Never>?
 
+    /// Monotonic counter to discard results from superseded provider calls.
+    private var updateVersion: UInt64 = 0
+
     // MARK: - Initialization
 
-    public init(provider: AutocompleteProviderProtocol, resolver: JsonPathResolver) {
+    public init(
+        provider: AutocompleteProviderProtocol,
+        resolver: JsonPathResolver,
+        methodInputType: String)
+    {
         self.provider = provider
         self.resolver = resolver
+        self.methodInputType = methodInputType
     }
 
     // MARK: - Public Methods
@@ -33,18 +48,61 @@ public final class AutocompleteViewModel: ObservableObject {
     public func textDidChange(_ text: String, cursorOffset: Int, protoFile: ProtoFile) async {
         inflightTask?.cancel()
 
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.hasPrefix("{") else {
+            suggestions = []
+            isVisible = false
+            selectedIndex = 0
+            return
+        }
+
+        updateVersion &+= 1
+        let expectedVersion = updateVersion
+
         let context = resolver.resolve(json: text, cursorOffset: cursorOffset)
 
-        inflightTask = Task {
-            let result = await provider.suggestions(for: context, in: protoFile)
-            guard !Task.isCancelled else { return }
+        if context.mode == .arrayElement {
+            suggestions = []
+            isVisible = false
+            selectedIndex = 0
+            return
+        }
 
-            self.suggestions = result
+        let allSiblings: Set<String>
+        if context.mode == .key {
+            let keysAfter = resolver.collectKeysAfterCursor(json: text, cursorOffset: cursorOffset)
+            allSiblings = context.siblingKeys.union(keysAfter)
+        } else {
+            allSiblings = context.siblingKeys
+        }
+
+        inflightTask = Task {
+            let result = await provider.suggestions(
+                for: context,
+                rootMessageType: methodInputType,
+                in: protoFile)
+
+            guard expectedVersion == self.updateVersion else { return }
+
+            let filtered: [AutocompleteSuggestion] = if context.mode == .key, !allSiblings.isEmpty {
+                result.filter { $0.kind == .fillDefaults || !allSiblings.contains($0.name) }
+            } else {
+                result
+            }
+
+            self.suggestions = Self.sortSuggestions(filtered)
             self.selectedIndex = 0
-            self.isVisible = !result.isEmpty
+            self.isVisible = !filtered.isEmpty
         }
 
         await inflightTask?.value
+    }
+
+    /// Sorts suggestions so `.fillDefaults` entries appear first.
+    nonisolated static func sortSuggestions(_ suggestions: [AutocompleteSuggestion]) -> [AutocompleteSuggestion] {
+        let fill = suggestions.filter { $0.kind == .fillDefaults }
+        let rest = suggestions.filter { $0.kind != .fillDefaults }
+        return fill + rest
     }
 
     /// Increments `selectedIndex`, wrapping to 0 after the last item.

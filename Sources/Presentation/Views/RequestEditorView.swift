@@ -381,7 +381,12 @@ struct RequestEditorView: View {
     }
 
     private struct RequestEditorView_PreviewStubAutocompleteProvider: AutocompleteProviderProtocol {
-        func suggestions(for _: AutocompleteContext, in _: ProtoFile) -> [AutocompleteSuggestion] {
+        func suggestions(
+            for _: AutocompleteContext,
+            rootMessageType _: String,
+            in _: ProtoFile)
+            -> [AutocompleteSuggestion]
+        {
             []
         }
     }
@@ -477,8 +482,10 @@ struct JSONTextEditor: NSViewRepresentable {
         textView.isHorizontallyResizable = false
         textView.textContainer?.widthTracksTextView = true
 
+        textView.setAccessibilityIdentifier("json_editor")
         textView.delegate = context.coordinator
         textView.string = text
+        context.coordinator.textView = textView
 
         return scrollView
     }
@@ -499,6 +506,15 @@ struct JSONTextEditor: NSViewRepresentable {
     @MainActor
     class Coordinator: NSObject, NSTextViewDelegate {
         var parent: JSONTextEditor
+        weak var textView: NSTextView?
+
+        /// Tracks the most recent pending context-update task spawned after a text change.
+        /// Cancelled on explicit suggestion commit or Escape so the popover is not re-opened
+        /// by a stale task after an intentional dismiss.
+        private var pendingUpdateTask: Task<Void, Never>?
+
+        /// Suppresses autocomplete re-trigger while smart-insert modifies the text view.
+        private var suppressTextDidChange = false
 
         init(_ parent: JSONTextEditor) {
             self.parent = parent
@@ -511,8 +527,19 @@ struct JSONTextEditor: NSViewRepresentable {
             popover.behavior = .applicationDefined
             popover.animates = false
             if let vm = parent.autocompleteViewModel {
-                popover.contentViewController = NSHostingController(
-                    rootView: AutocompletePopoverView(viewModel: vm))
+                let hostingController = NSHostingController(
+                    rootView: AutocompletePopoverView(
+                        viewModel: vm,
+                        onRowTapped: { [weak self] suggestion in
+                            self?.commitSuggestion(suggestion, vm: vm)
+                        },
+                        onEscape: { [weak self] in
+                            self?.pendingUpdateTask?.cancel()
+                            vm.dismiss()
+                            self?.autocompletePopover.close()
+                        }))
+                hostingController.view.setAccessibilityIdentifier("autocomplete_popover")
+                popover.contentViewController = hostingController
             }
             return popover
         }()
@@ -524,15 +551,20 @@ struct JSONTextEditor: NSViewRepresentable {
 
             MainActor.assumeIsolated {
                 let text = textView.string
-                let cursorOffset = textView.selectedRange().location
                 parent.text = text
+
+                guard !suppressTextDidChange else { return }
+
+                let cursorOffset = textView.selectedRange().location
 
                 guard let vm = parent.autocompleteViewModel,
                       let protoFile = parent.protoFile
                 else { return }
 
-                Task { @MainActor [weak textView] in
+                pendingUpdateTask?.cancel()
+                pendingUpdateTask = Task { @MainActor [weak textView] in
                     await vm.textDidChange(text, cursorOffset: cursorOffset, protoFile: protoFile)
+                    guard !Task.isCancelled else { return }
                     guard let textView else { return }
 
                     if vm.isVisible {
@@ -563,28 +595,31 @@ struct JSONTextEditor: NSViewRepresentable {
                     vm.moveDown()
                     return true
 
-                case #selector(NSTextView.insertNewline(_:)),
-                     #selector(NSTextView.insertTab(_:)):
+                case #selector(NSTextView.insertTab(_:)):
                     guard let suggestion = vm.commitSelection() else { return false }
 
-                    applySmartInsert(suggestion: suggestion, to: textView)
-
-                    if suggestion.kind == .message, let protoFile = parent.protoFile {
-                        let newText = textView.string
-                        let offset = textView.selectedRange().location
-                        Task { @MainActor [weak textView] in
-                            await vm.textDidChange(newText, cursorOffset: offset, protoFile: protoFile)
-                            guard let textView else { return }
-
-                            if vm.isVisible { self.showPopoverIfNeeded(in: textView) }
-                        }
-                    } else {
+                    if suggestion.kind == .fillDefaults {
+                        pendingUpdateTask?.cancel()
+                        Task { await vm.fillDefaultsHandler?() }
                         vm.dismiss()
                         autocompletePopover.close()
+                        return true
                     }
+
+                    applySmartInsert(suggestion: suggestion, to: textView)
+                    postInsertUpdate(suggestion: suggestion, textView: textView, vm: vm)
                     return true
 
+                case #selector(NSTextView.insertNewline(_:)):
+                    pendingUpdateTask?.cancel()
+                    vm.dismiss()
+                    autocompletePopover.close()
+                    suppressTextDidChange = true
+                    DispatchQueue.main.async { self.suppressTextDidChange = false }
+                    return false
+
                 case #selector(NSResponder.cancelOperation(_:)):
+                    pendingUpdateTask?.cancel()
                     vm.dismiss()
                     autocompletePopover.close()
                     return true
@@ -595,6 +630,56 @@ struct JSONTextEditor: NSViewRepresentable {
             }
         }
 
+        // MARK: - Suggestion commit (keyboard + mouse)
+
+        /// Commits a suggestion received from the popover (mouse click or popover keyboard shortcut).
+        /// Handles both `fillDefaults` (triggers `resetToPreset`) and regular insertions.
+        private func commitSuggestion(_ suggestion: AutocompleteSuggestion, vm: AutocompleteViewModel) {
+            if suggestion.kind == .fillDefaults {
+                pendingUpdateTask?.cancel()
+                Task { await vm.fillDefaultsHandler?() }
+                vm.dismiss()
+                autocompletePopover.close()
+                return
+            }
+
+            guard let tv = textView else { return }
+
+            applySmartInsert(suggestion: suggestion, to: tv)
+            postInsertUpdate(suggestion: suggestion, textView: tv, vm: vm)
+        }
+
+        /// After inserting a suggestion, either re-trigger autocomplete (for compound types
+        /// where the cursor lands inside `{}` or `[]`) or dismiss the popover.
+        private func postInsertUpdate(
+            suggestion: AutocompleteSuggestion,
+            textView: NSTextView,
+            vm: AutocompleteViewModel)
+        {
+            let continueAutocomplete = suggestion.kind == .message || suggestion.kind == .repeated
+
+            if continueAutocomplete, let protoFile = parent.protoFile {
+                let newText = textView.string
+                let offset = textView.selectedRange().location
+                pendingUpdateTask?.cancel()
+                pendingUpdateTask = Task { @MainActor [weak textView] in
+                    await vm.textDidChange(newText, cursorOffset: offset, protoFile: protoFile)
+                    guard !Task.isCancelled else { return }
+                    guard let textView else { return }
+
+                    if vm.isVisible {
+                        self.showPopoverIfNeeded(in: textView)
+                    } else {
+                        self.autocompletePopover.close()
+                    }
+                }
+            } else {
+                pendingUpdateTask?.cancel()
+                vm.dismiss()
+                autocompletePopover.close()
+            }
+        }
+
         // MARK: - Popover positioning
 
         private func showPopoverIfNeeded(in textView: NSTextView) {
@@ -602,9 +687,12 @@ struct JSONTextEditor: NSViewRepresentable {
 
             let range = textView.selectedRange()
             let rect = cursorViewRect(in: textView, range: range, window: window)
-            if !autocompletePopover.isShown {
-                autocompletePopover.show(relativeTo: rect, of: textView, preferredEdge: .maxY)
+
+            if autocompletePopover.isShown {
+                autocompletePopover.close()
             }
+            autocompletePopover.show(relativeTo: rect, of: textView, preferredEdge: .maxY)
+            window.makeFirstResponder(textView)
         }
 
         private func cursorViewRect(
@@ -627,15 +715,50 @@ struct JSONTextEditor: NSViewRepresentable {
 
             let range = textView.selectedRange()
             if textView.shouldChangeText(in: range, replacementString: insertText) {
+                suppressTextDidChange = true
+                defer { suppressTextDidChange = false }
+
                 textView.replaceCharacters(in: range, with: insertText)
                 textView.didChangeText()
-                parent.text = textView.string
 
-                if cursorBack > 0 {
-                    let newPos = range.location + insertText.utf16.count - cursorBack
-                    textView.setSelectedRange(NSRange(location: max(0, newPos), length: 0))
+                let cursorPos = range.location + insertText.utf16.count - cursorBack
+
+                let missingBraces = Self.unclosedBraceCount(in: textView.string)
+                if missingBraces > 0 {
+                    let suffix = String(repeating: "\n}", count: missingBraces)
+                    let endRange = NSRange(location: textView.string.utf16.count, length: 0)
+                    textView.replaceCharacters(in: endRange, with: suffix)
+                    textView.didChangeText()
                 }
+
+                parent.text = textView.string
+                textView.setSelectedRange(NSRange(location: max(0, cursorPos), length: 0))
             }
+        }
+
+        /// Counts `{` minus `}` outside of JSON string literals.
+        static func unclosedBraceCount(in text: String) -> Int {
+            var balance = 0
+            var inString = false
+            var escaped = false
+
+            for char in text {
+                if escaped { escaped = false
+                    continue
+                }
+                if char == "\\", inString { escaped = true
+                    continue
+                }
+                if char == "\"" { inString.toggle()
+                    continue
+                }
+                guard !inString else { continue }
+
+                if char == "{" { balance += 1 }
+                else if char == "}" { balance -= 1 }
+            }
+
+            return max(0, balance)
         }
 
         /// Returns the snippet text and the number of UTF-16 code units to step

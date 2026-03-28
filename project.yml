@@ -30,6 +30,16 @@ schemes:
       targets:
         - TrueRPCMiniUnitTests
         - TrueRPCMiniIntegrationTests
+  TrueRPCMiniUITests:
+    build:
+      targets:
+        TrueRPCMini: all
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets:
+        - TrueRPCMiniUITests
 targets:
   TrueRPCMini:
     type: application
@@ -114,6 +124,25 @@ targets:
           CODE_SIGN_STYLE: Automatic
         Release:
           CODE_SIGN_STYLE: Automatic
+    dependencies:
+      - target: TrueRPCMini
+  TrueRPCMiniUITests:
+    type: bundle.ui-testing
+    platform: macOS
+    deploymentTarget: "15.0"
+    sources:
+      - Tests/UITests
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        CODE_SIGN_IDENTITY: "-"
+        CODE_SIGNING_REQUIRED: NO
+      configs:
+        Debug:
+          SWIFT_ACTIVE_COMPILATION_CONDITIONS: DEBUG
+          CODE_SIGN_STYLE: Manual
+        Release:
+          CODE_SIGN_STYLE: Manual
     dependencies:
       - target: TrueRPCMini
 packages:

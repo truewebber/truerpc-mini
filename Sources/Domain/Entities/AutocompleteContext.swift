@@ -3,8 +3,12 @@ public struct AutocompleteContext: Equatable, Sendable {
     public let resolvedPath: [String]
     public let mode: AutocompleteMode
 
-    public init(resolvedPath: [String], mode: AutocompleteMode) {
+    /// Keys already present in the current object scope (used to filter out filled fields).
+    public let siblingKeys: Set<String>
+
+    public init(resolvedPath: [String], mode: AutocompleteMode, siblingKeys: Set<String> = []) {
         self.resolvedPath = resolvedPath
         self.mode = mode
+        self.siblingKeys = siblingKeys
     }
 }
