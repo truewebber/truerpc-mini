@@ -571,4 +571,54 @@ final class JSONTextEditorIntegrationTests: XCTestCase {
             textView.string.contains("\"numbers\": \"\""),
             "Full field snippet must be present: \(textView.string)")
     }
+
+    // MARK: - Indented closing-brace suffix (OPE-248)
+
+    func test_autocomplete_fieldAtDepth0_closingBraceHasNoIndent() {
+        let suggestion = AutocompleteSuggestion(name: "name", typeHint: "string", kind: .string)
+        let (coordinator, _) = makeCoordinator()
+        let textView = makeTextView(text: "{\n")
+
+        coordinator.applySmartInsert(suggestion: suggestion, to: textView)
+
+        let result = textView.string
+        XCTAssertTrue(
+            result.hasSuffix("\n}"),
+            "At depth 0, closing brace must have no indent; got: \(result)")
+        XCTAssertFalse(
+            result.hasSuffix("\n  }"),
+            "At depth 0, no leading spaces before closing brace; got: \(result)")
+    }
+
+    func test_autocomplete_fieldAtDepth1_closingBraceHasTwoSpaces() {
+        let suggestion = AutocompleteSuggestion(name: "name", typeHint: "string", kind: .string)
+        let (coordinator, _) = makeCoordinator()
+        let textView = makeTextView(text: "{\n  ")
+
+        coordinator.applySmartInsert(suggestion: suggestion, to: textView)
+
+        let result = textView.string
+        XCTAssertTrue(
+            result.hasSuffix("\n  }"),
+            "At depth 1 (2-space indent), closing brace must have 2 leading spaces; got: \(result)")
+    }
+
+    func test_autocomplete_nestedMessageAtDepth2_closingBracesHaveCorrectIndent() {
+        let suggestion = AutocompleteSuggestion(name: "id", typeHint: "string", kind: .string)
+        let (coordinator, _) = makeCoordinator()
+        let textView = makeTextView(text: "{\n  \"nested\": {\n    ")
+
+        coordinator.applySmartInsert(suggestion: suggestion, to: textView)
+
+        let result = textView.string
+        XCTAssertTrue(
+            result.contains("\n    }"),
+            "Inner closer must have 4-space indent; got: \(result)")
+        XCTAssertTrue(
+            result.hasSuffix("\n  }"),
+            "Outer (trailing) closer must have 2-space indent; got: \(result)")
+        XCTAssertFalse(
+            result.hasSuffix("\n    }"),
+            "Trailing closer must not retain the 4-space cursor indent; got: \(result)")
+    }
 }

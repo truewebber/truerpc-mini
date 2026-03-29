@@ -434,6 +434,8 @@ struct JSONTextEditor: NSViewRepresentable {
                 let nextSig = smartInsert.nextSignificantUTF16IndexAndScalar(ns: nsFull, fromUTF16: insertEnd)
                 let lineIndent = smartInsert.lineIndentation(in: nsFull, at: range.location)
 
+                var emittedMiddleCount = 0
+
                 if pendingArrays > 0,
                    let next = nextSig,
                    next.scalar == JsonScanUTF16.bracketClose,
@@ -456,6 +458,7 @@ struct JSONTextEditor: NSViewRepresentable {
                             textView,
                             range: NSRange(location: insertEnd, length: 0),
                             string: patch)
+                        emittedMiddleCount = innerBraces
                     }
                 } else {
                     let missingMiddle = smartInsert.unclosedBraceCount(in: textView.string)
@@ -463,7 +466,8 @@ struct JSONTextEditor: NSViewRepresentable {
                         pair.scalar == JsonScanUTF16.comma || pair.scalar == JsonScanUTF16.colon
                     } ?? false
                     if !skipMiddleInsertion, missingMiddle > 1 {
-                        let patch = smartInsert.indentedClosingSuffix(count: missingMiddle - 1, baseIndent: lineIndent)
+                        emittedMiddleCount = missingMiddle - 1
+                        let patch = smartInsert.indentedClosingSuffix(count: emittedMiddleCount, baseIndent: lineIndent)
                         Self.replaceInTextViewWithoutShouldChangeGate(
                             textView,
                             range: NSRange(location: insertEnd, length: 0),
@@ -475,7 +479,13 @@ struct JSONTextEditor: NSViewRepresentable {
 
                 let missingTrailing = smartInsert.unclosedBraceCount(in: textView.string)
                 if missingTrailing == 1 {
-                    let suffix = smartInsert.indentedClosingSuffix(count: 1, baseIndent: lineIndent)
+                    var trailingIndent = lineIndent
+                    for _ in 0 ..< emittedMiddleCount {
+                        trailingIndent = trailingIndent.count >= 2
+                            ? String(trailingIndent.dropLast(2))
+                            : ""
+                    }
+                    let suffix = smartInsert.indentedClosingSuffix(count: 1, baseIndent: trailingIndent)
                     let endRange = NSRange(location: textView.string.utf16.count, length: 0)
                     Self.replaceInTextViewWithoutShouldChangeGate(textView, range: endRange, string: suffix)
                 }
