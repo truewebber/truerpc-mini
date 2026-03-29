@@ -518,6 +518,23 @@ final class AutocompleteViewModelTests: XCTestCase {
         XCTAssertTrue(names.contains("age"))
     }
 
+    func test_textDidChange_nestedLevelNoSiblings_hidesFillDefaults() async {
+        let vm = makeSUT(suggestions: [
+            makeSuggestion(name: "fillDefaults", kind: .fillDefaults),
+            makeSuggestion(name: "id"),
+        ])
+        mockResolver.stubResolve(AutocompleteContext(
+            resolvedPath: ["request_context", "user"],
+            mode: .key))
+
+        await vm.textDidChange("{\"request_context\": {\"user\": {", cursorOffset: 30, protoFile: testProtoFile)
+
+        XCTAssertFalse(
+            vm.suggestions.map(\.name).contains("fillDefaults"),
+            "fillDefaults must be hidden inside nested objects even when no siblings exist")
+        XCTAssertTrue(vm.suggestions.map(\.name).contains("id"))
+    }
+
     func test_textDidChange_rootLevelNoSiblings_showsFillDefaults() async {
         let vm = makeSUT(suggestions: [
             makeSuggestion(name: "fillDefaults", kind: .fillDefaults),

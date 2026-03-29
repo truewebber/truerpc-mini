@@ -85,10 +85,12 @@ public final class AutocompleteViewModel: ObservableObject {
             guard expectedVersion == self.updateVersion else { return }
 
             let isRootLevel = context.resolvedPath.isEmpty
-            var filtered: [AutocompleteSuggestion] = if context.mode == .key, !allSiblings.isEmpty {
+            // fillDefaults is only meaningful at root level when no fields have been filled yet.
+            // At any nested path (or once any sibling key exists), it must be hidden.
+            var filtered: [AutocompleteSuggestion] = if context.mode == .key {
                 result.filter {
                     if $0.kind == .fillDefaults {
-                        return !isRootLevel
+                        return isRootLevel && allSiblings.isEmpty
                     }
                     return !allSiblings.contains($0.name)
                 }
