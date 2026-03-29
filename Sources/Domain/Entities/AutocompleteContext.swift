@@ -6,9 +6,27 @@ public struct AutocompleteContext: Equatable, Sendable {
     /// Keys already present in the current object scope (used to filter out filled fields).
     public let siblingKeys: Set<String>
 
-    public init(resolvedPath: [String], mode: AutocompleteMode, siblingKeys: Set<String> = []) {
+    /// True when the cursor is positioned after the root `{}` has been fully closed.
+    /// In this case no autocomplete suggestions should be shown.
+    public let isOutsideRootObject: Bool
+
+    /// The partial text the user is currently typing at the cursor position.
+    /// Non-empty when cursor is inside an unclosed key string (e.g. `"dfdf`) or
+    /// after bare (unquoted) text in key position (e.g. `{dfdf`).
+    /// Used to prefix-filter the suggestion list.
+    public let partialKey: String
+
+    public init(
+        resolvedPath: [String],
+        mode: AutocompleteMode,
+        siblingKeys: Set<String> = [],
+        isOutsideRootObject: Bool = false,
+        partialKey: String = "")
+    {
         self.resolvedPath = resolvedPath
         self.mode = mode
         self.siblingKeys = siblingKeys
+        self.isOutsideRootObject = isOutsideRootObject
+        self.partialKey = partialKey
     }
 }

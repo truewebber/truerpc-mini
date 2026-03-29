@@ -1,7 +1,7 @@
 import Foundation
 
 /// Resolves JSON edit position to a field path and autocomplete mode by scanning only before `cursorOffset`.
-public final class JsonPathResolver: Sendable {
+public final class JsonPathResolver: JsonPathResolverProtocol, Sendable {
     public init() {}
 
     public func resolve(json: String, cursorOffset: Int) -> AutocompleteContext {
@@ -14,6 +14,7 @@ public final class JsonPathResolver: Sendable {
         var stack: [StackEntry] = []
         var i = json.startIndex
         var processed = 0
+        var rootClosed = false
 
         while processed < limit, i < json.endIndex {
             skipWhitespace(json: json, index: &i, processed: &processed, limit: limit)
@@ -34,6 +35,8 @@ public final class JsonPathResolver: Sendable {
                 advance(json: json, index: &i, processed: &processed)
                 continue
             }
+
+            let stackSizeBefore = stack.count
 
             switch stack[stack.count - 1] {
             case var .object(frame):
@@ -62,6 +65,14 @@ public final class JsonPathResolver: Sendable {
                     stack[stack.count - 1] = .array(frame)
                 }
             }
+
+            if stackSizeBefore == 1, stack.isEmpty {
+                rootClosed = true
+            }
+        }
+
+        if rootClosed, stack.isEmpty {
+            return AutocompleteContext(resolvedPath: [], mode: .key, isOutsideRootObject: true)
         }
 
         return context(path: path, stack: stack)
@@ -78,6 +89,8 @@ public final class JsonPathResolver: Sendable {
         var escapeNext = false
         var popsPathOnClose = false
         var seenKeys: Set<String> = []
+        /// Accumulates bare (unquoted) characters typed in key position.
+        var pendingBareText = ""
     }
 
     private struct ArrayFrame {
@@ -103,12 +116,17 @@ public final class JsonPathResolver: Sendable {
             let siblings = frame.seenKeys
             if frame.inString {
                 let mode: AutocompleteMode = frame.stringIsKey ? .key : .enumValue
-                return AutocompleteContext(resolvedPath: path, mode: mode, siblingKeys: siblings)
+                let partial = frame.stringIsKey ? frame.pendingKey : ""
+                return AutocompleteContext(resolvedPath: path, mode: mode, siblingKeys: siblings, partialKey: partial)
             }
             if frame.afterColon {
                 return AutocompleteContext(resolvedPath: path, mode: .enumValue, siblingKeys: siblings)
             }
-            return AutocompleteContext(resolvedPath: path, mode: .key, siblingKeys: siblings)
+            return AutocompleteContext(
+                resolvedPath: path,
+                mode: .key,
+                siblingKeys: siblings,
+                partialKey: frame.pendingBareText)
         }
     }
 
@@ -161,11 +179,13 @@ public final class JsonPathResolver: Sendable {
         if ch == "," {
             frame.afterColon = false
             frame.lastKey = nil
+            frame.pendingBareText = ""
             advance(json: json, index: &index, processed: &processed)
             return true
         }
         if ch == ":" {
             frame.afterColon = true
+            frame.pendingBareText = ""
             advance(json: json, index: &index, processed: &processed)
             return true
         }
@@ -174,6 +194,7 @@ public final class JsonPathResolver: Sendable {
             frame.stringIsKey = !frame.afterColon
             frame.pendingKey = ""
             frame.escapeNext = false
+            frame.pendingBareText = ""
             advance(json: json, index: &index, processed: &processed)
             return true
         }
@@ -216,6 +237,8 @@ public final class JsonPathResolver: Sendable {
                 processed: &processed)
             return true
         }
+        // Bare (unquoted) character in key position — accumulate for partial-key filtering.
+        frame.pendingBareText.append(json[index])
         advance(json: json, index: &index, processed: &processed)
         return true
     }

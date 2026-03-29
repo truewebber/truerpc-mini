@@ -5,12 +5,12 @@ import XCTest
 final class AutocompleteViewModelTests: XCTestCase {
     var sut: AutocompleteViewModel!
     var mockProvider: MockAutocompleteProvider!
-    var resolver: JsonPathResolver!
+    var mockResolver: MockJsonPathResolver!
     var testProtoFile: ProtoFile!
 
     override func setUp() async throws {
         try await super.setUp()
-        resolver = JsonPathResolver()
+        mockResolver = MockJsonPathResolver()
         testProtoFile = ProtoFile(
             name: "test.proto",
             path: URL(fileURLWithPath: "/tmp/test.proto"),
@@ -20,7 +20,7 @@ final class AutocompleteViewModelTests: XCTestCase {
     override func tearDown() async throws {
         sut = nil
         mockProvider = nil
-        resolver = nil
+        mockResolver = nil
         testProtoFile = nil
         try await super.tearDown()
     }
@@ -33,7 +33,10 @@ final class AutocompleteViewModelTests: XCTestCase {
 
     private func makeSUT(suggestions: [AutocompleteSuggestion]) -> AutocompleteViewModel {
         mockProvider = MockAutocompleteProvider(stubSuggestions: suggestions)
-        let vm = AutocompleteViewModel(provider: mockProvider, resolver: resolver, methodInputType: ".test.TestMessage")
+        let vm = AutocompleteViewModel(
+            provider: mockProvider,
+            resolver: mockResolver,
+            methodInputType: ".test.TestMessage")
         sut = vm
         return vm
     }
@@ -59,6 +62,7 @@ final class AutocompleteViewModelTests: XCTestCase {
 
     func test_textDidChange_whenProviderReturnsSuggestions_isVisibleTrue() async {
         let vm = makeSUT(suggestions: [makeSuggestion(name: "firstName"), makeSuggestion(name: "lastName")])
+        mockResolver.stubResolve(AutocompleteContext(resolvedPath: [], mode: .key))
 
         await vm.textDidChange("{\"", cursorOffset: 2, protoFile: testProtoFile)
 
@@ -68,6 +72,7 @@ final class AutocompleteViewModelTests: XCTestCase {
 
     func test_textDidChange_whenProviderReturnsEmpty_isVisibleFalse() async {
         let vm = makeSUT(suggestions: [])
+        mockResolver.stubResolve(AutocompleteContext(resolvedPath: [], mode: .key))
 
         await vm.textDidChange("{\"", cursorOffset: 2, protoFile: testProtoFile)
 
@@ -78,6 +83,7 @@ final class AutocompleteViewModelTests: XCTestCase {
     func test_textDidChange_afterVisibleThenEmpty_hidesPopover() async {
         let s = [makeSuggestion(name: "a")]
         let vm = makeSUT(suggestions: s)
+        mockResolver.stubResolve(AutocompleteContext(resolvedPath: [], mode: .key))
         await vm.textDidChange("{\"", cursorOffset: 2, protoFile: testProtoFile)
         XCTAssertTrue(vm.isVisible)
 
@@ -92,6 +98,7 @@ final class AutocompleteViewModelTests: XCTestCase {
 
     func test_textDidChange_resetsSelectedIndexToZero() async {
         let vm = makeSUT(suggestions: [makeSuggestion(name: "a"), makeSuggestion(name: "b"), makeSuggestion(name: "c")])
+        mockResolver.stubResolve(AutocompleteContext(resolvedPath: [], mode: .key))
         await vm.textDidChange("{\"", cursorOffset: 2, protoFile: testProtoFile)
         vm.moveDown()
         vm.moveDown()
@@ -133,6 +140,7 @@ final class AutocompleteViewModelTests: XCTestCase {
 
     func test_textDidChange_textStartingWithBrace_showsSuggestions() async {
         let vm = makeSUT(suggestions: [makeSuggestion()])
+        mockResolver.stubResolve(AutocompleteContext(resolvedPath: [], mode: .key))
 
         await vm.textDidChange("{", cursorOffset: 1, protoFile: testProtoFile)
 
@@ -141,6 +149,7 @@ final class AutocompleteViewModelTests: XCTestCase {
 
     func test_textDidChange_textWithLeadingWhitespaceAndBrace_showsSuggestions() async {
         let vm = makeSUT(suggestions: [makeSuggestion()])
+        mockResolver.stubResolve(AutocompleteContext(resolvedPath: [], mode: .key))
 
         await vm.textDidChange("  {", cursorOffset: 3, protoFile: testProtoFile)
 
@@ -149,6 +158,7 @@ final class AutocompleteViewModelTests: XCTestCase {
 
     func test_textDidChange_wasVisibleThenEmptyText_dismissesSuggestions() async {
         let vm = makeSUT(suggestions: [makeSuggestion()])
+        mockResolver.stubResolve(AutocompleteContext(resolvedPath: [], mode: .key))
         await vm.textDidChange("{\"", cursorOffset: 2, protoFile: testProtoFile)
         XCTAssertTrue(vm.isVisible)
 
@@ -162,6 +172,7 @@ final class AutocompleteViewModelTests: XCTestCase {
 
     func test_moveDown_incrementsSelectedIndex() async {
         let vm = makeSUT(suggestions: [makeSuggestion(name: "a"), makeSuggestion(name: "b"), makeSuggestion(name: "c")])
+        mockResolver.stubResolve(AutocompleteContext(resolvedPath: [], mode: .key))
         await vm.textDidChange("{\"", cursorOffset: 2, protoFile: testProtoFile)
 
         vm.moveDown()
@@ -171,6 +182,7 @@ final class AutocompleteViewModelTests: XCTestCase {
 
     func test_moveDown_wrapsFromLastToFirst() async {
         let vm = makeSUT(suggestions: [makeSuggestion(name: "a"), makeSuggestion(name: "b")])
+        mockResolver.stubResolve(AutocompleteContext(resolvedPath: [], mode: .key))
         await vm.textDidChange("{\"", cursorOffset: 2, protoFile: testProtoFile)
 
         vm.moveDown()
@@ -189,6 +201,7 @@ final class AutocompleteViewModelTests: XCTestCase {
 
     func test_moveDown_singleSuggestion_wrapsToZero() async {
         let vm = makeSUT(suggestions: [makeSuggestion(name: "only")])
+        mockResolver.stubResolve(AutocompleteContext(resolvedPath: [], mode: .key))
         await vm.textDidChange("{\"", cursorOffset: 2, protoFile: testProtoFile)
 
         vm.moveDown()
@@ -200,6 +213,7 @@ final class AutocompleteViewModelTests: XCTestCase {
 
     func test_moveUp_decrementsSelectedIndex() async {
         let vm = makeSUT(suggestions: [makeSuggestion(name: "a"), makeSuggestion(name: "b"), makeSuggestion(name: "c")])
+        mockResolver.stubResolve(AutocompleteContext(resolvedPath: [], mode: .key))
         await vm.textDidChange("{\"", cursorOffset: 2, protoFile: testProtoFile)
         vm.moveDown()
 
@@ -211,6 +225,7 @@ final class AutocompleteViewModelTests: XCTestCase {
     func test_moveUp_wrapsFromFirstToLast() async {
         let suggestions = [makeSuggestion(name: "a"), makeSuggestion(name: "b"), makeSuggestion(name: "c")]
         let vm = makeSUT(suggestions: suggestions)
+        mockResolver.stubResolve(AutocompleteContext(resolvedPath: [], mode: .key))
         await vm.textDidChange("{\"", cursorOffset: 2, protoFile: testProtoFile)
 
         vm.moveUp()
@@ -228,6 +243,7 @@ final class AutocompleteViewModelTests: XCTestCase {
 
     func test_moveUp_singleSuggestion_wrapsToZero() async {
         let vm = makeSUT(suggestions: [makeSuggestion(name: "only")])
+        mockResolver.stubResolve(AutocompleteContext(resolvedPath: [], mode: .key))
         await vm.textDidChange("{\"", cursorOffset: 2, protoFile: testProtoFile)
 
         vm.moveUp()
@@ -239,6 +255,7 @@ final class AutocompleteViewModelTests: XCTestCase {
 
     func test_dismiss_clearsStateAndHidesPopover() async {
         let vm = makeSUT(suggestions: [makeSuggestion(name: "a")])
+        mockResolver.stubResolve(AutocompleteContext(resolvedPath: [], mode: .key))
         await vm.textDidChange("{\"", cursorOffset: 2, protoFile: testProtoFile)
         XCTAssertTrue(vm.isVisible)
 
@@ -265,6 +282,7 @@ final class AutocompleteViewModelTests: XCTestCase {
     func test_commitSelection_returnsFirstSuggestionByDefault() async {
         let first = makeSuggestion(name: "alpha")
         let vm = makeSUT(suggestions: [first, makeSuggestion(name: "beta")])
+        mockResolver.stubResolve(AutocompleteContext(resolvedPath: [], mode: .key))
         await vm.textDidChange("{\"", cursorOffset: 2, protoFile: testProtoFile)
 
         let result = vm.commitSelection()
@@ -274,6 +292,7 @@ final class AutocompleteViewModelTests: XCTestCase {
 
     func test_commitSelection_returnsSelectedSuggestionAfterMoveDown() async {
         let vm = makeSUT(suggestions: [makeSuggestion(name: "alpha"), makeSuggestion(name: "beta")])
+        mockResolver.stubResolve(AutocompleteContext(resolvedPath: [], mode: .key))
         await vm.textDidChange("{\"", cursorOffset: 2, protoFile: testProtoFile)
         vm.moveDown()
 
@@ -293,6 +312,7 @@ final class AutocompleteViewModelTests: XCTestCase {
     func test_commitSelection_preservesSuggestionKind() async {
         let fill = makeSuggestion(name: "fillDefaults", kind: .fillDefaults)
         let vm = makeSUT(suggestions: [fill])
+        mockResolver.stubResolve(AutocompleteContext(resolvedPath: [], mode: .key))
         await vm.textDidChange("{\"", cursorOffset: 2, protoFile: testProtoFile)
 
         let result = vm.commitSelection()
@@ -304,6 +324,7 @@ final class AutocompleteViewModelTests: XCTestCase {
 
     func test_moveDown_thenUp_returnsToOriginalIndex() async {
         let vm = makeSUT(suggestions: [makeSuggestion(name: "a"), makeSuggestion(name: "b"), makeSuggestion(name: "c")])
+        mockResolver.stubResolve(AutocompleteContext(resolvedPath: [], mode: .key))
         await vm.textDidChange("{\"", cursorOffset: 2, protoFile: testProtoFile)
 
         vm.moveDown()
@@ -317,6 +338,7 @@ final class AutocompleteViewModelTests: XCTestCase {
     func test_fullCycleDown_returnsToZero() async {
         let suggestions = [makeSuggestion(name: "a"), makeSuggestion(name: "b"), makeSuggestion(name: "c")]
         let vm = makeSUT(suggestions: suggestions)
+        mockResolver.stubResolve(AutocompleteContext(resolvedPath: [], mode: .key))
         await vm.textDidChange("{\"", cursorOffset: 2, protoFile: testProtoFile)
 
         for _ in 0 ..< suggestions.count {
@@ -329,6 +351,7 @@ final class AutocompleteViewModelTests: XCTestCase {
     func test_fullCycleUp_returnsToZero() async {
         let suggestions = [makeSuggestion(name: "a"), makeSuggestion(name: "b"), makeSuggestion(name: "c")]
         let vm = makeSUT(suggestions: suggestions)
+        mockResolver.stubResolve(AutocompleteContext(resolvedPath: [], mode: .key))
         await vm.textDidChange("{\"", cursorOffset: 2, protoFile: testProtoFile)
 
         for _ in 0 ..< suggestions.count {
@@ -346,13 +369,17 @@ final class AutocompleteViewModelTests: XCTestCase {
             makeSuggestion(name: "name"),
             makeSuggestion(name: "age"),
         ])
+        mockResolver.stubResolve(AutocompleteContext(
+            resolvedPath: [],
+            mode: .key,
+            siblingKeys: ["name"]))
 
         await vm.textDidChange("{\"name\": \"val\", ", cursorOffset: 16, protoFile: testProtoFile)
 
         let names = vm.suggestions.map(\.name)
         XCTAssertFalse(names.contains("name"), "Already-present key should be filtered")
         XCTAssertTrue(names.contains("age"))
-        XCTAssertTrue(names.contains("fillDefaults"), "fillDefaults must not be filtered")
+        XCTAssertFalse(names.contains("fillDefaults"), "fillDefaults must be hidden when root fields already exist")
     }
 
     func test_textDidChange_noSiblingKeys_noFiltering() async {
@@ -360,6 +387,7 @@ final class AutocompleteViewModelTests: XCTestCase {
             makeSuggestion(name: "a"),
             makeSuggestion(name: "b"),
         ])
+        mockResolver.stubResolve(AutocompleteContext(resolvedPath: [], mode: .key))
 
         await vm.textDidChange("{", cursorOffset: 1, protoFile: testProtoFile)
 
@@ -370,6 +398,7 @@ final class AutocompleteViewModelTests: XCTestCase {
 
     func test_textDidChange_arrayElementMode_dismissesSuggestions() async {
         let vm = makeSUT(suggestions: [makeSuggestion(name: "name"), makeSuggestion(name: "age")])
+        mockResolver.stubResolve(AutocompleteContext(resolvedPath: ["items"], mode: .arrayElement))
 
         await vm.textDidChange("{\"items\": [", cursorOffset: 11, protoFile: testProtoFile)
 
@@ -379,10 +408,167 @@ final class AutocompleteViewModelTests: XCTestCase {
 
     func test_textDidChange_objectInsideArray_showsSuggestions() async {
         let vm = makeSUT(suggestions: [makeSuggestion(name: "name")])
+        mockResolver.stubResolve(AutocompleteContext(resolvedPath: ["items"], mode: .key))
 
         await vm.textDidChange("{\"items\": [{", cursorOffset: 12, protoFile: testProtoFile)
 
         XCTAssertTrue(vm.isVisible, "Popover should show inside { within array")
+    }
+
+    // MARK: - Partial key prefix filtering
+
+    func test_textDidChange_withPartialStringKey_filtersByPrefix() async {
+        let vm = makeSUT(suggestions: [
+            makeSuggestion(name: "firstName"),
+            makeSuggestion(name: "lastName"),
+            makeSuggestion(name: "phone"),
+        ])
+        mockResolver.stubResolve(AutocompleteContext(
+            resolvedPath: [],
+            mode: .key,
+            partialKey: "fir"))
+
+        await vm.textDidChange("{\"fir", cursorOffset: 5, protoFile: testProtoFile)
+
+        let names = vm.suggestions.map(\.name)
+        XCTAssertTrue(names.contains("firstName"), "firstName starts with 'fir'")
+        XCTAssertFalse(names.contains("lastName"), "lastName does not start with 'fir'")
+        XCTAssertFalse(names.contains("phone"), "phone does not start with 'fir'")
+    }
+
+    func test_textDidChange_withBareText_filtersByPrefix() async {
+        let vm = makeSUT(suggestions: [
+            makeSuggestion(name: "firstName"),
+            makeSuggestion(name: "lastName"),
+        ])
+        mockResolver.stubResolve(AutocompleteContext(
+            resolvedPath: [],
+            mode: .key,
+            partialKey: "fir"))
+
+        await vm.textDidChange("{fir", cursorOffset: 4, protoFile: testProtoFile)
+
+        let names = vm.suggestions.map(\.name)
+        XCTAssertTrue(names.contains("firstName"))
+        XCTAssertFalse(names.contains("lastName"))
+    }
+
+    func test_textDidChange_withPartialKey_hidesFillDefaults() async {
+        let vm = makeSUT(suggestions: [
+            makeSuggestion(name: "fillDefaults", kind: .fillDefaults),
+            makeSuggestion(name: "firstName"),
+        ])
+        mockResolver.stubResolve(AutocompleteContext(
+            resolvedPath: [],
+            mode: .key,
+            partialKey: "fir"))
+
+        await vm.textDidChange("{\"fir", cursorOffset: 5, protoFile: testProtoFile)
+
+        XCTAssertFalse(
+            vm.suggestions.map(\.name).contains("fillDefaults"),
+            "fillDefaults must be hidden when user is typing a key")
+    }
+
+    func test_textDidChange_withEmptyPartialKey_showsAllSuggestions() async {
+        let vm = makeSUT(suggestions: [
+            makeSuggestion(name: "fillDefaults", kind: .fillDefaults),
+            makeSuggestion(name: "firstName"),
+            makeSuggestion(name: "lastName"),
+        ])
+        mockResolver.stubResolve(AutocompleteContext(resolvedPath: [], mode: .key))
+
+        await vm.textDidChange("{\"", cursorOffset: 2, protoFile: testProtoFile)
+
+        XCTAssertEqual(vm.suggestions.count, 3, "All suggestions visible when no partial key")
+    }
+
+    func test_textDidChange_withNonMatchingPartialKey_showsNoSuggestions() async {
+        let vm = makeSUT(suggestions: [
+            makeSuggestion(name: "firstName"),
+            makeSuggestion(name: "lastName"),
+        ])
+        mockResolver.stubResolve(AutocompleteContext(
+            resolvedPath: [],
+            mode: .key,
+            partialKey: "zzz"))
+
+        await vm.textDidChange("{\"zzz", cursorOffset: 5, protoFile: testProtoFile)
+
+        XCTAssertTrue(vm.suggestions.isEmpty, "No suggestions when partial key matches nothing")
+        XCTAssertFalse(vm.isVisible)
+    }
+
+    // MARK: - fillDefaults visibility based on root level and siblings
+
+    func test_textDidChange_rootLevelWithSiblings_hidesFillDefaults() async {
+        let vm = makeSUT(suggestions: [
+            makeSuggestion(name: "fillDefaults", kind: .fillDefaults),
+            makeSuggestion(name: "age"),
+        ])
+        mockResolver.stubResolve(AutocompleteContext(
+            resolvedPath: [],
+            mode: .key,
+            siblingKeys: ["name"]))
+
+        await vm.textDidChange("{\"name\": \"val\", ", cursorOffset: 16, protoFile: testProtoFile)
+
+        let names = vm.suggestions.map(\.name)
+        XCTAssertFalse(names.contains("fillDefaults"), "fillDefaults must be hidden at root when any field exists")
+        XCTAssertTrue(names.contains("age"))
+    }
+
+    func test_textDidChange_rootLevelNoSiblings_showsFillDefaults() async {
+        let vm = makeSUT(suggestions: [
+            makeSuggestion(name: "fillDefaults", kind: .fillDefaults),
+            makeSuggestion(name: "age"),
+        ])
+        mockResolver.stubResolve(AutocompleteContext(resolvedPath: [], mode: .key))
+
+        await vm.textDidChange("{", cursorOffset: 1, protoFile: testProtoFile)
+
+        let names = vm.suggestions.map(\.name)
+        XCTAssertTrue(names.contains("fillDefaults"), "fillDefaults must be shown at root when no fields exist yet")
+    }
+
+    // MARK: - Outside root object
+
+    func test_textDidChange_cursorAfterCompleteRootObject_dismissesSuggestions() async {
+        let vm = makeSUT(suggestions: [makeSuggestion(name: "name")])
+        mockResolver.stubResolve(AutocompleteContext(
+            resolvedPath: [],
+            mode: .key,
+            isOutsideRootObject: true))
+
+        await vm.textDidChange("{\"a\": 1}", cursorOffset: 8, protoFile: testProtoFile)
+
+        XCTAssertFalse(vm.isVisible, "Popover must not show when cursor is outside the root {}")
+        XCTAssertTrue(vm.suggestions.isEmpty)
+    }
+
+    func test_textDidChange_cursorAfterEmptyRootObject_dismissesSuggestions() async {
+        let vm = makeSUT(suggestions: [makeSuggestion(name: "name")])
+        mockResolver.stubResolve(AutocompleteContext(
+            resolvedPath: [],
+            mode: .key,
+            isOutsideRootObject: true))
+
+        await vm.textDidChange("{}", cursorOffset: 2, protoFile: testProtoFile)
+
+        XCTAssertFalse(vm.isVisible, "Popover must not show after closing brace of empty root object")
+        XCTAssertTrue(vm.suggestions.isEmpty)
+    }
+
+    func test_textDidChange_cursorBeforeClosingBraceOfRootObject_showsSuggestions() async {
+        let vm = makeSUT(suggestions: [makeSuggestion(name: "name")])
+        mockResolver.stubResolve(AutocompleteContext(
+            resolvedPath: [],
+            mode: .key,
+            siblingKeys: ["a"]))
+
+        await vm.textDidChange("{\"a\": 1}", cursorOffset: 7, protoFile: testProtoFile)
+
+        XCTAssertTrue(vm.isVisible, "Popover must show when cursor is still inside root {}")
     }
 
     // MARK: - Full sibling key filtering (keys after cursor)
@@ -393,11 +579,14 @@ final class AutocompleteViewModelTests: XCTestCase {
             makeSuggestion(name: "b"),
             makeSuggestion(name: "c"),
         ])
+        mockResolver.stubResolve(AutocompleteContext(
+            resolvedPath: [],
+            mode: .key,
+            siblingKeys: ["a"]))
+        mockResolver.stubCollectKeys(["b"])
 
-        // Cursor is before "b", but "b" is already in the object after cursor
         let json = "{\"a\": 1,\n\n\"b\": 2}"
-        let cursorOffset = 9 // after the comma+newline, before "b"
-        await vm.textDidChange(json, cursorOffset: cursorOffset, protoFile: testProtoFile)
+        await vm.textDidChange(json, cursorOffset: 9, protoFile: testProtoFile)
 
         let names = vm.suggestions.map(\.name)
         XCTAssertFalse(names.contains("a"), "'a' before cursor should be filtered")

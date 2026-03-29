@@ -14,7 +14,7 @@ public final class AutocompleteViewModel: ObservableObject {
     // MARK: - Dependencies
 
     private let provider: AutocompleteProviderProtocol
-    private let resolver: JsonPathResolver
+    private let resolver: any JsonPathResolverProtocol
     private let methodInputType: String
 
     // MARK: - Handlers
@@ -34,7 +34,7 @@ public final class AutocompleteViewModel: ObservableObject {
 
     public init(
         provider: AutocompleteProviderProtocol,
-        resolver: JsonPathResolver,
+        resolver: any JsonPathResolverProtocol,
         methodInputType: String)
     {
         self.provider = provider
@@ -61,7 +61,7 @@ public final class AutocompleteViewModel: ObservableObject {
 
         let context = resolver.resolve(json: text, cursorOffset: cursorOffset)
 
-        if context.mode == .arrayElement {
+        if context.isOutsideRootObject || context.mode == .arrayElement {
             suggestions = []
             isVisible = false
             selectedIndex = 0
@@ -84,10 +84,26 @@ public final class AutocompleteViewModel: ObservableObject {
 
             guard expectedVersion == self.updateVersion else { return }
 
-            let filtered: [AutocompleteSuggestion] = if context.mode == .key, !allSiblings.isEmpty {
-                result.filter { $0.kind == .fillDefaults || !allSiblings.contains($0.name) }
+            let isRootLevel = context.resolvedPath.isEmpty
+            var filtered: [AutocompleteSuggestion] = if context.mode == .key, !allSiblings.isEmpty {
+                result.filter {
+                    if $0.kind == .fillDefaults {
+                        return !isRootLevel
+                    }
+                    return !allSiblings.contains($0.name)
+                }
             } else {
                 result
+            }
+
+            // Filter by partial key prefix when the user has already started typing.
+            // fillDefaults is never relevant while the user is actively typing a key name.
+            let partialKey = context.partialKey
+            if !partialKey.isEmpty {
+                let lower = partialKey.lowercased()
+                filtered = filtered.filter {
+                    $0.kind != .fillDefaults && $0.name.lowercased().hasPrefix(lower)
+                }
             }
 
             self.suggestions = Self.sortSuggestions(filtered)

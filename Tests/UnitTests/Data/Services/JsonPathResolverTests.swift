@@ -443,6 +443,90 @@ final class JsonPathResolverTests: XCTestCase {
         XCTAssertEqual(context.siblingKeys, ["x"])
     }
 
+    // MARK: - partialKey
+
+    func test_resolve_cursorInsideStringKey_partialKeyContainsTypedText() {
+        let json = "{\"dfdf"
+        let context = sut.resolve(json: json, cursorOffset: json.count)
+        XCTAssertEqual(context.mode, .key)
+        XCTAssertEqual(context.partialKey, "dfdf")
+    }
+
+    func test_resolve_cursorInsideEmptyStringKey_partialKeyIsEmpty() {
+        let json = "{\""
+        let context = sut.resolve(json: json, cursorOffset: json.count)
+        XCTAssertEqual(context.mode, .key)
+        XCTAssertEqual(context.partialKey, "")
+    }
+
+    func test_resolve_cursorInsideBareTextKey_partialKeyContainsBareText() {
+        let json = "{dfdf"
+        let context = sut.resolve(json: json, cursorOffset: json.count)
+        XCTAssertEqual(context.mode, .key)
+        XCTAssertEqual(context.partialKey, "dfdf")
+    }
+
+    func test_resolve_cursorAfterComma_partialKeyIsEmpty() {
+        let json = "{\"a\": 1, "
+        let context = sut.resolve(json: json, cursorOffset: json.count)
+        XCTAssertEqual(context.mode, .key)
+        XCTAssertEqual(context.partialKey, "")
+    }
+
+    func test_resolve_cursorInValuePosition_partialKeyIsEmpty() {
+        let json = "{\"a\": "
+        let context = sut.resolve(json: json, cursorOffset: json.count)
+        XCTAssertEqual(context.mode, .enumValue)
+        XCTAssertEqual(context.partialKey, "")
+    }
+
+    func test_resolve_bareTextClearedAfterComma_partialKeyIsEmpty() {
+        // First bare text then comma then no more text
+        let json = "{dfdf, "
+        let context = sut.resolve(json: json, cursorOffset: json.count)
+        XCTAssertEqual(context.mode, .key)
+        XCTAssertEqual(context.partialKey, "")
+    }
+
+    // MARK: - isOutsideRootObject
+
+    func test_resolve_cursorAfterCompleteRootObject_isOutsideRootObject() {
+        let json = "{\"a\": 1}"
+        let context = sut.resolve(json: json, cursorOffset: json.count)
+        XCTAssertTrue(context.isOutsideRootObject)
+    }
+
+    func test_resolve_cursorAfterEmptyRootObject_isOutsideRootObject() {
+        let json = "{}"
+        let context = sut.resolve(json: json, cursorOffset: json.count)
+        XCTAssertTrue(context.isOutsideRootObject)
+    }
+
+    func test_resolve_cursorBeforeClosingBrace_notOutsideRootObject() {
+        // Offset 7 is just before the final `}` of `{"a": 1}`
+        let json = "{\"a\": 1}"
+        let context = sut.resolve(json: json, cursorOffset: 7)
+        XCTAssertFalse(context.isOutsideRootObject)
+    }
+
+    func test_resolve_cursorInsideOpenRoot_notOutsideRootObject() {
+        let json = "{"
+        let context = sut.resolve(json: json, cursorOffset: json.count)
+        XCTAssertFalse(context.isOutsideRootObject)
+    }
+
+    func test_resolve_cursorInsideNestedObject_notOutsideRootObject() {
+        let json = "{\"a\": {"
+        let context = sut.resolve(json: json, cursorOffset: json.count)
+        XCTAssertFalse(context.isOutsideRootObject)
+    }
+
+    func test_resolve_cursorAfterClosedNestedButRootStillOpen_notOutsideRootObject() {
+        let json = "{\"a\": {}, "
+        let context = sut.resolve(json: json, cursorOffset: json.count)
+        XCTAssertFalse(context.isOutsideRootObject)
+    }
+
     // MARK: - collectKeysAfterCursor
 
     func test_collectKeysAfterCursor_findsKeysInSameObject() {

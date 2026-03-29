@@ -43,7 +43,7 @@ public final class EditorTabViewModel: ObservableObject {
         executeRequestUseCase: ExecuteUnaryRequestUseCaseProtocol,
         exportResponseUseCase: ExportResponseUseCaseProtocol,
         autocompleteProvider: AutocompleteProviderProtocol,
-        resolver: JsonPathResolver,
+        resolver: any JsonPathResolverProtocol,
         logger: AppLogger)
     {
         self.editorTab = editorTab

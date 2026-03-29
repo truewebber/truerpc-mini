@@ -20,7 +20,7 @@ public final class AppViewModel: ObservableObject {
     private let executeRequestUseCase: ExecuteUnaryRequestUseCaseProtocol
     private let exportResponseUseCase: ExportResponseUseCaseProtocol
     private let autocompleteProvider: AutocompleteProviderProtocol
-    private let resolver: JsonPathResolver
+    private let resolver: any JsonPathResolverProtocol
     private let telemetry: TelemetryServiceProtocol
     private let logger: AppLogger
 
@@ -33,7 +33,7 @@ public final class AppViewModel: ObservableObject {
         executeRequestUseCase: ExecuteUnaryRequestUseCaseProtocol,
         exportResponseUseCase: ExportResponseUseCaseProtocol,
         autocompleteProvider: AutocompleteProviderProtocol,
-        resolver: JsonPathResolver,
+        resolver: any JsonPathResolverProtocol,
         telemetry: TelemetryServiceProtocol,
         logger: AppLogger)
     {

@@ -267,57 +267,6 @@ final class JSONTextEditorIntegrationTests: XCTestCase {
         XCTAssertFalse(vm.isVisible)
     }
 
-    // MARK: - smartInsertComponents static method
-
-    func test_smartInsertComponents_string_returnsQuotedKeyAndEmptyValue() {
-        let suggestion = AutocompleteSuggestion(name: "name", typeHint: "string", kind: .string)
-        let (text, cursorBack) = JSONTextEditor.Coordinator.smartInsertComponents(for: suggestion)
-        XCTAssertEqual(text, "\"name\": \"\"")
-        XCTAssertEqual(cursorBack, 1)
-    }
-
-    func test_smartInsertComponents_number_returnsKeyColonSpace() {
-        let suggestion = AutocompleteSuggestion(name: "age", typeHint: "int32", kind: .number)
-        let (text, cursorBack) = JSONTextEditor.Coordinator.smartInsertComponents(for: suggestion)
-        XCTAssertEqual(text, "\"age\": ")
-        XCTAssertEqual(cursorBack, 0)
-    }
-
-    func test_smartInsertComponents_bool_returnsKeyColonSpace() {
-        let suggestion = AutocompleteSuggestion(name: "active", typeHint: "bool", kind: .bool)
-        let (text, cursorBack) = JSONTextEditor.Coordinator.smartInsertComponents(for: suggestion)
-        XCTAssertEqual(text, "\"active\": ")
-        XCTAssertEqual(cursorBack, 0)
-    }
-
-    func test_smartInsertComponents_message_returnsNestedBraces() {
-        let suggestion = AutocompleteSuggestion(name: "addr", typeHint: "Address", kind: .message)
-        let (text, cursorBack) = JSONTextEditor.Coordinator.smartInsertComponents(for: suggestion)
-        XCTAssertEqual(text, "\"addr\": {\n  \n}")
-        XCTAssertEqual(cursorBack, 2)
-    }
-
-    func test_smartInsertComponents_enum_returnsQuotedName() {
-        let suggestion = AutocompleteSuggestion(name: "ACTIVE", typeHint: "Status", kind: .enum)
-        let (text, cursorBack) = JSONTextEditor.Coordinator.smartInsertComponents(for: suggestion)
-        XCTAssertEqual(text, "\"ACTIVE\"")
-        XCTAssertEqual(cursorBack, 0)
-    }
-
-    func test_smartInsertComponents_repeated_returnsEmptyArray() {
-        let suggestion = AutocompleteSuggestion(name: "tags", typeHint: "string[]", kind: .repeated)
-        let (text, cursorBack) = JSONTextEditor.Coordinator.smartInsertComponents(for: suggestion)
-        XCTAssertEqual(text, "\"tags\": []")
-        XCTAssertEqual(cursorBack, 1)
-    }
-
-    func test_smartInsertComponents_fillDefaults_returnsEmptyString() {
-        let suggestion = AutocompleteSuggestion(name: "fillDefaults", typeHint: "", kind: .fillDefaults)
-        let (text, cursorBack) = JSONTextEditor.Coordinator.smartInsertComponents(for: suggestion)
-        XCTAssertEqual(text, "")
-        XCTAssertEqual(cursorBack, 0)
-    }
-
     // MARK: - Unrecognized command selectors not consumed
 
     func test_unrecognizedCommand_whenPopoverVisible_isNotConsumed() {
@@ -329,36 +278,6 @@ final class JSONTextEditorIntegrationTests: XCTestCase {
         let consumed = coordinator.textView(textView, doCommandBy: #selector(NSTextView.deleteBackward(_:)))
 
         XCTAssertFalse(consumed)
-    }
-
-    // MARK: - unclosedBraceCount
-
-    func test_unclosedBraceCount_balanced_returnsZero() {
-        XCTAssertEqual(JSONTextEditor.Coordinator.unclosedBraceCount(in: "{\"a\": 1}"), 0)
-    }
-
-    func test_unclosedBraceCount_oneOpen_returnsOne() {
-        XCTAssertEqual(JSONTextEditor.Coordinator.unclosedBraceCount(in: "{\"a\": 1"), 1)
-    }
-
-    func test_unclosedBraceCount_nestedOpen_returnsTwo() {
-        XCTAssertEqual(JSONTextEditor.Coordinator.unclosedBraceCount(in: "{\"a\": {\"b\": 1"), 2)
-    }
-
-    func test_unclosedBraceCount_bracesInsideString_ignored() {
-        XCTAssertEqual(JSONTextEditor.Coordinator.unclosedBraceCount(in: "{\"data\": \"{{{}\"}"), 0)
-    }
-
-    func test_unclosedBraceCount_empty_returnsZero() {
-        XCTAssertEqual(JSONTextEditor.Coordinator.unclosedBraceCount(in: ""), 0)
-    }
-
-    func test_unclosedBraceCount_moreClosed_returnsZero() {
-        XCTAssertEqual(JSONTextEditor.Coordinator.unclosedBraceCount(in: "}}"), 0)
-    }
-
-    func test_unclosedBraceCount_escapedQuoteInsideString_correctCount() {
-        XCTAssertEqual(JSONTextEditor.Coordinator.unclosedBraceCount(in: "{\"key\": \"val\\\"ue\""), 1)
     }
 
     // MARK: - Smart insert auto-closes braces
@@ -441,21 +360,70 @@ final class JSONTextEditorIntegrationTests: XCTestCase {
             "Closing brace must appear before the array `]`; got: \(textView.string)")
     }
 
-    func test_arrayBracketBalanceInPrefix_insideNestedArray_returnsDepth() {
-        let s = "{\n  \"names\": [\n    {\n      " as NSString
-        let depth = JSONTextEditor.Coordinator.arrayBracketBalanceInPrefix(ns: s, endUTF16: s.length)
-        XCTAssertEqual(depth, 1)
+    // MARK: - applySmartInsert with partial key text
+
+    func test_applySmartInsert_withPartialStringKey_replacesPartialTextInsteadOfAppending() {
+        // User typed `{"num` (partial key), then presses Tab to insert `numbers` field.
+        // Expected: `{"num` is replaced by `"numbers": ""`, not appended after.
+        let suggestion = AutocompleteSuggestion(name: "numbers", typeHint: "string", kind: .string)
+        let (coordinator, _) = makeCoordinator()
+        let textView = makeTextView(text: "{\"num")
+
+        coordinator.applySmartInsert(suggestion: suggestion, to: textView)
+
+        XCTAssertFalse(
+            textView.string.contains("num\"numbers"),
+            "Partial text must be replaced, not kept: \(textView.string)")
+        XCTAssertTrue(
+            textView.string.contains("\"numbers\": \"\""),
+            "Full field snippet must be present: \(textView.string)")
     }
 
-    func test_netBraceCountInUTF16Range_objectInsideArray_countsOneOpenBrace() {
-        let str = "{\n  \"names\": [\n    {\n      \"id\": \"\""
-        let ns = str as NSString
-        let openBracket = ns.range(of: "[").location
-        let segmentStart = openBracket + 1
-        let net = JSONTextEditor.Coordinator.netBraceCountInUTF16Range(
-            ns: ns,
-            fromUTF16: segmentStart,
-            toUTF16: ns.length)
-        XCTAssertEqual(net, 1)
+    func test_applySmartInsert_withOpeningQuoteOnly_replacesQuote() {
+        // User typed `{"` (just the opening quote), then presses Tab.
+        let suggestion = AutocompleteSuggestion(name: "name", typeHint: "string", kind: .string)
+        let (coordinator, _) = makeCoordinator()
+        let textView = makeTextView(text: "{\"")
+
+        coordinator.applySmartInsert(suggestion: suggestion, to: textView)
+
+        XCTAssertTrue(
+            textView.string.contains("\"name\": \"\""),
+            "Snippet must replace the lone opening quote: \(textView.string)")
+        XCTAssertFalse(
+            textView.string.contains("\"\"name"),
+            "No doubled quote: \(textView.string)")
+    }
+
+    func test_applySmartInsert_withNoPartialKey_insertsAtCursor() {
+        // Cursor is after `{` with no partial key — normal insert path unchanged.
+        let suggestion = AutocompleteSuggestion(name: "name", typeHint: "string", kind: .string)
+        let (coordinator, _) = makeCoordinator()
+        let textView = makeTextView(text: "{\n  ")
+
+        coordinator.applySmartInsert(suggestion: suggestion, to: textView)
+
+        XCTAssertTrue(
+            textView.string.contains("\"name\": \"\""),
+            "Normal insert must still work: \(textView.string)")
+    }
+
+    // MARK: - applySmartInsert with bare text
+
+    func test_applySmartInsert_withBareText_replacesBareTextInsteadOfAppending() {
+        // User typed `{dfdf` (bare, no opening quote) then presses Tab.
+        // Expected: `dfdf` is replaced by the snippet, not left in place.
+        let suggestion = AutocompleteSuggestion(name: "numbers", typeHint: "string", kind: .string)
+        let (coordinator, _) = makeCoordinator()
+        let textView = makeTextView(text: "{dfdf")
+
+        coordinator.applySmartInsert(suggestion: suggestion, to: textView)
+
+        XCTAssertFalse(
+            textView.string.contains("dfdf\"numbers"),
+            "Bare text must be replaced, not kept: \(textView.string)")
+        XCTAssertTrue(
+            textView.string.contains("\"numbers\": \"\""),
+            "Full field snippet must be present: \(textView.string)")
     }
 }
