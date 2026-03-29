@@ -190,8 +190,6 @@ struct JSONTextEditor: NSViewRepresentable {
                 vm.dismiss()
                 autocompletePopover.close()
             }
-            suppressTextDidChange = true
-            DispatchQueue.main.async { self.suppressTextDidChange = false }
             return applySmartNewline(in: textView)
         }
 
@@ -403,9 +401,6 @@ struct JSONTextEditor: NSViewRepresentable {
 
         /// Internal for `@testable` integration tests (keyboard path also calls this).
         func applySmartInsert(suggestion: AutocompleteSuggestion, to textView: NSTextView) {
-            let (insertText, cursorBack) = smartInsert.smartInsertComponents(for: suggestion)
-            guard !insertText.isEmpty else { return }
-
             var range = textView.selectedRange()
             // When cursor is inside a partial string (e.g. `"nam`) or after bare text
             // (e.g. `{dfdf`), extend the replacement range back to the start of that
@@ -416,6 +411,13 @@ struct JSONTextEditor: NSViewRepresentable {
             } else if let bareStart = smartInsert.findBareTextStart(in: ns, cursorOffset: range.location) {
                 range = NSRange(location: bareStart, length: range.location - bareStart)
             }
+            // Compute line indentation from pre-insertion text so the snippet and all
+            // closing-brace patches share a consistent base indent.
+            let lineIndent = smartInsert.lineIndentation(in: ns, at: range.location)
+            let (insertText, cursorBack) = smartInsert.smartInsertComponents(
+                for: suggestion, lineIndent: lineIndent)
+            guard !insertText.isEmpty else { return }
+
             if textView.shouldChangeText(in: range, replacementString: insertText) {
                 suppressTextDidChange = true
                 defer { suppressTextDidChange = false }
@@ -432,7 +434,6 @@ struct JSONTextEditor: NSViewRepresentable {
                 let nsFull = textView.string as NSString
                 let pendingArrays = smartInsert.arrayBracketBalanceInPrefix(ns: nsFull, endUTF16: insertEnd)
                 let nextSig = smartInsert.nextSignificantUTF16IndexAndScalar(ns: nsFull, fromUTF16: insertEnd)
-                let lineIndent = smartInsert.lineIndentation(in: nsFull, at: range.location)
 
                 var emittedMiddleCount = 0
 

@@ -24,22 +24,32 @@ struct SmartInsertService {
 
     /// Returns the snippet text and the number of UTF-16 code units to step the cursor
     /// back after insertion (for placing the cursor inside quotes/braces).
+    ///
+    /// For `.message` suggestions, `lineIndent` is used to produce a properly-indented
+    /// opening block: inner content at `lineIndent + "  "`, closing brace at `lineIndent`.
     func smartInsertComponents(
-        for suggestion: AutocompleteSuggestion)
+        for suggestion: AutocompleteSuggestion,
+        lineIndent: String = "")
         -> (text: String, cursorBack: Int)
     {
         let name = suggestion.name
         switch suggestion.kind {
         case .string:
             return ("\"\(name)\": \"\"", 1)
+
         case .number, .bool:
             return ("\"\(name)\": ", 0)
+
         case .message:
-            return ("\"\(name)\": {\n  \n}", 2)
+            let innerIndent = lineIndent + "  "
+            return ("\"\(name)\": {\n\(innerIndent)\n\(lineIndent)}", lineIndent.count + 2)
+
         case .enum:
             return ("\"\(name)\"", 0)
+
         case .repeated:
             return ("\"\(name)\": []", 1)
+
         case .fillDefaults:
             return ("", 0)
         }

@@ -234,6 +234,12 @@ struct RequestEditorView: View {
 
                 Spacer()
 
+                if let error = viewModel.requestJsonFormatError {
+                    Text(error)
+                        .font(.caption)
+                        .foregroundColor(.red)
+                }
+
                 Button {
                     Task { await viewModel.resetToPreset() }
                 } label: {
@@ -242,6 +248,15 @@ struct RequestEditorView: View {
                 .buttonStyle(.borderless)
                 .disabled(viewModel.isLoading)
                 .help("Reset to Preset")
+
+                Button {
+                    Task { viewModel.formatRequestJson() }
+                } label: {
+                    Image(systemName: "curlybraces")
+                }
+                .buttonStyle(.borderless)
+                .disabled(viewModel.isLoading)
+                .help("Format JSON")
             }
 
             JSONTextEditor(
@@ -270,6 +285,21 @@ struct RequestEditorView: View {
                 Text("JSON format: {\"key\": \"value\"}")
                     .font(.caption2)
                     .foregroundColor(.secondary)
+
+                if let error = viewModel.metadataFormatError {
+                    Text(error)
+                        .font(.caption)
+                        .foregroundColor(.red)
+                }
+
+                Button {
+                    Task { viewModel.formatMetadata() }
+                } label: {
+                    Image(systemName: "curlybraces")
+                }
+                .buttonStyle(.borderless)
+                .disabled(viewModel.isLoading)
+                .help("Format JSON")
             }
 
             JSONTextEditor(text: Binding(

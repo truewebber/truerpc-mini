@@ -158,6 +158,157 @@ final class JSONTextEditorIntegrationTests: XCTestCase {
         XCTAssertFalse(vm.isVisible, "Popover must be dismissed on Enter")
     }
 
+    // MARK: - Enter key — autocomplete update is not suppressed after newline
+
+    /// Positive: `textDidChange` is not suppressed after Enter so the autocomplete Task
+    /// fires and populates suggestions when the provider has them.
+    ///
+    /// In production `textView.delegate = coordinator` is wired up in `makeNSView`.
+    /// Replicating that here lets `textView.didChangeText()` reach the coordinator.
+    func test_enterKey_schedulesAutocompleteUpdateAfterNewline() async throws {
+        let suggestion = AutocompleteSuggestion(name: "userId", typeHint: "int64", kind: .number)
+        let provider = MockAutocompleteProvider(stubSuggestions: [suggestion])
+        let (coordinator, vm) = makeCoordinator(provider: provider)
+
+        let textView = NSTextView()
+        textView.delegate = coordinator // mirrors makeNSView wiring
+        textView.string = "{\n  "
+        textView.setSelectedRange(NSRange(location: 4, length: 0))
+
+        _ = coordinator.textView(textView, doCommandBy: #selector(NSTextView.insertNewline(_:)))
+
+        try await Task.sleep(for: .milliseconds(100))
+
+        XCTAssertFalse(
+            vm.suggestions.isEmpty,
+            "Autocomplete must update after Enter; suppression was incorrectly blocking this before the fix")
+    }
+
+    /// Positive: when the popover is visible, Enter dismisses it synchronously; the
+    /// autocomplete pipeline still fires asynchronously and re-populates suggestions.
+    func test_enterKey_whenPopoverVisible_dismissesImmediatelyThenReschedulesAutocomplete() async throws {
+        let suggestion = AutocompleteSuggestion(name: "field", typeHint: "string", kind: .string)
+        let provider = MockAutocompleteProvider(stubSuggestions: [suggestion])
+        let (coordinator, vm) = makeCoordinator(provider: provider)
+        vm.suggestions = [suggestion]
+        vm.isVisible = true
+
+        let textView = NSTextView()
+        textView.delegate = coordinator
+        textView.string = "{\n  "
+        textView.setSelectedRange(NSRange(location: 4, length: 0))
+
+        _ = coordinator.textView(textView, doCommandBy: #selector(NSTextView.insertNewline(_:)))
+
+        XCTAssertFalse(vm.isVisible, "Popover must be dismissed synchronously on Enter")
+
+        try await Task.sleep(for: .milliseconds(100))
+
+        XCTAssertFalse(
+            vm.suggestions.isEmpty,
+            "Autocomplete must re-trigger after Enter lands in a valid context")
+    }
+
+    /// Negative: when the provider returns no suggestions the popover stays hidden, even
+    /// though the autocomplete pipeline fires (it just has nothing to show).
+    func test_enterKey_whenNoSuggestionsAvailable_popoverRemainsHidden() async throws {
+        let (coordinator, vm) = makeCoordinator() // default provider — always returns []
+
+        let textView = NSTextView()
+        textView.delegate = coordinator
+        textView.string = "{\n  "
+        textView.setSelectedRange(NSRange(location: 4, length: 0))
+
+        _ = coordinator.textView(textView, doCommandBy: #selector(NSTextView.insertNewline(_:)))
+
+        try await Task.sleep(for: .milliseconds(100))
+
+        XCTAssertFalse(vm.isVisible, "Popover must not appear when provider returns no suggestions")
+    }
+
+    /// Negative / corner: editor without an autocomplete VM must not crash on Enter and
+    /// must still apply smart indentation.
+    func test_enterKey_withNoAutocompleteViewModel_appliesSmartNewlineWithoutCrash() {
+        var text = ""
+        let binding = Binding(get: { text }, set: { text = $0 })
+        let editor = JSONTextEditor(text: binding)
+        let coordinator = editor.makeCoordinator()
+
+        let textView = NSTextView()
+        textView.string = "{"
+        textView.setSelectedRange(NSRange(location: 1, length: 0))
+
+        let consumed = coordinator.textView(textView, doCommandBy: #selector(NSTextView.insertNewline(_:)))
+
+        XCTAssertTrue(consumed, "Smart newline must still be applied when there is no autocomplete VM")
+        XCTAssertEqual(textView.string, "{\n  ", "Smart indentation must work without autocomplete VM")
+    }
+
+    /// Corner: Enter inside a string literal is not consumed by the smart-newline path.
+    /// The dismiss code in `handleInsertNewline` still runs (popover is closed), and
+    /// `textDidChange` is NOT suppressed — verified by firing a manual notification
+    /// immediately after and confirming suggestions are populated.
+    func test_enterKey_insideStringLiteral_notConsumedAndDismissesPopover() async throws {
+        let suggestion = AutocompleteSuggestion(name: "field", typeHint: "string", kind: .string)
+        let provider = MockAutocompleteProvider(stubSuggestions: [suggestion])
+        let (coordinator, vm) = makeCoordinator(provider: provider)
+        vm.suggestions = [suggestion]
+        vm.isVisible = true
+
+        let textView = NSTextView()
+        textView.string = "\"hello\""
+        textView.setSelectedRange(NSRange(location: 3, length: 0))
+
+        let consumed = coordinator.textView(textView, doCommandBy: #selector(NSTextView.insertNewline(_:)))
+
+        XCTAssertFalse(consumed, "Enter inside a string literal must not be consumed")
+        XCTAssertFalse(vm.isVisible, "Popover must be dismissed even for the string-literal Enter path")
+
+        // Point the textView at a JSON context where suggestions make sense, then
+        // fire textDidChange to confirm the path is not suppressed.
+        textView.string = "{\n  "
+        textView.setSelectedRange(NSRange(location: 4, length: 0))
+        let notification = Notification(name: NSText.didChangeNotification, object: textView)
+        coordinator.textDidChange(notification)
+
+        try await Task.sleep(for: .milliseconds(100))
+
+        XCTAssertFalse(
+            vm.suggestions.isEmpty,
+            "textDidChange must not be suppressed after the string-literal Enter path")
+    }
+
+    /// Corner: `applySmartInsert` guards its own `suppressTextDidChange` with `defer`;
+    /// pressing Enter immediately afterwards must still schedule an autocomplete update.
+    func test_enterKey_afterSmartInsert_suppressionDoesNotLeak() async throws {
+        let suggestion = AutocompleteSuggestion(name: "name", typeHint: "string", kind: .string)
+        let provider = MockAutocompleteProvider(stubSuggestions: [suggestion])
+        let (coordinator, vm) = makeCoordinator(provider: provider)
+        vm.suggestions = [suggestion]
+        vm.isVisible = true
+
+        let textView = makeTextView(text: "{\n  ")
+        textView.delegate = coordinator
+
+        // Tab — commits suggestion; applySmartInsert sets then clears suppressTextDidChange.
+        _ = coordinator.textView(textView, doCommandBy: #selector(NSTextView.insertTab(_:)))
+
+        // Move cursor to just after the inserted value (outside any string literal).
+        let ns = textView.string as NSString
+        let fieldRange = ns.range(of: "\"name\": \"\"")
+        XCTAssertNotEqual(fieldRange.location, NSNotFound, "Field must be present after Tab commit")
+        textView.setSelectedRange(NSRange(location: fieldRange.upperBound, length: 0))
+
+        // Enter — must schedule autocomplete update; suppression must not have leaked.
+        _ = coordinator.textView(textView, doCommandBy: #selector(NSTextView.insertNewline(_:)))
+
+        try await Task.sleep(for: .milliseconds(100))
+
+        XCTAssertFalse(
+            vm.suggestions.isEmpty,
+            "Suppression from applySmartInsert must not bleed into the next Enter press")
+    }
+
     // MARK: - Enter key smart indentation (AC-6 through AC-10)
 
     func test_enter_afterOpenBrace_indentsNextLine() {
@@ -601,6 +752,41 @@ final class JSONTextEditorIntegrationTests: XCTestCase {
         XCTAssertTrue(
             result.hasSuffix("\n  }"),
             "At depth 1 (2-space indent), closing brace must have 2 leading spaces; got: \(result)")
+    }
+
+    func test_applySmartInsert_messageKindAtDepth1_innerContentAndCloseAreIndented() {
+        let suggestion = AutocompleteSuggestion(name: "nested", typeHint: "Nested", kind: .message)
+        let (coordinator, _) = makeCoordinator()
+        let textView = makeTextView(text: "{\n  ")
+
+        coordinator.applySmartInsert(suggestion: suggestion, to: textView)
+
+        let result = textView.string
+        XCTAssertTrue(
+            result.contains("{\n    "),
+            "Inner content must be at 4-space indent (lineIndent+2); got: \(result)")
+        XCTAssertTrue(
+            result.contains("\n  }"),
+            "Snippet closer must be at 2-space indent (lineIndent); got: \(result)")
+        XCTAssertFalse(
+            result.contains("\n}"),
+            "Snippet closer must NOT be at column 0 when lineIndent is 2-space; got: \(result)")
+    }
+
+    func test_applySmartInsert_messageKindAtDepth2_closingBraceHasFourSpaceIndent() {
+        let suggestion = AutocompleteSuggestion(name: "user", typeHint: "User", kind: .message)
+        let (coordinator, _) = makeCoordinator()
+        let textView = makeTextView(text: "{\n  \"ctx\": {\n    ")
+
+        coordinator.applySmartInsert(suggestion: suggestion, to: textView)
+
+        let result = textView.string
+        XCTAssertTrue(
+            result.contains("{\n      "),
+            "Inner content must be at 6-space indent (lineIndent+2); got: \(result)")
+        XCTAssertFalse(
+            result.contains("\n}"),
+            "Snippet closer must NOT be at column 0 when lineIndent is 4-space; got: \(result)")
     }
 
     func test_autocomplete_nestedMessageAtDepth2_closingBracesHaveCorrectIndent() {

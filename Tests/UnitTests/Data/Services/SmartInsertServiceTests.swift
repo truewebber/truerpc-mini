@@ -34,6 +34,27 @@ final class SmartInsertServiceTests: XCTestCase {
         XCTAssertEqual(cursorBack, 2)
     }
 
+    func test_smartInsertComponents_message_withTwoSpaceIndent_usesProperIndentation() {
+        let suggestion = AutocompleteSuggestion(name: "addr", typeHint: "Address", kind: .message)
+        let (text, cursorBack) = sut.smartInsertComponents(for: suggestion, lineIndent: "  ")
+        XCTAssertEqual(text, "\"addr\": {\n    \n  }")
+        XCTAssertEqual(cursorBack, 4)
+    }
+
+    func test_smartInsertComponents_message_withFourSpaceIndent_usesProperIndentation() {
+        let suggestion = AutocompleteSuggestion(name: "user", typeHint: "User", kind: .message)
+        let (text, cursorBack) = sut.smartInsertComponents(for: suggestion, lineIndent: "    ")
+        XCTAssertEqual(text, "\"user\": {\n      \n    }")
+        XCTAssertEqual(cursorBack, 6)
+    }
+
+    func test_smartInsertComponents_nonMessage_ignoresLineIndent() {
+        let suggestion = AutocompleteSuggestion(name: "name", typeHint: "string", kind: .string)
+        let (text, cursorBack) = sut.smartInsertComponents(for: suggestion, lineIndent: "    ")
+        XCTAssertEqual(text, "\"name\": \"\"")
+        XCTAssertEqual(cursorBack, 1)
+    }
+
     func test_smartInsertComponents_enum_returnsQuotedName() {
         let suggestion = AutocompleteSuggestion(name: "ACTIVE", typeHint: "Status", kind: .enum)
         let (text, cursorBack) = sut.smartInsertComponents(for: suggestion)

@@ -144,9 +144,10 @@ public final class EditorTabViewModel: ObservableObject {
         await loadMockData()
     }
 
-    /// Updates the request JSON
+    /// Updates the request JSON and clears any pending format error.
     public func updateJson(_ newJson: String) {
         requestJson = newJson
+        requestJsonFormatError = nil
     }
 
     /// Updates the server URL (custom mode — clears any active tab environment)
@@ -168,9 +169,10 @@ public final class EditorTabViewModel: ObservableObject {
         connectionSecurity.update(activeEnvironment: nil, restoredAdHocConfig: nil)
     }
 
-    /// Updates the metadata JSON
+    /// Updates the metadata JSON and clears any pending format error.
     public func updateMetadata(_ newMetadata: String) {
         metadataJson = newMetadata
+        metadataFormatError = nil
     }
 
     /// Toggles metadata visibility

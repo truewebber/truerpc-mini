@@ -831,4 +831,28 @@ extension EditorTabViewModelTests {
         // Then
         XCTAssertEqual(sut.requestJson, compact)
     }
+
+    // MARK: - Error clearing on edit (OPE-249)
+
+    func test_updateJson_clearsRequestJsonFormatError() {
+        // Given
+        sut.requestJsonFormatError = "Invalid JSON"
+
+        // When
+        sut.updateJson("{}")
+
+        // Then
+        XCTAssertNil(sut.requestJsonFormatError)
+    }
+
+    func test_updateMetadata_clearsMetadataFormatError() {
+        // Given
+        sut.metadataFormatError = "Invalid JSON"
+
+        // When
+        sut.updateMetadata("{}")
+
+        // Then
+        XCTAssertNil(sut.metadataFormatError)
+    }
 }
