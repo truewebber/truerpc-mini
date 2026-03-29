@@ -17,6 +17,8 @@ public final class EditorTabViewModel: ObservableObject {
     @Published public var isExecuting: Bool = false
     @Published public var tabEnvironment: ServerEnvironment?
     @Published public var availableEnvironments: [ServerEnvironment]
+    @Published public var requestJsonFormatError: String? = nil
+    @Published public var metadataFormatError: String? = nil
 
     // MARK: - Properties
 
@@ -29,6 +31,7 @@ public final class EditorTabViewModel: ObservableObject {
     private let generateMockDataUseCase: GenerateMockDataUseCaseProtocol
     private let executeRequestUseCase: ExecuteUnaryRequestUseCaseProtocol
     public let exportResponseUseCase: ExportResponseUseCaseProtocol
+    private let formatter: JsonFormatterProtocol
     private let logger: AppLogger
 
     // MARK: - Initialization
@@ -42,6 +45,7 @@ public final class EditorTabViewModel: ObservableObject {
         generateMockDataUseCase: GenerateMockDataUseCaseProtocol,
         executeRequestUseCase: ExecuteUnaryRequestUseCaseProtocol,
         exportResponseUseCase: ExportResponseUseCaseProtocol,
+        formatter: JsonFormatterProtocol,
         autocompleteProvider: AutocompleteProviderProtocol,
         resolver: any JsonPathResolverProtocol,
         logger: AppLogger)
@@ -53,6 +57,7 @@ public final class EditorTabViewModel: ObservableObject {
         self.generateMockDataUseCase = generateMockDataUseCase
         self.executeRequestUseCase = executeRequestUseCase
         self.exportResponseUseCase = exportResponseUseCase
+        self.formatter = formatter
         let acVM = AutocompleteViewModel(
             provider: autocompleteProvider,
             resolver: resolver,
@@ -93,7 +98,11 @@ public final class EditorTabViewModel: ObservableObject {
             let mockJson = try await generateMockDataUseCase.execute(
                 method: editorTab.method,
                 protoFile: editorTab.protoFile)
-            requestJson = mockJson
+            if let pretty = try? formatter.format(mockJson) {
+                requestJson = pretty
+            } else {
+                requestJson = mockJson
+            }
         } catch {
             logger.warning("Mock data generation failed", metadata: [
                 "method": editorTab.method.name,
@@ -102,6 +111,32 @@ public final class EditorTabViewModel: ObservableObject {
         }
 
         isLoading = false
+    }
+
+    /// Formats `requestJson` using the injected formatter.
+    /// On success, replaces `requestJson` and clears `requestJsonFormatError`.
+    /// On failure, sets `requestJsonFormatError` and leaves `requestJson` unchanged.
+    public func formatRequestJson() {
+        do {
+            let formatted = try formatter.format(requestJson)
+            requestJson = formatted
+            requestJsonFormatError = nil
+        } catch {
+            requestJsonFormatError = "Invalid JSON"
+        }
+    }
+
+    /// Formats `metadataJson` using the injected formatter.
+    /// On success, replaces `metadataJson` and clears `metadataFormatError`.
+    /// On failure, sets `metadataFormatError` and leaves `metadataJson` unchanged.
+    public func formatMetadata() {
+        do {
+            let formatted = try formatter.format(metadataJson)
+            metadataJson = formatted
+            metadataFormatError = nil
+        } catch {
+            metadataFormatError = "Invalid JSON"
+        }
     }
 
     /// Regenerates `requestJson` from the proto schema — semantic alias for `loadMockData()` called by the toolbar.

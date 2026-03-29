@@ -357,6 +357,7 @@ struct RequestEditorView: View {
                     mockDataGenerator: RequestEditorView_PreviewStubMockDataGenerator()),
                 executeRequestUseCase: mockExecuteUseCase,
                 exportResponseUseCase: exportUseCase,
+                formatter: JsonFormatter(),
                 autocompleteProvider: RequestEditorView_PreviewStubAutocompleteProvider(),
                 resolver: JsonPathResolver(),
                 logger: NullLogger())

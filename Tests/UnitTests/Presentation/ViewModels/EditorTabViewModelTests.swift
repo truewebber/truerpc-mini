@@ -8,6 +8,7 @@ final class EditorTabViewModelTests: XCTestCase {
     var mockGenerateMockDataUseCase: MockGenerateMockDataUseCase!
     var mockExecuteRequestUseCase: MockExecuteUnaryRequestUseCase!
     var mockExportResponseUseCase: MockExportResponseUseCase!
+    var mockJsonFormatter: MockJsonFormatter!
     var mockLogger: MockAppLogger!
     var testMethod: TrueRPCMini.Method!
     var testService: Service!
@@ -19,6 +20,7 @@ final class EditorTabViewModelTests: XCTestCase {
         mockGenerateMockDataUseCase = MockGenerateMockDataUseCase()
         mockExecuteRequestUseCase = MockExecuteUnaryRequestUseCase()
         mockExportResponseUseCase = MockExportResponseUseCase()
+        mockJsonFormatter = MockJsonFormatter()
         mockLogger = MockAppLogger()
 
         testMethod = TrueRPCMini.Method(
@@ -43,6 +45,7 @@ final class EditorTabViewModelTests: XCTestCase {
             generateMockDataUseCase: mockGenerateMockDataUseCase,
             executeRequestUseCase: mockExecuteRequestUseCase,
             exportResponseUseCase: mockExportResponseUseCase,
+            formatter: mockJsonFormatter,
             autocompleteProvider: MockAutocompleteProvider(),
             resolver: JsonPathResolver(),
             logger: mockLogger)
@@ -52,6 +55,7 @@ final class EditorTabViewModelTests: XCTestCase {
         sut = nil
         mockGenerateMockDataUseCase = nil
         mockExecuteRequestUseCase = nil
+        mockJsonFormatter = nil
         mockLogger = nil
         testMethod = nil
         testService = nil
@@ -307,6 +311,7 @@ final class EditorTabViewModelTests: XCTestCase {
             generateMockDataUseCase: mockGenerateMockDataUseCase,
             executeRequestUseCase: mockExecuteRequestUseCase,
             exportResponseUseCase: mockExportUseCase,
+            formatter: mockJsonFormatter,
             autocompleteProvider: MockAutocompleteProvider(),
             resolver: JsonPathResolver(),
             logger: mockLogger)
@@ -332,6 +337,7 @@ final class EditorTabViewModelTests: XCTestCase {
             generateMockDataUseCase: mockGenerateMockDataUseCase,
             executeRequestUseCase: mockExecuteRequestUseCase,
             exportResponseUseCase: mockExportUseCase,
+            formatter: mockJsonFormatter,
             autocompleteProvider: MockAutocompleteProvider(),
             resolver: JsonPathResolver(),
             logger: mockLogger)
@@ -535,6 +541,7 @@ extension EditorTabViewModelTests {
             generateMockDataUseCase: mockGenerateMockDataUseCase,
             executeRequestUseCase: mockExecuteRequestUseCase,
             exportResponseUseCase: mockExportResponseUseCase,
+            formatter: mockJsonFormatter,
             autocompleteProvider: MockAutocompleteProvider(),
             resolver: JsonPathResolver(),
             logger: mockLogger)
@@ -551,6 +558,7 @@ extension EditorTabViewModelTests {
             generateMockDataUseCase: mockGenerateMockDataUseCase,
             executeRequestUseCase: mockExecuteRequestUseCase,
             exportResponseUseCase: mockExportResponseUseCase,
+            formatter: mockJsonFormatter,
             autocompleteProvider: MockAutocompleteProvider(),
             resolver: JsonPathResolver(),
             logger: mockLogger)
@@ -568,6 +576,7 @@ extension EditorTabViewModelTests {
             generateMockDataUseCase: mockGenerateMockDataUseCase,
             executeRequestUseCase: mockExecuteRequestUseCase,
             exportResponseUseCase: mockExportResponseUseCase,
+            formatter: mockJsonFormatter,
             autocompleteProvider: MockAutocompleteProvider(),
             resolver: JsonPathResolver(),
             logger: mockLogger)
@@ -647,6 +656,7 @@ extension EditorTabViewModelTests {
             generateMockDataUseCase: mockGenerateMockDataUseCase,
             executeRequestUseCase: mockExecuteRequestUseCase,
             exportResponseUseCase: mockExportResponseUseCase,
+            formatter: mockJsonFormatter,
             autocompleteProvider: MockAutocompleteProvider(),
             resolver: JsonPathResolver(),
             logger: mockLogger)
@@ -702,5 +712,123 @@ extension EditorTabViewModelTests {
     func test_init_createsAutocompleteViewModelWithInjectedDependencies() {
         // Then
         XCTAssertNotNil(sut.autocompleteViewModel)
+    }
+}
+
+// MARK: - Format Actions (OPE-246)
+
+extension EditorTabViewModelTests {
+    func test_formatRequestJson_validJson_updatesRequestJson() {
+        // Given
+        sut.requestJson = "{\"userId\":1}"
+        mockJsonFormatter.formattedResult = "{\n  \"userId\" : 1\n}"
+
+        // When
+        sut.formatRequestJson()
+
+        // Then
+        XCTAssertEqual(sut.requestJson, "{\n  \"userId\" : 1\n}")
+    }
+
+    func test_formatRequestJson_invalidJson_setsFormatError() {
+        // Given
+        sut.requestJson = "{invalid"
+        mockJsonFormatter.shouldThrow = true
+
+        // When
+        sut.formatRequestJson()
+
+        // Then
+        XCTAssertNotNil(sut.requestJsonFormatError)
+    }
+
+    func test_formatRequestJson_invalidJson_doesNotModifyRequestJson() {
+        // Given
+        let original = "{invalid"
+        sut.requestJson = original
+        mockJsonFormatter.shouldThrow = true
+
+        // When
+        sut.formatRequestJson()
+
+        // Then
+        XCTAssertEqual(sut.requestJson, original)
+    }
+
+    func test_formatRequestJson_validJson_clearsExistingFormatError() {
+        // Given
+        sut.requestJson = "{}"
+        sut.requestJsonFormatError = "previous error"
+        mockJsonFormatter.formattedResult = "{}"
+
+        // When
+        sut.formatRequestJson()
+
+        // Then
+        XCTAssertNil(sut.requestJsonFormatError)
+    }
+
+    func test_formatMetadata_validJson_updatesMetadataJson() {
+        // Given
+        sut.metadataJson = "{\"authorization\":\"Bearer token\"}"
+        mockJsonFormatter.formattedResult = "{\n  \"authorization\" : \"Bearer token\"\n}"
+
+        // When
+        sut.formatMetadata()
+
+        // Then
+        XCTAssertEqual(sut.metadataJson, "{\n  \"authorization\" : \"Bearer token\"\n}")
+    }
+
+    func test_formatMetadata_invalidJson_setsMetadataFormatError() {
+        // Given
+        sut.metadataJson = "{invalid"
+        mockJsonFormatter.shouldThrow = true
+
+        // When
+        sut.formatMetadata()
+
+        // Then
+        XCTAssertNotNil(sut.metadataFormatError)
+    }
+
+    func test_formatMetadata_invalidJson_doesNotModifyMetadataJson() {
+        // Given
+        let original = "{invalid"
+        sut.metadataJson = original
+        mockJsonFormatter.shouldThrow = true
+
+        // When
+        sut.formatMetadata()
+
+        // Then
+        XCTAssertEqual(sut.metadataJson, original)
+    }
+
+    func test_loadMockData_prettyPrintsResult() async {
+        // Given
+        let compact = "{\"userId\":1}"
+        let pretty = "{\n  \"userId\" : 1\n}"
+        mockGenerateMockDataUseCase.mockJSON = compact
+        mockJsonFormatter.formattedResult = pretty
+
+        // When
+        await sut.loadMockData()
+
+        // Then
+        XCTAssertEqual(sut.requestJson, pretty)
+    }
+
+    func test_loadMockData_whenFormatterThrows_keepsMockJson() async {
+        // Given
+        let compact = "{\"userId\":1}"
+        mockGenerateMockDataUseCase.mockJSON = compact
+        mockJsonFormatter.shouldThrow = true
+
+        // When
+        await sut.loadMockData()
+
+        // Then
+        XCTAssertEqual(sut.requestJson, compact)
     }
 }

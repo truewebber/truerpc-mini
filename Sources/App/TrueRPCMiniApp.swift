@@ -266,6 +266,7 @@ struct TrueRPCMiniApp: App {
             generateMockDataUseCase: di.resolve(GenerateMockDataUseCase.self)!,
             executeRequestUseCase: di.resolve(ExecuteUnaryRequestUseCaseProtocol.self)!,
             exportResponseUseCase: di.resolve(ExportResponseUseCase.self)!,
+            formatter: di.resolve(JsonFormatterProtocol.self)!,
             autocompleteProvider: di.resolve(AutocompleteProviderProtocol.self)!,
             resolver: di.resolve(JsonPathResolver.self)!,
             telemetry: di.resolve(TelemetryServiceProtocol.self)!,

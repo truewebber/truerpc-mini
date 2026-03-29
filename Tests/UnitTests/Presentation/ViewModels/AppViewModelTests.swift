@@ -10,6 +10,7 @@ final class AppViewModelTests: XCTestCase {
     fileprivate var generateMockDataUseCase: GenerateMockDataUseCase!
     fileprivate var executeRequestUseCase: MockExecuteRequestUseCase!
     fileprivate var exportResponseUseCase: ExportResponseUseCase!
+    fileprivate var mockJsonFormatter: MockJsonFormatter!
     fileprivate var mockLogger: MockAppLogger!
     fileprivate var mockTelemetry: MockTelemetryService!
 
@@ -21,6 +22,7 @@ final class AppViewModelTests: XCTestCase {
         exportResponseUseCase = ExportResponseUseCase(
             fileManager: AppMockFileManager())
         executeRequestUseCase = MockExecuteRequestUseCase()
+        mockJsonFormatter = MockJsonFormatter()
         mockLogger = MockAppLogger()
         mockTelemetry = MockTelemetryService()
 
@@ -36,6 +38,7 @@ final class AppViewModelTests: XCTestCase {
             generateMockDataUseCase: generateMockDataUseCase,
             executeRequestUseCase: executeRequestUseCase,
             exportResponseUseCase: exportResponseUseCase,
+            formatter: mockJsonFormatter,
             autocompleteProvider: MockAutocompleteProvider(),
             resolver: JsonPathResolver(),
             telemetry: mockTelemetry,
@@ -48,6 +51,7 @@ final class AppViewModelTests: XCTestCase {
         generateMockDataUseCase = nil
         executeRequestUseCase = nil
         exportResponseUseCase = nil
+        mockJsonFormatter = nil
         mockTelemetry = nil
         mockLogger = nil
         try await super.tearDown()
@@ -244,6 +248,7 @@ final class AppViewModelTests: XCTestCase {
             generateMockDataUseCase: generateMockDataUseCase,
             executeRequestUseCase: executeRequestUseCase,
             exportResponseUseCase: exportResponseUseCase,
+            formatter: mockJsonFormatter,
             autocompleteProvider: MockAutocompleteProvider(),
             resolver: JsonPathResolver(),
             telemetry: mockTelemetry,
@@ -291,6 +296,7 @@ final class AppViewModelTests: XCTestCase {
             generateMockDataUseCase: generateMockDataUseCase,
             executeRequestUseCase: executeRequestUseCase,
             exportResponseUseCase: exportResponseUseCase,
+            formatter: mockJsonFormatter,
             autocompleteProvider: MockAutocompleteProvider(),
             resolver: JsonPathResolver(),
             telemetry: mockTelemetry,
@@ -339,6 +345,7 @@ final class AppViewModelTests: XCTestCase {
             generateMockDataUseCase: generateMockDataUseCase,
             executeRequestUseCase: executeRequestUseCase,
             exportResponseUseCase: exportResponseUseCase,
+            formatter: mockJsonFormatter,
             autocompleteProvider: MockAutocompleteProvider(),
             resolver: JsonPathResolver(),
             telemetry: mockTelemetry,
@@ -384,6 +391,7 @@ final class AppViewModelTests: XCTestCase {
             generateMockDataUseCase: generateMockDataUseCase,
             executeRequestUseCase: executeRequestUseCase,
             exportResponseUseCase: exportResponseUseCase,
+            formatter: mockJsonFormatter,
             autocompleteProvider: MockAutocompleteProvider(),
             resolver: JsonPathResolver(),
             telemetry: mockTelemetry,

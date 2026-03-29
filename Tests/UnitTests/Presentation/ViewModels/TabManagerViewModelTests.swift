@@ -10,6 +10,7 @@ final class TabManagerViewModelTests: XCTestCase {
     var mockGenerateMockData: GenerateMockDataUseCase!
     fileprivate var mockExecuteRequest: TabManagerMockExecuteRequestUseCase!
     var mockExportResponse: ExportResponseUseCase!
+    var mockJsonFormatter: MockJsonFormatter!
     var mockLogger: MockAppLogger!
 
     override func setUp() async throws {
@@ -20,6 +21,7 @@ final class TabManagerViewModelTests: XCTestCase {
             mockDataGenerator: MockDataGenerator(protoRepository: StubProtoRepository()))
         mockExecuteRequest = TabManagerMockExecuteRequestUseCase()
         mockExportResponse = ExportResponseUseCase(fileManager: TabManagerMockFileManager())
+        mockJsonFormatter = MockJsonFormatter()
         mockLogger = MockAppLogger()
         sut = TabManagerViewModel(
             saveTabStateUseCase: mockSaveTabState,
@@ -33,6 +35,7 @@ final class TabManagerViewModelTests: XCTestCase {
         mockGenerateMockData = nil
         mockExecuteRequest = nil
         mockExportResponse = nil
+        mockJsonFormatter = nil
         mockLogger = nil
         try await super.tearDown()
     }
@@ -58,6 +61,7 @@ final class TabManagerViewModelTests: XCTestCase {
             generateMockDataUseCase: mockGenerateMockData,
             executeRequestUseCase: mockExecuteRequest,
             exportResponseUseCase: mockExportResponse,
+            formatter: mockJsonFormatter,
             autocompleteProvider: MockAutocompleteProvider(),
             resolver: JsonPathResolver(),
             logger: mockLogger)

@@ -19,6 +19,7 @@ public final class AppViewModel: ObservableObject {
     private let generateMockDataUseCase: GenerateMockDataUseCaseProtocol
     private let executeRequestUseCase: ExecuteUnaryRequestUseCaseProtocol
     private let exportResponseUseCase: ExportResponseUseCaseProtocol
+    private let formatter: JsonFormatterProtocol
     private let autocompleteProvider: AutocompleteProviderProtocol
     private let resolver: any JsonPathResolverProtocol
     private let telemetry: TelemetryServiceProtocol
@@ -32,6 +33,7 @@ public final class AppViewModel: ObservableObject {
         generateMockDataUseCase: GenerateMockDataUseCaseProtocol,
         executeRequestUseCase: ExecuteUnaryRequestUseCaseProtocol,
         exportResponseUseCase: ExportResponseUseCaseProtocol,
+        formatter: JsonFormatterProtocol,
         autocompleteProvider: AutocompleteProviderProtocol,
         resolver: any JsonPathResolverProtocol,
         telemetry: TelemetryServiceProtocol,
@@ -42,6 +44,7 @@ public final class AppViewModel: ObservableObject {
         self.generateMockDataUseCase = generateMockDataUseCase
         self.executeRequestUseCase = executeRequestUseCase
         self.exportResponseUseCase = exportResponseUseCase
+        self.formatter = formatter
         self.autocompleteProvider = autocompleteProvider
         self.resolver = resolver
         self.telemetry = telemetry
@@ -109,6 +112,7 @@ public final class AppViewModel: ObservableObject {
             generateMockDataUseCase: generateMockDataUseCase,
             executeRequestUseCase: executeRequestUseCase,
             exportResponseUseCase: exportResponseUseCase,
+            formatter: formatter,
             autocompleteProvider: autocompleteProvider,
             resolver: resolver,
             logger: logger)
@@ -152,6 +156,7 @@ public final class AppViewModel: ObservableObject {
                 generateMockDataUseCase: generateMockDataUseCase,
                 executeRequestUseCase: executeRequestUseCase,
                 exportResponseUseCase: exportResponseUseCase,
+                formatter: formatter,
                 autocompleteProvider: autocompleteProvider,
                 resolver: resolver,
                 logger: logger)
