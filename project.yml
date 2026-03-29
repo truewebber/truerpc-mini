@@ -27,9 +27,11 @@ schemes:
       config: Debug
     test:
       config: Debug
-      targets:
-        - TrueRPCMiniUnitTests
-        - TrueRPCMiniIntegrationTests
+      testPlans:
+        - path: TestPlans/AllTests.xctestplan
+          defaultPlan: true
+        - path: TestPlans/UnitTests.xctestplan
+        - path: TestPlans/IntegrationTests.xctestplan
   TrueRPCMiniUITests:
     build:
       targets:
@@ -38,8 +40,9 @@ schemes:
       config: Debug
     test:
       config: Debug
-      targets:
-        - TrueRPCMiniUITests
+      testPlans:
+        - path: TestPlans/UITests.xctestplan
+          defaultPlan: true
 targets:
   TrueRPCMini:
     type: application

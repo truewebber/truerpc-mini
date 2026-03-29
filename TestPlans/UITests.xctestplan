@@ -1,0 +1,22 @@
+{
+  "configurations": [
+    {
+      "id": "A4000000-0000-0000-0000-000000000001",
+      "name": "Configuration 1",
+      "options": {}
+    }
+  ],
+  "defaultOptions": {
+    "codeCoverageEnabled": false
+  },
+  "testTargets": [
+    {
+      "target": {
+        "containerPath": "container:TrueRPCMini.xcodeproj",
+        "identifier": "TrueRPCMiniUITests",
+        "name": "TrueRPCMiniUITests"
+      }
+    }
+  ],
+  "version": 1
+}

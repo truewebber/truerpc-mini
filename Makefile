@@ -1,4 +1,4 @@
-.PHONY: lint format test test-ui coverage build
+.PHONY: lint format test test-unit test-int test-ui coverage build
 
 SCHEME      := TrueRPCMini
 DESTINATION := platform=macOS
@@ -17,12 +17,28 @@ format: ## Auto-format all Swift source files in-place
 test: ## Run all unit and integration tests
 	xcodebuild test \
 		-scheme $(SCHEME) \
+		-testPlan AllTests \
+		-destination '$(DESTINATION)' \
+		CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO
+
+test-unit: ## Run unit tests only
+	xcodebuild test \
+		-scheme $(SCHEME) \
+		-testPlan UnitTests \
+		-destination '$(DESTINATION)' \
+		CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO
+
+test-int: ## Run integration tests only
+	xcodebuild test \
+		-scheme $(SCHEME) \
+		-testPlan IntegrationTests \
 		-destination '$(DESTINATION)' \
 		CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO
 
 test-ui: ## Run UI tests (requires ad-hoc code signing)
 	xcodebuild test \
 		-scheme TrueRPCMiniUITests \
+		-testPlan UITests \
 		-destination '$(DESTINATION)' \
 		CODE_SIGN_IDENTITY="-" CODE_SIGNING_REQUIRED=NO
 
@@ -31,6 +47,7 @@ coverage: ## Run tests with code coverage and print report
 	@mkdir -p $(BUILD_DIR)
 	xcodebuild test \
 		-scheme $(SCHEME) \
+		-testPlan AllTests \
 		-destination '$(DESTINATION)' \
 		-enableCodeCoverage YES \
 		-resultBundlePath $(BUILD_DIR)/coverage.xcresult \
