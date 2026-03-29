@@ -144,9 +144,9 @@ final class JSONTextEditorIntegrationTests: XCTestCase {
         XCTAssertTrue(textView.string.contains("\"username\": \"\""))
     }
 
-    // MARK: - Enter key dismisses and passes through
+    // MARK: - Enter key dismisses popover and applies smart newline
 
-    func test_enterKey_whenPopoverVisible_dismissesAndDoesNotConsume() {
+    func test_enterKey_whenPopoverVisible_dismissesAndAppliesSmartNewline() {
         let (coordinator, vm) = makeCoordinator()
         vm.suggestions = [AutocompleteSuggestion(name: "field", typeHint: "string", kind: .string)]
         vm.isVisible = true
@@ -154,8 +154,153 @@ final class JSONTextEditorIntegrationTests: XCTestCase {
         let textView = NSTextView()
         let consumed = coordinator.textView(textView, doCommandBy: #selector(NSTextView.insertNewline(_:)))
 
-        XCTAssertFalse(consumed, "Enter must not be consumed so NSTextView inserts a newline")
+        XCTAssertTrue(consumed, "Enter applies smart indentation and is always consumed")
         XCTAssertFalse(vm.isVisible, "Popover must be dismissed on Enter")
+    }
+
+    // MARK: - Enter key smart indentation (AC-6 through AC-10)
+
+    func test_enter_afterOpenBrace_indentsNextLine() {
+        let (coordinator, _) = makeCoordinator()
+        let textView = NSTextView()
+        textView.string = "{"
+        textView.setSelectedRange(NSRange(location: 1, length: 0))
+
+        let consumed = coordinator.textView(textView, doCommandBy: #selector(NSTextView.insertNewline(_:)))
+
+        XCTAssertTrue(consumed)
+        XCTAssertEqual(textView.string, "{\n  ")
+        XCTAssertEqual(textView.selectedRange().location, 4)
+    }
+
+    func test_enter_afterOpenBracket_indentsNextLine() {
+        let (coordinator, _) = makeCoordinator()
+        let textView = NSTextView()
+        textView.string = "["
+        textView.setSelectedRange(NSRange(location: 1, length: 0))
+
+        let consumed = coordinator.textView(textView, doCommandBy: #selector(NSTextView.insertNewline(_:)))
+
+        XCTAssertTrue(consumed)
+        XCTAssertEqual(textView.string, "[\n  ")
+        XCTAssertEqual(textView.selectedRange().location, 4)
+    }
+
+    func test_enter_insideEmptyBraces_splitsBracesAndIndents() {
+        let (coordinator, _) = makeCoordinator()
+        let textView = NSTextView()
+        textView.string = "{}"
+        textView.setSelectedRange(NSRange(location: 1, length: 0))
+
+        let consumed = coordinator.textView(textView, doCommandBy: #selector(NSTextView.insertNewline(_:)))
+
+        XCTAssertTrue(consumed)
+        XCTAssertEqual(textView.string, "{\n  \n}")
+        XCTAssertEqual(textView.selectedRange().location, 4)
+    }
+
+    func test_enter_insideBracesWithWhitespace_splitsBracesAndIndents() {
+        let (coordinator, _) = makeCoordinator()
+        let textView = NSTextView()
+        textView.string = "{   }"
+        textView.setSelectedRange(NSRange(location: 2, length: 0))
+
+        let consumed = coordinator.textView(textView, doCommandBy: #selector(NSTextView.insertNewline(_:)))
+
+        XCTAssertTrue(consumed)
+        XCTAssertEqual(textView.string, "{\n  \n}")
+        XCTAssertEqual(textView.selectedRange().location, 4)
+    }
+
+    func test_enter_atEndOfFieldLine_maintainsIndent() {
+        let (coordinator, _) = makeCoordinator()
+        let textView = NSTextView()
+        let text = "  \"field\": \"value\""
+        textView.string = text
+        textView.setSelectedRange(NSRange(location: text.utf16.count, length: 0))
+
+        let consumed = coordinator.textView(textView, doCommandBy: #selector(NSTextView.insertNewline(_:)))
+
+        XCTAssertTrue(consumed)
+        XCTAssertEqual(textView.string, "  \"field\": \"value\"\n  ")
+        XCTAssertEqual(textView.selectedRange().location, text.utf16.count + 3)
+    }
+
+    func test_enter_withTrailingComma_maintainsIndent() {
+        let (coordinator, _) = makeCoordinator()
+        let textView = NSTextView()
+        let text = "  \"field\": \"value\","
+        textView.string = text
+        textView.setSelectedRange(NSRange(location: text.utf16.count, length: 0))
+
+        let consumed = coordinator.textView(textView, doCommandBy: #selector(NSTextView.insertNewline(_:)))
+
+        XCTAssertTrue(consumed)
+        XCTAssertEqual(textView.string, "  \"field\": \"value\",\n  ")
+        XCTAssertEqual(textView.selectedRange().location, text.utf16.count + 3)
+    }
+
+    func test_enter_midLine_splitsAndMaintainsIndent() {
+        let (coordinator, _) = makeCoordinator()
+        let textView = NSTextView()
+        textView.string = "  ab"
+        textView.setSelectedRange(NSRange(location: 3, length: 0))
+
+        let consumed = coordinator.textView(textView, doCommandBy: #selector(NSTextView.insertNewline(_:)))
+
+        XCTAssertTrue(consumed)
+        XCTAssertEqual(textView.string, "  a\n  b")
+        XCTAssertEqual(textView.selectedRange().location, 6)
+    }
+
+    func test_enter_withSelection_replacesAndIndents() {
+        let (coordinator, _) = makeCoordinator()
+        let textView = NSTextView()
+        textView.string = "  abcd"
+        textView.setSelectedRange(NSRange(location: 3, length: 2))
+
+        let consumed = coordinator.textView(textView, doCommandBy: #selector(NSTextView.insertNewline(_:)))
+
+        XCTAssertTrue(consumed)
+        XCTAssertEqual(textView.string, "  a\n  d")
+        XCTAssertEqual(textView.selectedRange().location, 6)
+    }
+
+    func test_enter_afterClosingBraceAtEndOfValueLine_maintainsIndent() {
+        let (coordinator, _) = makeCoordinator()
+        let textView = NSTextView()
+        let text = "  \"key\": {}"
+        textView.string = text
+        textView.setSelectedRange(NSRange(location: text.utf16.count, length: 0))
+
+        let consumed = coordinator.textView(textView, doCommandBy: #selector(NSTextView.insertNewline(_:)))
+
+        XCTAssertTrue(consumed)
+        XCTAssertEqual(textView.string, "  \"key\": {}\n  ")
+    }
+
+    func test_enter_afterClosingBraceOnOwnLine_maintainsIndent() {
+        let (coordinator, _) = makeCoordinator()
+        let textView = NSTextView()
+        let text = "  }"
+        textView.string = text
+        textView.setSelectedRange(NSRange(location: text.utf16.count, length: 0))
+
+        let consumed = coordinator.textView(textView, doCommandBy: #selector(NSTextView.insertNewline(_:)))
+
+        XCTAssertTrue(consumed)
+        XCTAssertEqual(textView.string, "  }\n  ")
+    }
+
+    func test_enter_insideStringLiteral_noSmartIndent() {
+        let (coordinator, _) = makeCoordinator()
+        let textView = NSTextView()
+        textView.string = "\"hello\""
+        textView.setSelectedRange(NSRange(location: 3, length: 0))
+
+        let consumed = coordinator.textView(textView, doCommandBy: #selector(NSTextView.insertNewline(_:)))
+
+        XCTAssertFalse(consumed, "Enter inside a string literal must not be consumed")
     }
 
     // MARK: - Smart insert — string kind (via Tab)

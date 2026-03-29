@@ -138,6 +138,12 @@ struct JSONTextEditor: NSViewRepresentable {
             -> Bool
         {
             MainActor.assumeIsolated {
+                // insertNewline is intercepted regardless of popover visibility so that
+                // smart Enter-key indentation always applies (AC-6 through AC-10).
+                if commandSelector == #selector(NSTextView.insertNewline(_:)) {
+                    return handleInsertNewline(in: textView)
+                }
+
                 guard let vm = parent.autocompleteViewModel, vm.isVisible else { return false }
 
                 switch commandSelector {
@@ -164,14 +170,6 @@ struct JSONTextEditor: NSViewRepresentable {
                     postInsertUpdate(suggestion: suggestion, textView: textView, vm: vm)
                     return true
 
-                case #selector(NSTextView.insertNewline(_:)):
-                    pendingUpdateTask?.cancel()
-                    vm.dismiss()
-                    autocompletePopover.close()
-                    suppressTextDidChange = true
-                    DispatchQueue.main.async { self.suppressTextDidChange = false }
-                    return false
-
                 case #selector(NSResponder.cancelOperation(_:)):
                     pendingUpdateTask?.cancel()
                     vm.dismiss()
@@ -182,6 +180,127 @@ struct JSONTextEditor: NSViewRepresentable {
                     return false
                 }
             }
+        }
+
+        /// Dismisses autocomplete if visible, then delegates to `applySmartNewline`.
+        /// Autocomplete dismissal on Enter preserves the existing behaviour.
+        private func handleInsertNewline(in textView: NSTextView) -> Bool {
+            if let vm = parent.autocompleteViewModel, vm.isVisible {
+                pendingUpdateTask?.cancel()
+                vm.dismiss()
+                autocompletePopover.close()
+            }
+            suppressTextDidChange = true
+            DispatchQueue.main.async { self.suppressTextDidChange = false }
+            return applySmartNewline(in: textView)
+        }
+
+        /// Implements the Enter-key decision tree (evaluated in order):
+        ///
+        /// 1. Inside string literal → pass through (return false, let NSTextView insert a plain newline).
+        /// 2. Between `{}`/`[]` with only horizontal whitespace → AC-7 split.
+        /// 3. Char immediately before cursor (ignoring trailing horizontal whitespace on the line)
+        ///    is `{` or `[` → AC-6 indent.
+        /// 4. Otherwise → same indent as current line (AC-8/AC-9).
+        ///
+        /// Selection is deleted first; the indent is derived from the original selection-start line.
+        private func applySmartNewline(in textView: NSTextView) -> Bool {
+            let selRange = textView.selectedRange()
+            let ns0 = textView.string as NSString
+            let checkOffset = selRange.location
+
+            if smartInsert.isInsideStringLiteral(in: ns0, at: checkOffset) {
+                return false
+            }
+
+            // Compute indent from original text before any deletion.
+            let currentIndent = smartInsert.lineIndentation(in: ns0, at: checkOffset)
+            let innerIndent = currentIndent + "  "
+
+            if selRange.length > 0 {
+                Self.replaceInTextViewWithoutShouldChangeGate(textView, range: selRange, string: "")
+            }
+
+            let cursorOffset = selRange.location
+            let ns = textView.string as NSString
+
+            // AC-7: cursor between matching open/close bracket pair with only horizontal whitespace.
+            if let before = nonNewlineNonWhitespaceCharBefore(in: ns, cursorOffset: cursorOffset),
+               let after = nonNewlineNonWhitespaceCharAfter(in: ns, cursorOffset: cursorOffset),
+               isMatchingOpenClosePair(open: before.char, close: after.char)
+            {
+                let replaceStart = before.index + 1
+                let replaceRange = NSRange(location: replaceStart, length: after.index - replaceStart)
+                Self.replaceInTextViewWithoutShouldChangeGate(
+                    textView,
+                    range: replaceRange,
+                    string: "\n\(innerIndent)\n\(currentIndent)")
+                parent.text = textView.string
+                textView.setSelectedRange(NSRange(location: replaceStart + 1 + innerIndent.count, length: 0))
+                return true
+            }
+
+            // AC-6: char immediately before cursor (ignoring trailing horizontal whitespace) is `{` or `[`.
+            if let before = nonNewlineNonWhitespaceCharBefore(in: ns, cursorOffset: cursorOffset),
+               before.char == JsonScanUTF16.braceOpen || before.char == JsonScanUTF16.bracketOpen
+            {
+                Self.replaceInTextViewWithoutShouldChangeGate(
+                    textView,
+                    range: NSRange(location: cursorOffset, length: 0),
+                    string: "\n\(innerIndent)")
+                parent.text = textView.string
+                textView.setSelectedRange(NSRange(location: cursorOffset + 1 + innerIndent.count, length: 0))
+                return true
+            }
+
+            // AC-8/AC-9: same indent as current line.
+            Self.replaceInTextViewWithoutShouldChangeGate(
+                textView,
+                range: NSRange(location: cursorOffset, length: 0),
+                string: "\n\(currentIndent)")
+            parent.text = textView.string
+            textView.setSelectedRange(NSRange(location: cursorOffset + 1 + currentIndent.count, length: 0))
+            return true
+        }
+
+        /// Scans backward from `cursorOffset`, skipping spaces and tabs but stopping at a newline.
+        /// Returns the index and UTF-16 value of the first non-whitespace character found, or `nil`.
+        private func nonNewlineNonWhitespaceCharBefore(
+            in ns: NSString,
+            cursorOffset: Int)
+            -> (index: Int, char: UInt16)?
+        {
+            var i = cursorOffset - 1
+            while i >= 0 {
+                let c = ns.character(at: i)
+                if c == JsonScanUTF16.lf || c == JsonScanUTF16.cr { return nil }
+                if c != JsonScanUTF16.space, c != JsonScanUTF16.tab { return (i, c) }
+                i -= 1
+            }
+            return nil
+        }
+
+        /// Scans forward from `cursorOffset`, skipping spaces and tabs but stopping at a newline.
+        /// Returns the index and UTF-16 value of the first non-whitespace character found, or `nil`.
+        private func nonNewlineNonWhitespaceCharAfter(
+            in ns: NSString,
+            cursorOffset: Int)
+            -> (index: Int, char: UInt16)?
+        {
+            var i = cursorOffset
+            while i < ns.length {
+                let c = ns.character(at: i)
+                if c == JsonScanUTF16.lf || c == JsonScanUTF16.cr { return nil }
+                if c != JsonScanUTF16.space, c != JsonScanUTF16.tab { return (i, c) }
+                i += 1
+            }
+            return nil
+        }
+
+        /// Returns `true` when `open`/`close` form a valid JSON bracket pair (`{}`or `[]`).
+        private func isMatchingOpenClosePair(open: UInt16, close: UInt16) -> Bool {
+            (open == JsonScanUTF16.braceOpen && close == JsonScanUTF16.braceClose) ||
+                (open == JsonScanUTF16.bracketOpen && close == JsonScanUTF16.bracketClose)
         }
 
         // MARK: - Suggestion commit (keyboard + mouse)
