@@ -155,6 +155,10 @@ struct TrueRPCMiniApp: App {
             JsonPathResolver()
         }
 
+        di.register(JsonFormatterProtocol.self) {
+            JsonFormatter()
+        }
+
         di.register(GrpcClientProtocol.self) {
             GrpcSwiftDynamicClient(
                 protoRepository: di.resolve(ProtoRepositoryProtocol.self)!,

@@ -323,7 +323,7 @@ final class JSONTextEditorIntegrationTests: XCTestCase {
 
         coordinator.applySmartInsert(suggestion: suggestion, to: textView)
 
-        XCTAssertTrue(textView.string.contains("\"id\": \"\"\n}"), textView.string)
+        XCTAssertTrue(textView.string.contains("\"id\": \"\"\n      }"), textView.string)
     }
 
     /// Auto-closing `}` must go before the array's `]`, not at EOF, when the object lives inside `[]`.
@@ -343,12 +343,12 @@ final class JSONTextEditorIntegrationTests: XCTestCase {
 
         XCTAssertTrue(textView.string.contains("\"id\": \"\""), textView.string)
         XCTAssertTrue(
-            textView.string.contains("\"id\": \"\"\n}"),
+            textView.string.contains("\"id\": \"\"\n      }"),
             "Inner object should close immediately after the field; got: \(textView.string)")
         let ns = textView.string as NSString
         let idEnd = ns.range(of: "\"id\": \"\"").location + ns.range(of: "\"id\": \"\"").length
         let braceAfterValue = ns.range(
-            of: "\n}",
+            of: "\n      }",
             options: [],
             range: NSRange(location: idEnd, length: ns.length - idEnd))
         XCTAssertNotEqual(braceAfterValue.location, NSNotFound, textView.string)

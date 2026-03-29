@@ -351,6 +351,27 @@ struct SmartInsertService {
         return indentation
     }
 
+    // MARK: - Indented closing suffix
+
+    /// Generates a suffix of `count` closing braces, each on its own line.
+    /// Indentation decreases by 2 spaces per level starting from `baseIndent`.
+    /// Returns an empty string when `count == 0`.
+    func indentedClosingSuffix(count: Int, baseIndent: String) -> String {
+        guard count > 0 else { return "" }
+
+        var result = ""
+        var currentIndent = baseIndent
+        for _ in 0 ..< count {
+            result += "\n\(currentIndent)}"
+            if currentIndent.count >= 2 {
+                currentIndent = String(currentIndent.dropLast(2))
+            } else {
+                currentIndent = ""
+            }
+        }
+        return result
+    }
+
     // MARK: - Private helpers
 
     private func countUnescapedQuotes(in ns: NSString, upTo limit: Int) -> Int {

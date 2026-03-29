@@ -304,4 +304,22 @@ final class SmartInsertServiceTests: XCTestCase {
         let result = sut.findBareTextStart(in: ns, cursorOffset: 0)
         XCTAssertNil(result)
     }
+
+    // MARK: - indentedClosingSuffix
+
+    func test_indentedClosingSuffix_countZero_returnsEmpty() {
+        XCTAssertEqual(sut.indentedClosingSuffix(count: 0, baseIndent: "  "), "")
+    }
+
+    func test_indentedClosingSuffix_count1_twoSpaceIndent_returnsIndentedBrace() {
+        XCTAssertEqual(sut.indentedClosingSuffix(count: 1, baseIndent: "  "), "\n  }")
+    }
+
+    func test_indentedClosingSuffix_count2_fourSpaceIndent_returnsTwoIndentedBraces() {
+        XCTAssertEqual(sut.indentedClosingSuffix(count: 2, baseIndent: "    "), "\n    }\n  }")
+    }
+
+    func test_indentedClosingSuffix_count1_noIndent_returnsUnindentedBrace() {
+        XCTAssertEqual(sut.indentedClosingSuffix(count: 1, baseIndent: ""), "\n}")
+    }
 }

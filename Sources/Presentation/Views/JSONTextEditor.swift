@@ -313,6 +313,7 @@ struct JSONTextEditor: NSViewRepresentable {
                 let nsFull = textView.string as NSString
                 let pendingArrays = smartInsert.arrayBracketBalanceInPrefix(ns: nsFull, endUTF16: insertEnd)
                 let nextSig = smartInsert.nextSignificantUTF16IndexAndScalar(ns: nsFull, fromUTF16: insertEnd)
+                let lineIndent = smartInsert.lineIndentation(in: nsFull, at: range.location)
 
                 if pendingArrays > 0,
                    let next = nextSig,
@@ -328,7 +329,7 @@ struct JSONTextEditor: NSViewRepresentable {
                         fromUTF16: openBracket + 1,
                         toUTF16: insertEnd)
                     if innerBraces > 0 {
-                        let patch = String(repeating: "\n}", count: innerBraces)
+                        let patch = smartInsert.indentedClosingSuffix(count: innerBraces, baseIndent: lineIndent)
                         // Close the object(s) immediately after the new field — not before `]`, or
                         // whitespace between the value and `]` ends up *inside* the closing brace
                         // (e.g. `"id": ""\n  \n}]` instead of `"id": ""\n}\n  ]`).
@@ -343,7 +344,7 @@ struct JSONTextEditor: NSViewRepresentable {
                         pair.scalar == JsonScanUTF16.comma || pair.scalar == JsonScanUTF16.colon
                     } ?? false
                     if !skipMiddleInsertion, missingMiddle > 1 {
-                        let patch = String(repeating: "\n}", count: missingMiddle - 1)
+                        let patch = smartInsert.indentedClosingSuffix(count: missingMiddle - 1, baseIndent: lineIndent)
                         Self.replaceInTextViewWithoutShouldChangeGate(
                             textView,
                             range: NSRange(location: insertEnd, length: 0),
@@ -355,7 +356,7 @@ struct JSONTextEditor: NSViewRepresentable {
 
                 let missingTrailing = smartInsert.unclosedBraceCount(in: textView.string)
                 if missingTrailing == 1 {
-                    let suffix = "\n}"
+                    let suffix = smartInsert.indentedClosingSuffix(count: 1, baseIndent: lineIndent)
                     let endRange = NSRange(location: textView.string.utf16.count, length: 0)
                     Self.replaceInTextViewWithoutShouldChangeGate(textView, range: endRange, string: suffix)
                 }
