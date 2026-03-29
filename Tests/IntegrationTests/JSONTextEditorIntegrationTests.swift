@@ -184,7 +184,7 @@ final class JSONTextEditorIntegrationTests: XCTestCase {
 
         let textView = makeTextView(text: "{\n  ")
 
-        coordinator.textView(textView, doCommandBy: #selector(NSTextView.insertTab(_:)))
+        _ = coordinator.textView(textView, doCommandBy: #selector(NSTextView.insertTab(_:)))
 
         XCTAssertTrue(textView.string.contains("\"count\": "))
     }
@@ -199,7 +199,7 @@ final class JSONTextEditorIntegrationTests: XCTestCase {
 
         let textView = makeTextView(text: "{\n  ")
 
-        coordinator.textView(textView, doCommandBy: #selector(NSTextView.insertTab(_:)))
+        _ = coordinator.textView(textView, doCommandBy: #selector(NSTextView.insertTab(_:)))
 
         XCTAssertTrue(textView.string.contains("\"active\": "))
     }
@@ -214,7 +214,7 @@ final class JSONTextEditorIntegrationTests: XCTestCase {
 
         let textView = makeTextView(text: "{\n  ")
 
-        coordinator.textView(textView, doCommandBy: #selector(NSTextView.insertTab(_:)))
+        _ = coordinator.textView(textView, doCommandBy: #selector(NSTextView.insertTab(_:)))
 
         XCTAssertTrue(textView.string.contains("\"address\": {"))
         XCTAssertTrue(textView.string.contains("}"))
@@ -230,7 +230,7 @@ final class JSONTextEditorIntegrationTests: XCTestCase {
 
         let textView = makeTextView(text: "{\n  \"status\": ")
 
-        coordinator.textView(textView, doCommandBy: #selector(NSTextView.insertTab(_:)))
+        _ = coordinator.textView(textView, doCommandBy: #selector(NSTextView.insertTab(_:)))
 
         XCTAssertTrue(textView.string.contains("\"ACTIVE\""))
     }
@@ -245,7 +245,7 @@ final class JSONTextEditorIntegrationTests: XCTestCase {
 
         let textView = makeTextView(text: "{\n  ")
 
-        coordinator.textView(textView, doCommandBy: #selector(NSTextView.insertTab(_:)))
+        _ = coordinator.textView(textView, doCommandBy: #selector(NSTextView.insertTab(_:)))
 
         XCTAssertTrue(textView.string.contains("\"tags\": []"))
     }
@@ -261,7 +261,7 @@ final class JSONTextEditorIntegrationTests: XCTestCase {
         let textView = makeTextView(text: "{\n  ")
         let originalText = textView.string
 
-        coordinator.textView(textView, doCommandBy: #selector(NSTextView.insertTab(_:)))
+        _ = coordinator.textView(textView, doCommandBy: #selector(NSTextView.insertTab(_:)))
 
         XCTAssertEqual(textView.string, originalText)
         XCTAssertFalse(vm.isVisible)
@@ -290,7 +290,7 @@ final class JSONTextEditorIntegrationTests: XCTestCase {
 
         let textView = makeTextView(text: "{\n  ")
 
-        coordinator.textView(textView, doCommandBy: #selector(NSTextView.insertTab(_:)))
+        _ = coordinator.textView(textView, doCommandBy: #selector(NSTextView.insertTab(_:)))
 
         XCTAssertTrue(textView.string.contains("\"name\": \"\""))
         XCTAssertTrue(textView.string.hasSuffix("}"), "Root brace must be auto-closed, got: \(textView.string)")
@@ -306,7 +306,7 @@ final class JSONTextEditorIntegrationTests: XCTestCase {
         textView.string = "{\n  \n}"
         textView.setSelectedRange(NSRange(location: 4, length: 0))
 
-        coordinator.textView(textView, doCommandBy: #selector(NSTextView.insertTab(_:)))
+        _ = coordinator.textView(textView, doCommandBy: #selector(NSTextView.insertTab(_:)))
 
         let braceCount = textView.string.count(where: { $0 == "}" })
         XCTAssertEqual(braceCount, 1, "Should not add extra closing brace")
@@ -339,7 +339,7 @@ final class JSONTextEditorIntegrationTests: XCTestCase {
         textView.string = prefix + suffix
         textView.setSelectedRange(NSRange(location: prefix.utf16.count, length: 0))
 
-        coordinator.textView(textView, doCommandBy: #selector(NSTextView.insertTab(_:)))
+        _ = coordinator.textView(textView, doCommandBy: #selector(NSTextView.insertTab(_:)))
 
         XCTAssertTrue(textView.string.contains("\"id\": \"\""), textView.string)
         XCTAssertTrue(

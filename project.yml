@@ -5,7 +5,7 @@ options:
   developmentLanguage: en
   useBaseInternationalization: true
 attributes:
-  LastUpgradeCheck: "2630"
+  LastUpgradeCheck: "2640"
 settings:
   base:
     DEAD_CODE_STRIPPING: YES
