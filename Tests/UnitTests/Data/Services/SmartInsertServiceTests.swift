@@ -150,6 +150,129 @@ final class SmartInsertServiceTests: XCTestCase {
         XCTAssertNil(result)
     }
 
+    // MARK: - isInsideStringLiteral
+
+    func test_isInsideStringLiteral_cursorBetweenQuotes_returnsTrue() {
+        // "hello" — offset 3 is inside the string (after opening " h e)
+        let ns = "\"hello\"" as NSString
+        XCTAssertTrue(sut.isInsideStringLiteral(in: ns, at: 3))
+    }
+
+    func test_isInsideStringLiteral_cursorOutsideString_returnsFalse() {
+        // {"a": 1} — offset 8 (end) — both quotes are balanced
+        let ns = "{\"a\": 1}" as NSString
+        XCTAssertFalse(sut.isInsideStringLiteral(in: ns, at: 8))
+    }
+
+    func test_isInsideStringLiteral_cursorAfterEscapedQuote_returnsTrue() {
+        // "val\"ue" — the \" is an escaped quote, not a string terminator
+        // NSString content: "val\"ue"  (indices: 0=" 1=v 2=a 3=l 4=\ 5=" 6=u 7=e 8=")
+        let ns = "\"val\\\"ue\"" as NSString
+        XCTAssertTrue(sut.isInsideStringLiteral(in: ns, at: 7))
+    }
+
+    func test_isInsideStringLiteral_cursorAfterBothEscapedQuotesAroundWord_returnsTrue() {
+        // "say \"hi\" please" — cursor at offset 12 (the 'p' of "please")
+        // Two escaped quotes surround "hi"; first \" opens, second \" closes the inner word,
+        // but both are escaped so neither toggles inString — cursor is still inside outer string.
+        // NSString: "  s  a  y  SP \  "  h  i  \  "  SP p  ...
+        //           0  1  2  3  4  5  6  7  8  9 10  11 12
+        let ns = "\"say \\\"hi\\\" please\"" as NSString
+        XCTAssertTrue(sut.isInsideStringLiteral(in: ns, at: 12))
+    }
+
+    func test_isInsideStringLiteral_stringValueContainsJsonLikeContent_returnsTrue() {
+        // {"a":"{b}"} — offset 7 (the 'b') is inside the string value "{b}"
+        // NSString: { " a " : " { b } " }
+        //           0 1 2 3 4 5 6 7 8 9 10
+        let ns = "{\"a\":\"{b}\"}" as NSString
+        XCTAssertTrue(sut.isInsideStringLiteral(in: ns, at: 7))
+    }
+
+    // MARK: - isInsideStringLiteral — escape sequence cursor positions
+
+    func test_isInsideStringLiteral_cursorJustBeforeEscapeBackslash_returnsTrue() {
+        // "a\"b" — cursor at offset 2 (right before the \, escape not yet started)
+        // NSString: "  a  \  "  b  "
+        //           0  1  2  3  4  5
+        let ns = "\"a\\\"b\"" as NSString
+        XCTAssertTrue(sut.isInsideStringLiteral(in: ns, at: 2))
+    }
+
+    func test_isInsideStringLiteral_cursorBetweenBackslashAndEscapedQuote_returnsTrue() {
+        // "a\"b" — cursor at offset 3 (between \ and the escaped "), still inside
+        let ns = "\"a\\\"b\"" as NSString
+        XCTAssertTrue(sut.isInsideStringLiteral(in: ns, at: 3))
+    }
+
+    func test_isInsideStringLiteral_cursorInsideWordBetweenTwoEscapedQuotePairs_returnsTrue() {
+        // "say \"hi\" please" — cursor at offset 8 (the 'i' of "hi"), between both \"
+        // NSString: "  s  a  y  SP \  "  h  i  \  " ...
+        //           0  1  2  3  4  5  6  7  8  9 10
+        let ns = "\"say \\\"hi\\\" please\"" as NSString
+        XCTAssertTrue(sut.isInsideStringLiteral(in: ns, at: 8))
+    }
+
+    func test_isInsideStringLiteral_cursorBetweenDoubleBackslashes_returnsTrue() {
+        // "a\\ b" — \\ is an escaped backslash; cursor at offset 3 (the second \)
+        // NSString: "  a  \  \  SP b  "
+        //           0  1  2  3  4  5  6
+        let ns = "\"a\\\\ b\"" as NSString
+        XCTAssertTrue(sut.isInsideStringLiteral(in: ns, at: 3))
+    }
+
+    func test_isInsideStringLiteral_cursorAfterDoubleBackslash_returnsTrue() {
+        // "a\\ b" — cursor at offset 4 (the space right after \\), still inside the string
+        let ns = "\"a\\\\ b\"" as NSString
+        XCTAssertTrue(sut.isInsideStringLiteral(in: ns, at: 4))
+    }
+
+    func test_isInsideStringLiteral_doubleBackslashThenClosingQuote_cursorAfterClosingQuote_returnsFalse() {
+        // "a\\"x — \\ is escaped backslash; the " at index 4 CLOSES the string; x at index 5 is outside
+        // NSString: "  a  \  \  "  x
+        //           0  1  2  3  4  5
+        let ns = "\"a\\\\\"x" as NSString
+        XCTAssertFalse(sut.isInsideStringLiteral(in: ns, at: 5))
+    }
+
+    func test_isInsideStringLiteral_escapedBackslashThenEscapedQuote_cursorAfterBothSequences_returnsTrue() {
+        // "x\\\"y" — \\\" = escaped backslash (\) then escaped quote ("); cursor at offset 6 (y)
+        // NSString: "  x  \  \  \  "  y  "
+        //           0  1  2  3  4  5  6  7
+        let ns = "\"x\\\\\\\"y\"" as NSString
+        XCTAssertTrue(sut.isInsideStringLiteral(in: ns, at: 6))
+    }
+
+    func test_isInsideStringLiteral_emptyStringLiteral_cursorBetweenQuotes_returnsTrue() {
+        // "" — empty JSON string; cursor at offset 1 (between the two quotes)
+        let ns = "\"\"" as NSString
+        XCTAssertTrue(sut.isInsideStringLiteral(in: ns, at: 1))
+    }
+
+    // MARK: - lineIndentation
+
+    func test_lineIndentation_noLeadingWhitespace_returnsEmpty() {
+        // {"a": 1} — no leading whitespace on this single line
+        let ns = "{\"a\": 1}" as NSString
+        XCTAssertEqual(sut.lineIndentation(in: ns, at: 5), "")
+    }
+
+    func test_lineIndentation_twoSpaces_returnsTwoSpaces() {
+        // "{\n  \"a\": 1}" — cursor at offset 4 (the '"'), line start is 2
+        // NSString: { \n SP SP " a ...
+        //           0  1  2  3 4 5
+        let ns = "{\n  \"a\": 1}" as NSString
+        XCTAssertEqual(sut.lineIndentation(in: ns, at: 4), "  ")
+    }
+
+    func test_lineIndentation_nestedFourSpaces_returnsFourSpaces() {
+        // "{\n    \"a\": 1}" — cursor at offset 6 (the '"'), line start is 2
+        // NSString: { \n SP SP SP SP " a ...
+        //           0  1  2  3  4  5 6 7
+        let ns = "{\n    \"a\": 1}" as NSString
+        XCTAssertEqual(sut.lineIndentation(in: ns, at: 6), "    ")
+    }
+
     // MARK: - findBareTextStart
 
     func test_findBareTextStart_withBareText_returnsStartIndex() {

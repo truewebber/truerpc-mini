@@ -293,6 +293,64 @@ struct SmartInsertService {
         return nil
     }
 
+    // MARK: - String-literal context
+
+    /// Returns `true` when `utf16Offset` falls inside an open string literal in `ns`.
+    /// Scans from position 0 tracking escape sequences and quote pairs.
+    func isInsideStringLiteral(in ns: NSString, at utf16Offset: Int) -> Bool {
+        var inString = false
+        var escaped = false
+        let length = min(utf16Offset, ns.length)
+        var i = 0
+        while i < length {
+            let c = ns.character(at: i)
+            if escaped {
+                escaped = false
+                i += 1
+                continue
+            }
+            if inString {
+                if c == JsonScanUTF16.backslash { escaped = true }
+                else if c == JsonScanUTF16.quote { inString = false }
+                i += 1
+                continue
+            }
+            if c == JsonScanUTF16.quote { inString = true }
+            i += 1
+        }
+        return inString
+    }
+
+    /// Returns the leading whitespace (spaces and tabs) of the line that contains
+    /// `utf16Offset`. Scans backwards to find the preceding LF (or start of text),
+    /// then collects consecutive space/tab characters from the start of that line.
+    func lineIndentation(in ns: NSString, at utf16Offset: Int) -> String {
+        var lineStart = 0
+        var i = utf16Offset - 1
+        while i >= 0 {
+            if ns.character(at: i) == JsonScanUTF16.lf {
+                lineStart = i + 1
+                break
+            }
+            i -= 1
+        }
+
+        var indentation = ""
+        var j = lineStart
+        while j < ns.length {
+            let c = ns.character(at: j)
+            if c == JsonScanUTF16.space {
+                indentation += " "
+            } else if c == JsonScanUTF16.tab {
+                indentation += "\t"
+            } else {
+                break
+            }
+            j += 1
+        }
+        return indentation
+    }
+
     // MARK: - Private helpers
 
     private func countUnescapedQuotes(in ns: NSString, upTo limit: Int) -> Int {
