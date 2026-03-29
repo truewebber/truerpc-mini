@@ -108,6 +108,70 @@ public actor FileSystemProtoRepository: ProtoRepositoryProtocol {
         throw ProtoRepositoryError.messageTypeNotFound(typeName)
     }
 
+    public func makeJSONTypeRegistry(for protoFile: ProtoFile) throws -> TypeRegistry {
+        let registry = TypeRegistry()
+        try registerBuiltinMessagesForJSON(into: registry)
+
+        for fileDescriptor in fileDescriptors where isDescriptorInScope(fileDescriptor, protoFile: protoFile) {
+            for messageType in fileDescriptor.messageType {
+                try registerMessageTreeForJSON(
+                    messageType,
+                    package: fileDescriptor.package,
+                    parentQualifiedName: nil,
+                    protoFile: protoFile,
+                    registry: registry)
+            }
+        }
+        return registry
+    }
+
+    /// Registers canonical `google.protobuf.*` messages from SwiftProtoReflect's built-in `DescriptorPool`.
+    ///
+    /// Parsed `google/protobuf/timestamp.proto` may be missing from `fileDescriptors` (well-known imports
+    /// resolved outside the tab's dependency list) or use a `name` that fails `isDescriptorInScope`. JSON
+    /// deserialization of nested WKT fields still requires those types in `TypeRegistry`.
+    private func registerBuiltinMessagesForJSON(into registry: TypeRegistry) throws {
+        let pool = DescriptorPool(includeBuiltinDescriptors: true)
+        for typeName in pool.allMessageTypeNames() {
+            guard !registry.hasMessage(named: typeName) else { continue }
+            guard let descriptor = pool.findMessageDescriptor(named: typeName) else { continue }
+
+            try registry.registerMessage(descriptor)
+        }
+    }
+
+    /// Registers one `DescriptorProto` and its `nestedType` subtree for JSON nested-message resolution.
+    private func registerMessageTreeForJSON(
+        _ messageType: Google_Protobuf_DescriptorProto,
+        package: String,
+        parentQualifiedName: String?,
+        protoFile: ProtoFile,
+        registry: TypeRegistry)
+        throws
+    {
+        let fqName: String = if let parent = parentQualifiedName {
+            "\(parent).\(messageType.name)"
+        } else if package.isEmpty {
+            messageType.name
+        } else {
+            "\(package).\(messageType.name)"
+        }
+
+        let descriptor = try getMessageDescriptor(forType: fqName, in: protoFile)
+        if !registry.hasMessage(named: descriptor.fullName) {
+            try registry.registerMessage(descriptor)
+        }
+
+        for nested in messageType.nestedType {
+            try registerMessageTreeForJSON(
+                nested,
+                package: package,
+                parentQualifiedName: fqName,
+                protoFile: protoFile,
+                registry: registry)
+        }
+    }
+
     // MARK: - Private Helpers
 
     /// File names allowed for descriptor lookup for `protoFile` (main file + dependency basenames).

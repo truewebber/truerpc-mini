@@ -148,7 +148,7 @@ targets:
 packages:
   SwiftProtoReflect:
     url: https://github.com/truewebber/swift-protoreflect
-    from: 5.0.0
+    from: 5.1.0
   SwiftProtoParser:
     url: https://github.com/truewebber/swift-protoparser
     from: 0.5.0

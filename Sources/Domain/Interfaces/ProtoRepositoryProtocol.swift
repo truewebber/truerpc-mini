@@ -31,4 +31,8 @@ public protocol ProtoRepositoryProtocol: Sendable {
     /// - Returns: MessageDescriptor for dynamic message creation
     /// - Throws: ProtoRepositoryError if type not found in loaded protos for that scope
     func getMessageDescriptor(forType typeName: String, in protoFile: ProtoFile) async throws -> MessageDescriptor
+
+    /// All message types visible when resolving `protoFile` (main file + dependencies), for JSON deserialization
+    /// of nested and repeated message fields (`JSONDeserializer` / `TypeRegistry`).
+    func makeJSONTypeRegistry(for protoFile: ProtoFile) async throws -> TypeRegistry
 }

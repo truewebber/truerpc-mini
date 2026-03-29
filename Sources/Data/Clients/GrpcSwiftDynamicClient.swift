@@ -43,10 +43,22 @@ public final class GrpcSwiftDynamicClient: GrpcClientProtocol, Sendable {
             throw error
         }
 
-        // 2. Parse JSON to DynamicMessage
+        // 2. Parse JSON to DynamicMessage (nested / repeated messages require a TypeRegistry)
+        let typeRegistry: TypeRegistry
+        do {
+            typeRegistry = try await protoRepository.makeJSONTypeRegistry(for: protoFile)
+        } catch {
+            logger.error("Failed to build JSON type registry", metadata: [
+                "service": method.serviceName,
+                "method": method.name,
+                "error": error.localizedDescription,
+            ])
+            throw error
+        }
+
         let inputMessage: DynamicMessage
         do {
-            inputMessage = try parseJSON(request.jsonBody, using: inputDescriptor)
+            inputMessage = try parseJSON(request.jsonBody, using: inputDescriptor, typeRegistry: typeRegistry)
         } catch {
             logger.error("Request serialization failed", metadata: [
                 "service": method.serviceName,
@@ -261,13 +273,37 @@ public final class GrpcSwiftDynamicClient: GrpcClientProtocol, Sendable {
     }
 
     /// Parse JSON string to DynamicMessage using descriptor
-    func parseJSON(_ jsonString: String, using descriptor: MessageDescriptor) throws -> DynamicMessage {
+    func parseJSON(
+        _ jsonString: String,
+        using descriptor: MessageDescriptor,
+        typeRegistry: TypeRegistry)
+        throws -> DynamicMessage
+    {
         guard let jsonData = jsonString.data(using: .utf8) else {
             throw GrpcClientError.invalidJSON("Cannot convert string to data")
         }
 
-        let deserializer = JSONDeserializer()
-        return try deserializer.deserialize(jsonData, using: descriptor)
+        let options = JSONDeserializationOptions(
+            ignoreUnknownFields: true,
+            typeRegistry: typeRegistry)
+        let deserializer = JSONDeserializer(options: options)
+
+        let jsonObject: Any
+        do {
+            jsonObject = try JSONSerialization.jsonObject(with: jsonData, options: [])
+        } catch {
+            throw GrpcClientError.invalidJSON("Invalid JSON: \(error.localizedDescription)")
+        }
+        guard let rootObject = jsonObject as? [String: Any] else {
+            throw GrpcClientError.invalidJSON("Request body must be a JSON object")
+        }
+
+        let normalized = try GrpcRequestProtobufJSONNormalizer.normalizeMessageObject(
+            rootObject,
+            descriptor: descriptor,
+            typeRegistry: typeRegistry)
+
+        return try deserializer.deserializeFromJSONObject(normalized, using: descriptor)
     }
 
     /// Convert DynamicMessage to JSON string

@@ -392,4 +392,70 @@ final class JSONTextEditorIntegrationTests: XCTestCase {
         let braceCount = textView.string.count(where: { $0 == "}" })
         XCTAssertEqual(braceCount, 1, "Should not add extra closing brace")
     }
+
+    func test_applySmartInsert_direct_insertsBraceBeforeArrayBracket() {
+        let suggestion = AutocompleteSuggestion(name: "id", typeHint: "string", kind: .string)
+        let (coordinator, _) = makeCoordinator()
+        let prefix = "{\n  \"names\": [\n    {\n      "
+        let suffix = "\n  ]\n}"
+        let textView = NSTextView()
+        textView.string = prefix + suffix
+        textView.setSelectedRange(NSRange(location: prefix.utf16.count, length: 0))
+
+        coordinator.applySmartInsert(suggestion: suggestion, to: textView)
+
+        XCTAssertTrue(textView.string.contains("\"id\": \"\"\n}"), textView.string)
+    }
+
+    /// Auto-closing `}` must go before the array's `]`, not at EOF, when the object lives inside `[]`.
+    func test_smartInsert_fieldInsideArrayObject_closesBraceBeforeArrayBracket() {
+        let suggestion = AutocompleteSuggestion(name: "id", typeHint: "string", kind: .string)
+        let (coordinator, vm) = makeCoordinator()
+        vm.suggestions = [suggestion]
+        vm.isVisible = true
+
+        let prefix = "{\n  \"names\": [\n    {\n      "
+        let suffix = "\n  ]\n}"
+        let textView = NSTextView()
+        textView.string = prefix + suffix
+        textView.setSelectedRange(NSRange(location: prefix.utf16.count, length: 0))
+
+        coordinator.textView(textView, doCommandBy: #selector(NSTextView.insertTab(_:)))
+
+        XCTAssertTrue(textView.string.contains("\"id\": \"\""), textView.string)
+        XCTAssertTrue(
+            textView.string.contains("\"id\": \"\"\n}"),
+            "Inner object should close immediately after the field; got: \(textView.string)")
+        let ns = textView.string as NSString
+        let idEnd = ns.range(of: "\"id\": \"\"").location + ns.range(of: "\"id\": \"\"").length
+        let braceAfterValue = ns.range(
+            of: "\n}",
+            options: [],
+            range: NSRange(location: idEnd, length: ns.length - idEnd))
+        XCTAssertNotEqual(braceAfterValue.location, NSNotFound, textView.string)
+        let bracketRange = ns.range(of: "\n  ]")
+        XCTAssertNotEqual(bracketRange.location, NSNotFound, textView.string)
+        XCTAssertLessThan(
+            braceAfterValue.location,
+            bracketRange.location,
+            "Closing brace must appear before the array `]`; got: \(textView.string)")
+    }
+
+    func test_arrayBracketBalanceInPrefix_insideNestedArray_returnsDepth() {
+        let s = "{\n  \"names\": [\n    {\n      " as NSString
+        let depth = JSONTextEditor.Coordinator.arrayBracketBalanceInPrefix(ns: s, endUTF16: s.length)
+        XCTAssertEqual(depth, 1)
+    }
+
+    func test_netBraceCountInUTF16Range_objectInsideArray_countsOneOpenBrace() {
+        let str = "{\n  \"names\": [\n    {\n      \"id\": \"\""
+        let ns = str as NSString
+        let openBracket = ns.range(of: "[").location
+        let segmentStart = openBracket + 1
+        let net = JSONTextEditor.Coordinator.netBraceCountInUTF16Range(
+            ns: ns,
+            fromUTF16: segmentStart,
+            toUTF16: ns.length)
+        XCTAssertEqual(net, 1)
+    }
 }

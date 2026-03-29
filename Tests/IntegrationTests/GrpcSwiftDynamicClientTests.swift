@@ -49,9 +49,10 @@ final class GrpcSwiftDynamicClientTests: XCTestCase {
     func test_parseJSON_withValidJSON_createsDynamicMessage() throws {
         // Given
         let jsonString = #"{"name": "Alice", "age": 30}"#
+        let registry = TypeRegistry()
 
         // When
-        let result = try sut.parseJSON(jsonString, using: messageDescriptor)
+        let result = try sut.parseJSON(jsonString, using: messageDescriptor, typeRegistry: registry)
 
         // Then
         XCTAssertEqual(try result.get(forField: "name") as? String, "Alice")
@@ -61,21 +62,175 @@ final class GrpcSwiftDynamicClientTests: XCTestCase {
     func test_parseJSON_withInvalidJSON_throwsError() throws {
         // Given
         let jsonString = "{invalid json"
+        let registry = TypeRegistry()
 
         // When/Then
-        XCTAssertThrowsError(try sut.parseJSON(jsonString, using: messageDescriptor))
+        XCTAssertThrowsError(try sut.parseJSON(jsonString, using: messageDescriptor, typeRegistry: registry))
     }
 
     func test_parseJSON_withEmptyJSON_createsEmptyMessage() throws {
         // Given
         let jsonString = "{}"
         let emptyDescriptor = MessageDescriptor(name: "Empty", parent: fileDescriptor)
+        let registry = TypeRegistry()
 
         // When
-        let result = try sut.parseJSON(jsonString, using: emptyDescriptor)
+        let result = try sut.parseJSON(jsonString, using: emptyDescriptor, typeRegistry: registry)
 
         // Then
         XCTAssertNotNil(result)
+    }
+
+    /// Regression: repeated message elements need `JSONDeserializationOptions.typeRegistry` (SwiftProtoReflect).
+    func test_parseJSON_repeatedNestedMessage_withTypeRegistry_succeeds() throws {
+        let file = FileDescriptor(name: "example.proto", package: "example")
+        var userDesc = MessageDescriptor(name: "User", parent: file)
+        userDesc.addField(FieldDescriptor(name: "id", number: 1, type: .string))
+        userDesc.addField(FieldDescriptor(name: "name", number: 2, type: .string))
+
+        var twoRequestDesc = MessageDescriptor(name: "TwoRequest", parent: file)
+        twoRequestDesc.addField(
+            FieldDescriptor(
+                name: "names",
+                number: 1,
+                type: .message,
+                typeName: "example.User",
+                isRepeated: true))
+
+        let registry = TypeRegistry()
+        try registry.registerMessage(userDesc)
+        try registry.registerMessage(twoRequestDesc)
+
+        let json = #"{"names":[{"id":"","name":""}]}"#
+        let result = try sut.parseJSON(json, using: twoRequestDesc, typeRegistry: registry)
+        let names = try XCTUnwrap(try result.get(forField: "names") as? [DynamicMessage])
+        XCTAssertEqual(names.count, 1)
+        XCTAssertEqual(try names[0].get(forField: "id") as? String, "")
+        XCTAssertEqual(try names[0].get(forField: "name") as? String, "")
+    }
+
+    /// Protobuf JSON encodes `google.protobuf.Timestamp` as an RFC 3339 string; SwiftProtoReflect expects an object.
+    func test_parseJSON_repeatedUserWithProtobufJSONTimestampString_succeeds() throws {
+        let file = FileDescriptor(name: "example.proto", package: "example")
+        let builtinPool = DescriptorPool(includeBuiltinDescriptors: true)
+        let timestampDesc = try XCTUnwrap(builtinPool.findMessageDescriptor(named: WellKnownTypeNames.timestamp))
+
+        var userDesc = MessageDescriptor(name: "User", parent: file)
+        userDesc.addField(FieldDescriptor(name: "id", number: 1, type: .string))
+        userDesc.addField(FieldDescriptor(name: "name", number: 2, type: .string))
+        userDesc.addField(
+            FieldDescriptor(
+                name: "birthday",
+                number: 3,
+                type: .message,
+                typeName: WellKnownTypeNames.timestamp))
+
+        var twoRequestDesc = MessageDescriptor(name: "TwoRequest", parent: file)
+        twoRequestDesc.addField(
+            FieldDescriptor(
+                name: "names",
+                number: 1,
+                type: .message,
+                typeName: "example.User",
+                isRepeated: true))
+
+        let registry = TypeRegistry()
+        try registry.registerMessage(timestampDesc)
+        try registry.registerMessage(userDesc)
+        try registry.registerMessage(twoRequestDesc)
+
+        let json = #"{"names":[{"id":"","name":"","birthday":"1970-01-01T00:00:00Z"}]}"#
+        let result = try sut.parseJSON(json, using: twoRequestDesc, typeRegistry: registry)
+        let names = try XCTUnwrap(try result.get(forField: "names") as? [DynamicMessage])
+        XCTAssertEqual(names.count, 1)
+        let birthday = try XCTUnwrap(try names[0].get(forField: "birthday") as? DynamicMessage)
+        XCTAssertEqual(try birthday.get(forField: "seconds") as? Int64, 0)
+        XCTAssertEqual(try birthday.get(forField: "nanos") as? Int32, 0)
+    }
+
+    func test_parseJSON_singularTimestampProtobufJSONString_onRootMessage_succeeds() throws {
+        let file = FileDescriptor(name: "example.proto", package: "example")
+        let builtinPool = DescriptorPool(includeBuiltinDescriptors: true)
+        let timestampDesc = try XCTUnwrap(builtinPool.findMessageDescriptor(named: WellKnownTypeNames.timestamp))
+
+        var eventDesc = MessageDescriptor(name: "Event", parent: file)
+        eventDesc.addField(
+            FieldDescriptor(
+                name: "created_at",
+                number: 1,
+                type: .message,
+                typeName: WellKnownTypeNames.timestamp))
+
+        let registry = TypeRegistry()
+        try registry.registerMessage(timestampDesc)
+        try registry.registerMessage(eventDesc)
+
+        let json = #"{"created_at":"2000-01-01T00:00:00Z"}"#
+        let result = try sut.parseJSON(json, using: eventDesc, typeRegistry: registry)
+        let ts = try XCTUnwrap(try result.get(forField: "created_at") as? DynamicMessage)
+        XCTAssertEqual(try ts.get(forField: "seconds") as? Int64, 946_684_800)
+    }
+
+    func test_parseJSON_repeatedDurationProtobufJSONString_succeeds() throws {
+        let file = FileDescriptor(name: "test.proto", package: "test")
+        let builtinPool = DescriptorPool(includeBuiltinDescriptors: true)
+        let durationDesc = try XCTUnwrap(builtinPool.findMessageDescriptor(named: WellKnownTypeNames.duration))
+
+        var rootDesc = MessageDescriptor(name: "Delays", parent: file)
+        rootDesc.addField(
+            FieldDescriptor(
+                name: "values",
+                number: 1,
+                type: .message,
+                typeName: WellKnownTypeNames.duration,
+                isRepeated: true))
+
+        let registry = TypeRegistry()
+        try registry.registerMessage(durationDesc)
+        try registry.registerMessage(rootDesc)
+
+        let json = #"{"values":["1s","0.5s"]}"#
+        let result = try sut.parseJSON(json, using: rootDesc, typeRegistry: registry)
+        let values = try XCTUnwrap(try result.get(forField: "values") as? [DynamicMessage])
+        XCTAssertEqual(values.count, 2)
+        XCTAssertEqual(try values[0].get(forField: "seconds") as? Int64, 1)
+        XCTAssertEqual(try values[0].get(forField: "nanos") as? Int32, 0)
+        XCTAssertEqual(try values[1].get(forField: "seconds") as? Int64, 0)
+        XCTAssertEqual(try values[1].get(forField: "nanos") as? Int32, 500_000_000)
+    }
+
+    func test_parseJSON_mapWithTimestampStringValues_normalizesForDeserializer() throws {
+        let file = FileDescriptor(name: "sched.proto", package: "sched")
+        let builtinPool = DescriptorPool(includeBuiltinDescriptors: true)
+        let timestampDesc = try XCTUnwrap(builtinPool.findMessageDescriptor(named: WellKnownTypeNames.timestamp))
+
+        let mapEntry = MapEntryInfo(
+            keyFieldInfo: KeyFieldInfo(name: "key", number: 1, type: .string),
+            valueFieldInfo: ValueFieldInfo(
+                name: "value",
+                number: 2,
+                type: .message,
+                typeName: WellKnownTypeNames.timestamp))
+
+        var scheduleDesc = MessageDescriptor(name: "Schedule", parent: file)
+        scheduleDesc.addField(
+            FieldDescriptor(
+                name: "start_by_user",
+                number: 1,
+                type: .message,
+                typeName: "sched.Schedule.StartByUserEntry",
+                isMap: true,
+                mapEntryInfo: mapEntry))
+
+        let registry = TypeRegistry()
+        try registry.registerMessage(timestampDesc)
+        try registry.registerMessage(scheduleDesc)
+
+        let json = #"{"start_by_user":{"alice":"1970-01-01T00:00:00Z"}}"#
+        let result = try sut.parseJSON(json, using: scheduleDesc, typeRegistry: registry)
+        let mapVal = try XCTUnwrap(try result.get(forField: "start_by_user") as? [AnyHashable: Any])
+        let alice = try XCTUnwrap(mapVal["alice"] as? DynamicMessage)
+        XCTAssertEqual(try alice.get(forField: "seconds") as? Int64, 0)
     }
 
     // MARK: - Message to JSON
@@ -649,6 +804,25 @@ private final class MockProtoRepository: ProtoRepositoryProtocol {
         }
 
         return descriptor
+    }
+
+    func makeJSONTypeRegistry(for _: ProtoFile) throws -> TypeRegistry {
+        let registry = TypeRegistry()
+        if let descriptor = stubbedMessageDescriptor {
+            try? registry.registerMessage(descriptor)
+        }
+        if let descriptor = inputDescriptor {
+            try? registry.registerMessage(descriptor)
+        }
+        if let descriptor = outputDescriptor {
+            try? registry.registerMessage(descriptor)
+        }
+        if let map = inputDescriptorByProtoBasename {
+            for descriptor in map.values {
+                try? registry.registerMessage(descriptor)
+            }
+        }
+        return registry
     }
 }
 

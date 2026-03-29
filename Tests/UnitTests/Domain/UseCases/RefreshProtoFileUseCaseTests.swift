@@ -127,6 +127,14 @@ private final class MockProtoRepositoryForRefresh: ProtoRepositoryProtocol {
         let fileDesc = FileDescriptor(name: "mock.proto", package: "mock")
         return MessageDescriptor(name: "MockMessage", parent: fileDesc)
     }
+
+    func makeJSONTypeRegistry(for _: ProtoFile) throws -> TypeRegistry {
+        let registry = TypeRegistry()
+        let fileDesc = FileDescriptor(name: "mock.proto", package: "mock")
+        let msg = MessageDescriptor(name: "MockMessage", parent: fileDesc)
+        try registry.registerMessage(msg)
+        return registry
+    }
 }
 
 // MARK: - Test Error

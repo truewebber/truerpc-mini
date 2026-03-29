@@ -520,6 +520,22 @@ struct JSONTextEditor: NSViewRepresentable {
             self.parent = parent
         }
 
+        /// UTF-16 code units for JSON structural ASCII (NSString.character(at:)).
+        private enum JsonScanUTF16 {
+            static let quote: UInt16 = 0x22
+            static let backslash: UInt16 = 0x5C
+            static let bracketOpen: UInt16 = 0x5B
+            static let bracketClose: UInt16 = 0x5D
+            static let braceOpen: UInt16 = 0x7B
+            static let braceClose: UInt16 = 0x7D
+            static let space: UInt16 = 0x20
+            static let lf: UInt16 = 0x0A
+            static let cr: UInt16 = 0x0D
+            static let tab: UInt16 = 0x09
+            static let comma: UInt16 = 0x2C
+            static let colon: UInt16 = 0x3A
+        }
+
         /// Single NSPopover instance owned by this coordinator.
         /// .applicationDefined prevents AppKit from auto-closing it on the next keystroke.
         lazy var autocompletePopover: NSPopover = {
@@ -709,7 +725,27 @@ struct JSONTextEditor: NSViewRepresentable {
 
         // MARK: - Smart insert
 
-        private func applySmartInsert(suggestion: AutocompleteSuggestion, to textView: NSTextView) {
+        /// Applies a replacement without querying `shouldChangeText`, which can reject programmatic
+        /// auto-closing edits in headless `NSTextView` instances (e.g. integration tests).
+        private static func replaceInTextViewWithoutShouldChangeGate(
+            _ textView: NSTextView,
+            range: NSRange,
+            string: String)
+        {
+            guard let storage = textView.textStorage else {
+                textView.replaceCharacters(in: range, with: string)
+                textView.didChangeText()
+                return
+            }
+
+            storage.beginEditing()
+            storage.replaceCharacters(in: range, with: string)
+            storage.endEditing()
+            textView.didChangeText()
+        }
+
+        /// Internal for `@testable` integration tests (keyboard path also calls this).
+        func applySmartInsert(suggestion: AutocompleteSuggestion, to textView: NSTextView) {
             let (insertText, cursorBack) = Self.smartInsertComponents(for: suggestion)
             guard !insertText.isEmpty else { return }
 
@@ -718,22 +754,218 @@ struct JSONTextEditor: NSViewRepresentable {
                 suppressTextDidChange = true
                 defer { suppressTextDidChange = false }
 
+                let lengthBefore = (textView.string as NSString).length
                 textView.replaceCharacters(in: range, with: insertText)
                 textView.didChangeText()
+                let lengthAfter = (textView.string as NSString).length
+                // Use the actual UTF-16 length delta — `NSTextView` may normalize newlines/quotes so
+                // `insertText.utf16.count` does not match what was stored (breaks bracket math in tests
+                // and edge cases).
+                let insertedUTF16Count = lengthAfter - lengthBefore + range.length
+                let insertEnd = range.location + insertedUTF16Count
+                let nsFull = textView.string as NSString
+                let pendingArrays = Self.arrayBracketBalanceInPrefix(ns: nsFull, endUTF16: insertEnd)
+                let nextSig = Self.nextSignificantUTF16IndexAndScalar(ns: nsFull, fromUTF16: insertEnd)
 
-                let cursorPos = range.location + insertText.utf16.count - cursorBack
+                if pendingArrays > 0,
+                   let next = nextSig,
+                   next.scalar == JsonScanUTF16.bracketClose,
+                   let closeBracket = Self.indexOfClosingBracketForContainingArray(ns: nsFull, fromUTF16: insertEnd),
+                   next.index == closeBracket,
+                   let openBracket = Self.indexOfMatchingOpenBracket(ns: nsFull, closingBracketUTF16: closeBracket)
+                {
+                    let innerBraces = Self.netBraceCountInUTF16Range(
+                        ns: nsFull,
+                        fromUTF16: openBracket + 1,
+                        toUTF16: insertEnd)
+                    if innerBraces > 0 {
+                        let patch = String(repeating: "\n}", count: innerBraces)
+                        // Close the object(s) immediately after the new field — not before `]`, or
+                        // whitespace between the value and `]` ends up *inside* the closing brace
+                        // (e.g. `"id": ""\n  \n}]` instead of `"id": ""\n}\n  ]`).
+                        Self.replaceInTextViewWithoutShouldChangeGate(
+                            textView,
+                            range: NSRange(location: insertEnd, length: 0),
+                            string: patch)
+                    }
+                } else {
+                    let missingMiddle = Self.unclosedBraceCount(in: textView.string)
+                    let skipMiddleInsertion = nextSig.map { pair in
+                        pair.scalar == JsonScanUTF16.comma || pair.scalar == JsonScanUTF16.colon
+                    } ?? false
+                    if !skipMiddleInsertion, missingMiddle > 1 {
+                        let patch = String(repeating: "\n}", count: missingMiddle - 1)
+                        Self.replaceInTextViewWithoutShouldChangeGate(
+                            textView,
+                            range: NSRange(location: insertEnd, length: 0),
+                            string: patch)
+                    }
+                }
 
-                let missingBraces = Self.unclosedBraceCount(in: textView.string)
-                if missingBraces > 0 {
-                    let suffix = String(repeating: "\n}", count: missingBraces)
+                let cursorPos = insertEnd - cursorBack
+
+                let missingTrailing = Self.unclosedBraceCount(in: textView.string)
+                if missingTrailing == 1 {
+                    let suffix = "\n}"
                     let endRange = NSRange(location: textView.string.utf16.count, length: 0)
-                    textView.replaceCharacters(in: endRange, with: suffix)
-                    textView.didChangeText()
+                    Self.replaceInTextViewWithoutShouldChangeGate(textView, range: endRange, string: suffix)
                 }
 
                 parent.text = textView.string
                 textView.setSelectedRange(NSRange(location: max(0, cursorPos), length: 0))
             }
+        }
+
+        /// Counts `[` minus `]` outside of JSON string literals in `text[..<endUTF16]`.
+        static func arrayBracketBalanceInPrefix(ns: NSString, endUTF16: Int) -> Int {
+            var balance = 0
+            var inString = false
+            var escaped = false
+            let length = min(endUTF16, ns.length)
+            var i = 0
+            while i < length {
+                let c = ns.character(at: i)
+                if escaped {
+                    escaped = false
+                    i += 1
+                    continue
+                }
+                if inString {
+                    if c == JsonScanUTF16.backslash { escaped = true }
+                    else if c == JsonScanUTF16.quote { inString = false }
+                    i += 1
+                    continue
+                }
+                if c == JsonScanUTF16.quote {
+                    inString = true
+                    i += 1
+                    continue
+                }
+                if c == JsonScanUTF16.bracketOpen { balance += 1 }
+                else if c == JsonScanUTF16.bracketClose { balance -= 1 }
+                i += 1
+            }
+            return balance
+        }
+
+        /// First non-whitespace UTF-16 index at/after `fromUTF16`, or nil if EOF.
+        static func nextSignificantUTF16IndexAndScalar(ns: NSString, fromUTF16: Int) -> (index: Int, scalar: UInt16)? {
+            var i = fromUTF16
+            while i < ns.length {
+                let c = ns.character(at: i)
+                if c == JsonScanUTF16.space || c == JsonScanUTF16.lf || c == JsonScanUTF16.cr
+                    || c == JsonScanUTF16.tab
+                {
+                    i += 1
+                    continue
+                }
+                return (i, c)
+            }
+            return nil
+        }
+
+        /// The `]` that closes the innermost array still open at `fromUTF16` (skips strings).
+        static func indexOfClosingBracketForContainingArray(ns: NSString, fromUTF16: Int) -> Int? {
+            var pending = arrayBracketBalanceInPrefix(ns: ns, endUTF16: fromUTF16)
+            guard pending > 0 else { return nil }
+
+            var inString = false
+            var escaped = false
+            var i = fromUTF16
+            let length = ns.length
+            while i < length {
+                let c = ns.character(at: i)
+                if escaped {
+                    escaped = false
+                    i += 1
+                    continue
+                }
+                if inString {
+                    if c == JsonScanUTF16.backslash { escaped = true }
+                    else if c == JsonScanUTF16.quote { inString = false }
+                    i += 1
+                    continue
+                }
+                if c == JsonScanUTF16.quote {
+                    inString = true
+                    i += 1
+                    continue
+                }
+                if c == JsonScanUTF16.bracketOpen {
+                    pending += 1
+                } else if c == JsonScanUTF16.bracketClose {
+                    pending -= 1
+                    if pending == 0 { return i }
+                }
+                i += 1
+            }
+            return nil
+        }
+
+        /// Matching `[` index for `]` at `closingBracketUTF16` (prefix `0..<closing`).
+        static func indexOfMatchingOpenBracket(ns: NSString, closingBracketUTF16: Int) -> Int? {
+            var stack: [Int] = []
+            var inString = false
+            var escaped = false
+            var i = 0
+            while i < closingBracketUTF16 {
+                let c = ns.character(at: i)
+                if escaped {
+                    escaped = false
+                    i += 1
+                    continue
+                }
+                if inString {
+                    if c == JsonScanUTF16.backslash { escaped = true }
+                    else if c == JsonScanUTF16.quote { inString = false }
+                    i += 1
+                    continue
+                }
+                if c == JsonScanUTF16.quote {
+                    inString = true
+                    i += 1
+                    continue
+                }
+                if c == JsonScanUTF16.bracketOpen {
+                    stack.append(i)
+                } else if c == JsonScanUTF16.bracketClose {
+                    _ = stack.popLast()
+                }
+                i += 1
+            }
+            return stack.last
+        }
+
+        /// Counts `{` minus `}` in `[fromUTF16, toUTF16)` outside of string literals.
+        static func netBraceCountInUTF16Range(ns: NSString, fromUTF16: Int, toUTF16: Int) -> Int {
+            var balance = 0
+            var inString = false
+            var escaped = false
+            var i = fromUTF16
+            let end = min(toUTF16, ns.length)
+            while i < end {
+                let c = ns.character(at: i)
+                if escaped {
+                    escaped = false
+                    i += 1
+                    continue
+                }
+                if inString {
+                    if c == JsonScanUTF16.backslash { escaped = true }
+                    else if c == JsonScanUTF16.quote { inString = false }
+                    i += 1
+                    continue
+                }
+                if c == JsonScanUTF16.quote {
+                    inString = true
+                    i += 1
+                    continue
+                }
+                if c == JsonScanUTF16.braceOpen { balance += 1 }
+                else if c == JsonScanUTF16.braceClose { balance -= 1 }
+                i += 1
+            }
+            return max(0, balance)
         }
 
         /// Counts `{` minus `}` outside of JSON string literals.

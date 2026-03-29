@@ -1,3 +1,4 @@
+import SwiftProtoReflect
 import XCTest
 @testable import TrueRPCMini
 
@@ -856,6 +857,52 @@ extension FileSystemProtoRepositoryTests {
         // Then
         XCTAssertEqual(descriptor.name, "Timestamp")
         XCTAssertEqual(descriptor.fields.count, 2)
+    }
+
+    func test_makeJSONTypeRegistry_whenWellKnownTimestampImported_includesGoogleProtobufTimestamp() async throws {
+        let bundleDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("wkt_ts_registry_\(UUID().uuidString)")
+        let googleProtobufDir = bundleDir
+            .appendingPathComponent("google")
+            .appendingPathComponent("protobuf")
+        try FileManager.default.createDirectory(at: googleProtobufDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: bundleDir) }
+
+        let timestampProtoContent = """
+        syntax = "proto3";
+        package google.protobuf;
+        message Timestamp {
+            int64 seconds = 1;
+            int32 nanos = 2;
+        }
+        """
+        try timestampProtoContent.write(
+            to: googleProtobufDir.appendingPathComponent("timestamp.proto"),
+            atomically: true,
+            encoding: .utf8)
+
+        let userProtoContent = """
+        syntax = "proto3";
+        package example;
+        import "google/protobuf/timestamp.proto";
+        message Event {
+            google.protobuf.Timestamp created_at = 1;
+        }
+        service EventService {
+            rpc GetEvent (Event) returns (Event);
+        }
+        """
+        let userProtoURL = bundleDir.appendingPathComponent("event.proto")
+        try userProtoContent.write(to: userProtoURL, atomically: true, encoding: .utf8)
+
+        sut = FileSystemProtoRepository(logger: mockLogger, wellKnownResourcePath: bundleDir.path)
+        let protoFile = try await sut.loadProto(url: userProtoURL, importPaths: [bundleDir.path])
+
+        let registry = try await sut.makeJSONTypeRegistry(for: protoFile)
+
+        XCTAssertTrue(
+            registry.hasMessage(named: WellKnownTypeNames.timestamp),
+            "JSON nested WKT fields require google.protobuf.Timestamp in TypeRegistry")
     }
 
     func test_getMessageDescriptor_whenWellKnownTypeImported_userTypeAlsoResolvable() async throws {
