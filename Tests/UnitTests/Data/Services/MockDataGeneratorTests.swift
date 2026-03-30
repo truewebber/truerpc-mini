@@ -68,7 +68,7 @@ final class MockDataGeneratorTests: XCTestCase {
         XCTAssertEqual(items[0] as? String, "Lorem ipsum dolor sit amet")
     }
 
-    func test_generate_forEnumField_skipsZeroIndex() async throws {
+    func test_generate_forNestedEnumField_skipsZeroIndex() async throws {
         let file = FileDescriptor(name: "t.proto", package: "en")
         var message = MessageDescriptor(name: "Msg", parent: file)
         var enumDesc = EnumDescriptor(name: "E", parent: message)
@@ -84,6 +84,33 @@ final class MockDataGeneratorTests: XCTestCase {
         let data = try XCTUnwrap(json.data(using: .utf8))
         let obj = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
         XCTAssertEqual(obj["status"] as? Int, 1)
+    }
+
+    func test_generate_forTopLevelEnumField_returnsNonZeroValue() async throws {
+        // top-level enum (not nested in any message) — the original bug case
+        let file = FileDescriptor(name: "t.proto", package: "pkg")
+        var topLevelEnum = EnumDescriptor(name: "IntervalGroupType", parent: file)
+        topLevelEnum.addValue(EnumDescriptor.EnumValue(name: "INTERVAL_GROUP_TYPE_UNSPECIFIED", number: 0))
+        topLevelEnum.addValue(EnumDescriptor.EnumValue(name: "INTERVAL_GROUP_TYPE_DAYS", number: 1))
+        topLevelEnum.addValue(EnumDescriptor.EnumValue(name: "INTERVAL_GROUP_TYPE_WEEKS", number: 2))
+
+        var message = MessageDescriptor(name: "GetGroupedAdsRequest", parent: file)
+        message.addField(FieldDescriptor(
+            name: "interval_group",
+            number: 1,
+            type: .enum,
+            typeName: "pkg.IntervalGroupType"))
+
+        let repo = StubProtoRepository(
+            descriptors: ["pkg.GetGroupedAdsRequest": message],
+            enumDescriptors: ["pkg.IntervalGroupType": topLevelEnum])
+        let sut = MockDataGenerator(protoRepository: repo)
+
+        let json = try await sut.generate(for: "pkg.GetGroupedAdsRequest", in: protoFile)
+        let data = try XCTUnwrap(json.data(using: .utf8))
+        let obj = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let value = try XCTUnwrap(obj["interval_group"] as? Int)
+        XCTAssertTrue(value == 1 || value == 2, "Expected non-zero enum value, got \(value)")
     }
 
     func test_generate_forOneOfField_fillsExactlyOneOption() async throws {

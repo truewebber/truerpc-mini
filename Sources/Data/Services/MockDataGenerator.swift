@@ -70,7 +70,6 @@ public final class MockDataGenerator: MockDataGeneratorProtocol, Sendable {
             let chosen = group.randomElement()!
             if let value = try await jsonValue(
                 for: chosen,
-                parent: descriptor,
                 protoFile: protoFile,
                 pathVisited: nextVisited)
             {
@@ -81,7 +80,6 @@ public final class MockDataGenerator: MockDataGeneratorProtocol, Sendable {
         for field in nonOneofFields {
             if let value = try await jsonValue(
                 for: field,
-                parent: descriptor,
                 protoFile: protoFile,
                 pathVisited: nextVisited)
             {
@@ -94,7 +92,6 @@ public final class MockDataGenerator: MockDataGeneratorProtocol, Sendable {
 
     private func jsonValue(
         for field: FieldDescriptor,
-        parent: MessageDescriptor,
         protoFile: ProtoFile,
         pathVisited: Set<String>)
         async throws -> Any?
@@ -103,7 +100,6 @@ public final class MockDataGenerator: MockDataGeneratorProtocol, Sendable {
             let keyJSON = mockMapKey(for: mapInfo.keyFieldInfo)
             let valueJSON = try await mockMapValue(
                 for: mapInfo.valueFieldInfo,
-                parent: parent,
                 protoFile: protoFile,
                 pathVisited: pathVisited)
             return [mapKeyString(keyJSON, type: mapInfo.keyFieldInfo.type): valueJSON]
@@ -112,7 +108,6 @@ public final class MockDataGenerator: MockDataGeneratorProtocol, Sendable {
         if field.isRepeated {
             let element = try await scalarOrMessageJSON(
                 for: field,
-                parent: parent,
                 protoFile: protoFile,
                 pathVisited: pathVisited)
             return [element as Any]
@@ -120,7 +115,6 @@ public final class MockDataGenerator: MockDataGeneratorProtocol, Sendable {
 
         return try await scalarOrMessageJSON(
             for: field,
-            parent: parent,
             protoFile: protoFile,
             pathVisited: pathVisited)
     }
@@ -155,7 +149,6 @@ public final class MockDataGenerator: MockDataGeneratorProtocol, Sendable {
 
     private func mockMapValue(
         for valueInfo: ValueFieldInfo,
-        parent: MessageDescriptor,
         protoFile: ProtoFile,
         pathVisited: Set<String>)
         async throws -> Any
@@ -168,7 +161,6 @@ public final class MockDataGenerator: MockDataGeneratorProtocol, Sendable {
         guard
             let any = try await scalarOrMessageJSON(
                 for: synthetic,
-                parent: parent,
                 protoFile: protoFile,
                 pathVisited: pathVisited)
         else {
@@ -180,7 +172,6 @@ public final class MockDataGenerator: MockDataGeneratorProtocol, Sendable {
 
     private func scalarOrMessageJSON(
         for field: FieldDescriptor,
-        parent: MessageDescriptor,
         protoFile: ProtoFile,
         pathVisited: Set<String>)
         async throws -> Any?
@@ -218,10 +209,11 @@ public final class MockDataGenerator: MockDataGeneratorProtocol, Sendable {
             return Data(bytes).base64EncodedString()
 
         case .enum:
-            guard let enumDesc = resolveEnumDescriptor(field: field, parent: parent) else {
-                throw MockDataGeneratorError.enumDescriptorNotFound(field.typeName ?? "")
+            guard let typeName = field.typeName else {
+                throw MockDataGeneratorError.missingTypeName(field.name)
             }
 
+            let enumDesc = try await protoRepository.getEnumDescriptor(forType: typeName, in: protoFile)
             let values = enumDesc.allValues()
             let candidates = values.filter { $0.number != 0 }
             let pick = candidates.randomElement() ?? values.randomElement()!
@@ -264,21 +256,6 @@ public final class MockDataGenerator: MockDataGeneratorProtocol, Sendable {
         case .group:
             throw MockDataGeneratorError.unsupportedFieldType("group")
         }
-    }
-
-    private func resolveEnumDescriptor(field: FieldDescriptor, parent: MessageDescriptor) -> EnumDescriptor? {
-        guard let raw = field.typeName else { return nil }
-
-        let trimmed = raw.hasPrefix(".") ? String(raw.dropFirst()) : raw
-        let simple = simpleTypeName(from: trimmed)
-        return parent.nestedEnum(named: simple)
-    }
-
-    private func simpleTypeName(from fullName: String) -> String {
-        if let last = fullName.split(separator: ".").last {
-            return String(last)
-        }
-        return fullName
     }
 
     private static func jsonEncodedObject(_ object: [String: Any]) throws -> String {
@@ -326,7 +303,21 @@ public final class MockDataGenerator: MockDataGeneratorProtocol, Sendable {
 enum MockDataGeneratorError: Error, Equatable {
     case utf8EncodingFailed
     case missingTypeName(String)
-    case enumDescriptorNotFound(String)
     case mapValueGenerationFailed
     case unsupportedFieldType(String)
+}
+
+extension MockDataGeneratorError: LocalizedError {
+    var errorDescription: String? {
+        switch self {
+        case .utf8EncodingFailed:
+            "Failed to encode generated JSON as UTF-8"
+        case let .missingTypeName(fieldName):
+            "Missing type name for message field '\(fieldName)'"
+        case .mapValueGenerationFailed:
+            "Failed to generate mock value for map entry"
+        case let .unsupportedFieldType(type):
+            "Unsupported field type '\(type)'"
+        }
+    }
 }

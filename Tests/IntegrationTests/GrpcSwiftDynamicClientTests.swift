@@ -806,6 +806,10 @@ private final class MockProtoRepository: ProtoRepositoryProtocol {
         return descriptor
     }
 
+    func getEnumDescriptor(forType typeName: String, in _: ProtoFile) throws -> EnumDescriptor {
+        throw ProtoRepositoryError.enumTypeNotFound(typeName)
+    }
+
     func makeJSONTypeRegistry(for _: ProtoFile) throws -> TypeRegistry {
         let registry = TypeRegistry()
         if let descriptor = stubbedMessageDescriptor {

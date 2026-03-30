@@ -104,9 +104,10 @@ public final class EditorTabViewModel: ObservableObject {
                 requestJson = mockJson
             }
         } catch {
-            logger.warning("Mock data generation failed", metadata: [
-                "method": editorTab.method.name,
-                "error": error.localizedDescription,
+            logger.error("Mock data generation failed", metadata: [
+                "method": "\(editorTab.method.name)",
+                "inputType": "\(editorTab.method.inputType)",
+                "error": "\(error)",
             ])
         }
 

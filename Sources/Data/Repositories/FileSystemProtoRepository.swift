@@ -19,12 +19,31 @@ private extension Error {
     }
 }
 
-/// Repository for loading proto files from the file system
-/// Implements ProtoRepositoryProtocol from Domain layer
+/// Repository for loading proto files from the file system.
+/// Implements ProtoRepositoryProtocol from Domain layer.
+///
+/// All `Google_Protobuf_FileDescriptorProto` values parsed by SwiftProtoParser are
+/// converted to `SwiftProtoReflect.FileDescriptor` via `DescriptorBridge` and registered
+/// in a `DescriptorPool`. Lookup methods (`getMessageDescriptor`, `getEnumDescriptor`)
+/// delegate entirely to the pool; scope-checking is done via `fileDescriptorPath` on
+/// each returned descriptor.
 public actor FileSystemProtoRepository: ProtoRepositoryProtocol {
     private var loadedProtos: [ProtoFile] = []
-    private var fileDescriptors: [Google_Protobuf_FileDescriptorProto] = []
+
+    /// Raw descriptors retained for scope resolution (main file + transitive deps per tab).
+    private var rawFileDescriptors: [Google_Protobuf_FileDescriptorProto] = []
+
+    /// Pool rebuilt from `rawFileDescriptors` whenever a proto file is loaded.
+    private var pool: DescriptorPool = .init(includeBuiltinDescriptors: true)
+
+    /// Bridged `FileDescriptor` objects keyed by file name, used as fallback when the
+    /// pool cannot resolve a type (e.g. duplicate unqualified names across files or
+    /// nested enums whose `fullName` was not propagated correctly by `DescriptorBridge`).
+    private var bridgedFileDescriptors: [String: FileDescriptor] = [:]
+
+    private let bridge = DescriptorBridge()
     private let logger: AppLogger
+
     /// Path prefix for well-known bundled types; dependencies resolved under this prefix are excluded from
     /// `ProtoFile.dependencyPaths` because they are read-only and do not need to be watched.
     private let wellKnownResourcePath: String?
@@ -45,18 +64,17 @@ public actor FileSystemProtoRepository: ProtoRepositoryProtocol {
 
         switch result {
         case let .success(descriptorSet):
-            // Store ALL descriptors (main + transitive deps), upserted by filename so that
-            // re-loading a modified file replaces the stale descriptor in the registry.
+            // Upsert raw descriptors so that re-loading a modified file replaces stale data.
             for descriptor in descriptorSet.file {
-                if let idx = fileDescriptors.firstIndex(where: { $0.name == descriptor.name }) {
-                    fileDescriptors[idx] = descriptor
+                if let idx = rawFileDescriptors.firstIndex(where: { $0.name == descriptor.name }) {
+                    rawFileDescriptors[idx] = descriptor
                 } else {
-                    fileDescriptors.append(descriptor)
+                    rawFileDescriptors.append(descriptor)
                 }
             }
 
-            // The main file is identifiable by filename; topological order places it
-            // last, so fall back to the last element if the name match fails.
+            rebuildPool()
+
             let mainFileName = url.lastPathComponent
             guard let mainDescriptor =
                 descriptorSet.file.last(where: { $0.name == mainFileName })
@@ -79,7 +97,7 @@ public actor FileSystemProtoRepository: ProtoRepositoryProtocol {
         case let .failure(error):
             logger.error("Proto parsing failed", metadata: [
                 "file": url.lastPathComponent,
-                "error": error.localizedDescription,
+                "error": "\(error)",
                 "dependencies_count": String(importPaths.count),
                 "missing_imports": error.missingImport ?? "",
             ])
@@ -92,87 +110,146 @@ public actor FileSystemProtoRepository: ProtoRepositoryProtocol {
     }
 
     public func getMessageDescriptor(forType typeName: String, in protoFile: ProtoFile) throws -> MessageDescriptor {
-        // Normalize type name - remove leading dot if present
-        let normalizedTypeName = typeName.hasPrefix(".") ? String(typeName.dropFirst()) : typeName
+        let normalized = typeName.hasPrefix(".") ? String(typeName.dropFirst()) : typeName
 
-        for fileDescriptor in fileDescriptors where isDescriptorInScope(fileDescriptor, protoFile: protoFile) {
-            if let descriptor = try? findMessageDescriptor(
-                in: fileDescriptor,
-                typeName: normalizedTypeName,
-                package: fileDescriptor.package)
-            {
-                return descriptor
-            }
+        if let descriptor = pool.findMessageDescriptor(named: normalized),
+           isFileInScope(descriptor.fileDescriptorPath, protoFile: protoFile) {
+            return descriptor
+        }
+
+        // Fallback: scan bridged file descriptors in scope (handles files with duplicate
+        // unqualified names when the pool silently dropped one due to duplicateSymbol).
+        if let descriptor = findMessageInScopedFiles(named: normalized, protoFile: protoFile) {
+            return descriptor
         }
 
         throw ProtoRepositoryError.messageTypeNotFound(typeName)
     }
 
+    public func getEnumDescriptor(forType typeName: String, in protoFile: ProtoFile) throws -> EnumDescriptor {
+        let normalized = typeName.hasPrefix(".") ? String(typeName.dropFirst()) : typeName
+
+        if let descriptor = pool.findEnumDescriptor(named: normalized),
+           isFileInScope(descriptor.fileDescriptorPath, protoFile: protoFile) {
+            return descriptor
+        }
+
+        // Fallback 1: scan top-level enums in bridged file descriptors in scope.
+        if let descriptor = findEnumInScopedFiles(named: normalized, protoFile: protoFile) {
+            return descriptor
+        }
+
+        // Fallback 2: nested enum lookup — DescriptorBridge may not propagate fullName into
+        // nested EnumDescriptors, so they land in the pool under just their simple name.
+        // Decompose "pkg.Message.EnumName" → find message "pkg.Message" then nestedEnum("EnumName").
+        if let descriptor = findNestedEnumByPath(named: normalized, protoFile: protoFile) {
+            return descriptor
+        }
+
+        throw ProtoRepositoryError.enumTypeNotFound(typeName)
+    }
+
     public func makeJSONTypeRegistry(for protoFile: ProtoFile) throws -> TypeRegistry {
         let registry = TypeRegistry()
-        try registerBuiltinMessagesForJSON(into: registry)
+        for typeName in pool.allMessageTypeNames() {
+            guard let descriptor = pool.findMessageDescriptor(named: typeName) else { continue }
+            guard isFileInScope(descriptor.fileDescriptorPath, protoFile: protoFile) else { continue }
+            guard !registry.hasMessage(named: descriptor.fullName) else { continue }
 
-        for fileDescriptor in fileDescriptors where isDescriptorInScope(fileDescriptor, protoFile: protoFile) {
-            for messageType in fileDescriptor.messageType {
-                try registerMessageTreeForJSON(
-                    messageType,
-                    package: fileDescriptor.package,
-                    parentQualifiedName: nil,
-                    protoFile: protoFile,
-                    registry: registry)
-            }
+            try registry.registerMessage(descriptor)
         }
         return registry
     }
 
-    /// Registers canonical `google.protobuf.*` messages from SwiftProtoReflect's built-in `DescriptorPool`.
+    // MARK: - Private: Pool
+
+    /// Rebuilds the `DescriptorPool` and the `bridgedFileDescriptors` cache from scratch.
     ///
-    /// Parsed `google/protobuf/timestamp.proto` may be missing from `fileDescriptors` (well-known imports
-    /// resolved outside the tab's dependency list) or use a `name` that fails `isDescriptorInScope`. JSON
-    /// deserialization of nested WKT fields still requires those types in `TypeRegistry`.
-    private func registerBuiltinMessagesForJSON(into registry: TypeRegistry) throws {
-        let pool = DescriptorPool(includeBuiltinDescriptors: true)
-        for typeName in pool.allMessageTypeNames() {
-            guard !registry.hasMessage(named: typeName) else { continue }
-            guard let descriptor = pool.findMessageDescriptor(named: typeName) else { continue }
-
-            try registry.registerMessage(descriptor)
+    /// Called after every successful `loadProto`. `DescriptorBridge` handles the full
+    /// conversion of each `Google_Protobuf_FileDescriptorProto` — including top-level enums,
+    /// nested enums, nested messages, oneofs, and map entries — into `SwiftProtoReflect` types.
+    ///
+    /// `try?` on `addFileDescriptor` intentionally ignores `duplicateFile` / `duplicateSymbol`
+    /// for google/protobuf well-known types that are already registered by the built-in pool.
+    /// `bridgedFileDescriptors` retains every converted `FileDescriptor` so that fallback lookups
+    /// in `getMessageDescriptor` / `getEnumDescriptor` can still find types the pool silently dropped.
+    private func rebuildPool() {
+        let newPool = DescriptorPool(includeBuiltinDescriptors: true)
+        var newBridged: [String: FileDescriptor] = [:]
+        for raw in rawFileDescriptors {
+            guard let fd = try? bridge.fromProtobufFileDescriptor(raw) else { continue }
+            newBridged[fd.name] = fd
+            try? newPool.addFileDescriptor(fd)
         }
+        pool = newPool
+        bridgedFileDescriptors = newBridged
     }
 
-    /// Registers one `DescriptorProto` and its `nestedType` subtree for JSON nested-message resolution.
-    private func registerMessageTreeForJSON(
-        _ messageType: Google_Protobuf_DescriptorProto,
-        package: String,
-        parentQualifiedName: String?,
-        protoFile: ProtoFile,
-        registry: TypeRegistry)
-        throws
-    {
-        let fqName: String = if let parent = parentQualifiedName {
-            "\(parent).\(messageType.name)"
-        } else if package.isEmpty {
-            messageType.name
-        } else {
-            "\(package).\(messageType.name)"
-        }
+    // MARK: - Private: Fallback descriptor search
 
-        let descriptor = try getMessageDescriptor(forType: fqName, in: protoFile)
-        if !registry.hasMessage(named: descriptor.fullName) {
-            try registry.registerMessage(descriptor)
+    private func findMessageInScopedFiles(named typeName: String, protoFile: ProtoFile) -> MessageDescriptor? {
+        for (_, fileDesc) in bridgedFileDescriptors {
+            guard isFileInScope(fileDesc.name, protoFile: protoFile) else { continue }
+            if let msg = findMessage(in: fileDesc, named: typeName) { return msg }
         }
-
-        for nested in messageType.nestedType {
-            try registerMessageTreeForJSON(
-                nested,
-                package: package,
-                parentQualifiedName: fqName,
-                protoFile: protoFile,
-                registry: registry)
-        }
+        return nil
     }
 
-    // MARK: - Private Helpers
+    private func findMessage(in fileDesc: FileDescriptor, named typeName: String) -> MessageDescriptor? {
+        for (_, msg) in fileDesc.messages {
+            if msg.fullName == typeName { return msg }
+            if let found = findNestedMessage(in: msg, named: typeName) { return found }
+        }
+        return nil
+    }
+
+    private func findNestedMessage(in msg: MessageDescriptor, named typeName: String) -> MessageDescriptor? {
+        for (_, nested) in msg.nestedMessages {
+            if nested.fullName == typeName { return nested }
+            if let deep = findNestedMessage(in: nested, named: typeName) { return deep }
+        }
+        return nil
+    }
+
+    private func findEnumInScopedFiles(named typeName: String, protoFile: ProtoFile) -> EnumDescriptor? {
+        for (_, fileDesc) in bridgedFileDescriptors {
+            guard isFileInScope(fileDesc.name, protoFile: protoFile) else { continue }
+            for (_, enumDesc) in fileDesc.enums {
+                if enumDesc.fullName == typeName { return enumDesc }
+            }
+        }
+        return nil
+    }
+
+    /// Handles nested enums whose `fullName` was not propagated by `DescriptorBridge`.
+    ///
+    /// For `"myapp.Response.Code"` this tries progressively shorter parent paths:
+    ///   parent `"myapp.Response"` → `nestedEnum(named: "Code")`.
+    private func findNestedEnumByPath(named typeName: String, protoFile: ProtoFile) -> EnumDescriptor? {
+        let components = typeName.split(separator: ".").map(String.init)
+        guard components.count >= 2 else { return nil }
+
+        let enumName = components.last!
+        for prefixLen in stride(from: components.count - 1, through: 1, by: -1) {
+            let parentName = components.prefix(prefixLen).joined(separator: ".")
+
+            let parentMsg: MessageDescriptor?
+            if let fromPool = pool.findMessageDescriptor(named: parentName),
+               isFileInScope(fromPool.fileDescriptorPath, protoFile: protoFile) {
+                parentMsg = fromPool
+            }
+            else {
+                parentMsg = findMessageInScopedFiles(named: parentName, protoFile: protoFile)
+            }
+
+            if let msg = parentMsg, let enumDesc = msg.nestedEnum(named: enumName) {
+                return enumDesc
+            }
+        }
+        return nil
+    }
+
+    // MARK: - Private: Scope
 
     /// File names allowed for descriptor lookup for `protoFile` (main file + dependency basenames).
     private func allowedDescriptorBasenames(for protoFile: ProtoFile) -> Set<String> {
@@ -184,163 +261,20 @@ public actor FileSystemProtoRepository: ProtoRepositoryProtocol {
         return names
     }
 
-    private func isDescriptorInScope(
-        _ fileDescriptor: Google_Protobuf_FileDescriptorProto,
-        protoFile: ProtoFile)
-        -> Bool
-    {
-        let protoName = fileDescriptor.name
-        // Well-known types are always in scope: they are excluded from dependencyPaths
-        // intentionally (read-only, no need to watch), but must still be resolvable.
-        if protoName.hasPrefix("google/protobuf/") {
-            return true
-        }
+    /// Returns `true` when `filePath` belongs to a file that is in scope for `protoFile`.
+    ///
+    /// `nil` path means the descriptor was synthesised (e.g. built-in WKT) and is always in scope.
+    /// `google/protobuf/` prefixed paths are always in scope (well-known types).
+    private func isFileInScope(_ filePath: String?, protoFile: ProtoFile) -> Bool {
+        guard let path = filePath else { return true }
+
+        if path.hasPrefix("google/protobuf/") { return true }
         let allowed = allowedDescriptorBasenames(for: protoFile)
-        let lastComponent = (protoName as NSString).lastPathComponent
-        return allowed.contains(protoName) || allowed.contains(lastComponent)
+        let lastComponent = (path as NSString).lastPathComponent
+        return allowed.contains(path) || allowed.contains(lastComponent)
     }
 
-    /// Recursively find message descriptor by type name
-    private func findMessageDescriptor(
-        in fileDescriptor: Google_Protobuf_FileDescriptorProto,
-        typeName: String,
-        package: String)
-        throws -> MessageDescriptor?
-    {
-        // Build fully qualified name prefix
-        let packagePrefix = package.isEmpty ? "" : "\(package)."
-
-        // Search through messages in file descriptor
-        for messageType in fileDescriptor.messageType {
-            let fullName = packagePrefix + messageType.name
-
-            if fullName == typeName || messageType.name == typeName {
-                // Found it! Convert to SwiftProtoReflect MessageDescriptor
-                return try convertToMessageDescriptor(messageType, package: package)
-            }
-
-            // Search in nested types
-            if let nested = try findNestedMessageDescriptor(
-                in: messageType,
-                typeName: typeName,
-                parentName: fullName)
-            {
-                return nested
-            }
-        }
-
-        return nil
-    }
-
-    /// Find message descriptor in nested types
-    private func findNestedMessageDescriptor(
-        in messageType: Google_Protobuf_DescriptorProto,
-        typeName: String,
-        parentName: String)
-        throws -> MessageDescriptor?
-    {
-        for nestedType in messageType.nestedType {
-            let fullName = "\(parentName).\(nestedType.name)"
-
-            if fullName == typeName || nestedType.name == typeName {
-                return try convertToMessageDescriptor(nestedType, package: parentName)
-            }
-
-            // Recurse deeper
-            if let deeper = try findNestedMessageDescriptor(
-                in: nestedType,
-                typeName: typeName,
-                parentName: fullName)
-            {
-                return deeper
-            }
-        }
-
-        return nil
-    }
-
-    /// Convert Google_Protobuf_DescriptorProto to SwiftProtoReflect MessageDescriptor
-    private func convertToMessageDescriptor(
-        _ protoDescriptor: Google_Protobuf_DescriptorProto,
-        package: String)
-        throws -> MessageDescriptor
-    {
-        // Create file descriptor for SwiftProtoReflect
-        let fileDesc = FileDescriptor(
-            name: "dynamic.proto",
-            package: package)
-
-        // Create message descriptor
-        var messageDesc = MessageDescriptor(
-            name: protoDescriptor.name,
-            parent: fileDesc)
-
-        // Add fields
-        for field in protoDescriptor.field {
-            let fieldDesc = try convertToFieldDescriptor(field)
-            messageDesc.addField(fieldDesc)
-        }
-
-        return messageDesc
-    }
-
-    /// Convert Google_Protobuf_FieldDescriptorProto to SwiftProtoReflect FieldDescriptor
-    private func convertToFieldDescriptor(
-        _ fieldProto: Google_Protobuf_FieldDescriptorProto)
-        throws -> FieldDescriptor
-    {
-        let fieldType = convertFieldType(fieldProto.type)
-
-        // Check if field is repeated
-        let isRepeated = fieldProto.label == .repeated
-
-        // For message and enum types, we need to provide the typeName
-        if fieldType == .message || fieldType == .enum {
-            let typeName = fieldProto.typeName.hasPrefix(".")
-                ? String(fieldProto.typeName.dropFirst())
-                : fieldProto.typeName
-
-            return FieldDescriptor(
-                name: fieldProto.name,
-                number: Int(fieldProto.number),
-                type: fieldType,
-                typeName: typeName,
-                isRepeated: isRepeated)
-        }
-
-        return FieldDescriptor(
-            name: fieldProto.name,
-            number: Int(fieldProto.number),
-            type: fieldType,
-            isRepeated: isRepeated)
-    }
-
-    /// Convert protobuf field type to SwiftProtoReflect FieldType
-    private func convertFieldType(_ type: Google_Protobuf_FieldDescriptorProto.TypeEnum) -> SwiftProtoReflect
-        .FieldType
-    {
-        switch type {
-        case .double: return .double
-        case .float: return .float
-        case .int64: return .int64
-        case .uint64: return .uint64
-        case .int32: return .int32
-        case .fixed64: return .fixed64
-        case .fixed32: return .fixed32
-        case .bool: return .bool
-        case .string: return .string
-        case .group: return .message // Treat group as message
-        case .message: return .message
-        case .bytes: return .bytes
-        case .uint32: return .uint32
-        case .enum: return .enum
-        case .sfixed32: return .sfixed32
-        case .sfixed64: return .sfixed64
-        case .sint32: return .sint32
-        case .sint64: return .sint64
-        @unknown default: return .string // Fallback
-        }
-    }
+    // MARK: - Private: Dependency resolution
 
     /// Resolves transitive dependency paths from `descriptorSet` to absolute file URLs.
     /// `descriptor.name` is the import-relative path (e.g. `"common/types.proto"`); the root file's
@@ -372,7 +306,7 @@ public actor FileSystemProtoRepository: ProtoRepositoryProtocol {
         return nil
     }
 
-    // MARK: - Private Mapping
+    // MARK: - Private: Mapping
 
     private func mapToProtoFile(
         fileDescriptor: Google_Protobuf_FileDescriptorProto,
@@ -383,7 +317,6 @@ public actor FileSystemProtoRepository: ProtoRepositoryProtocol {
         let services = fileDescriptor.service.map { serviceDesc in
             mapToService(serviceDescriptor: serviceDesc, package: fileDescriptor.package)
         }
-
         return ProtoFile(
             name: url.lastPathComponent,
             path: url,
@@ -396,16 +329,11 @@ public actor FileSystemProtoRepository: ProtoRepositoryProtocol {
         package: String)
         -> Service
     {
-        // Construct fully qualified service name: package.ServiceName
         let fullServiceName = package.isEmpty ? serviceDescriptor.name : "\(package).\(serviceDescriptor.name)"
-
         let methods = serviceDescriptor.method.map { methodDesc in
             mapToMethod(methodDescriptor: methodDesc, serviceName: fullServiceName)
         }
-
-        return Service(
-            name: serviceDescriptor.name,
-            methods: methods)
+        return Service(name: serviceDescriptor.name, methods: methods)
     }
 
     private func mapToMethod(
@@ -428,6 +356,7 @@ public enum ProtoRepositoryError: Error, Equatable {
     case parsingFailed(String)
     case fileNotFound
     case messageTypeNotFound(String)
+    case enumTypeNotFound(String)
 }
 
 extension ProtoRepositoryError: LocalizedError {
@@ -439,6 +368,8 @@ extension ProtoRepositoryError: LocalizedError {
             "Proto file not found"
         case let .messageTypeNotFound(typeName):
             "Message type '\(typeName)' not found in loaded proto files"
+        case let .enumTypeNotFound(typeName):
+            "Enum type '\(typeName)' not found in loaded proto files"
         }
     }
 }

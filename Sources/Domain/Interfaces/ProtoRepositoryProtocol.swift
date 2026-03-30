@@ -32,6 +32,15 @@ public protocol ProtoRepositoryProtocol: Sendable {
     /// - Throws: ProtoRepositoryError if type not found in loaded protos for that scope
     func getMessageDescriptor(forType typeName: String, in protoFile: ProtoFile) async throws -> MessageDescriptor
 
+    /// Gets the enum descriptor for a specific enum type from loaded protos scoped to a root file.
+    /// Searches both top-level enums and enums nested inside messages.
+    /// - Parameters:
+    ///   - typeName: Fully qualified enum type name (e.g., ".package.EnumName" or "EnumName")
+    ///   - protoFile: The proto file (tab context) whose main file and dependencies bound the search
+    /// - Returns: EnumDescriptor for mock value generation
+    /// - Throws: ProtoRepositoryError if type not found in loaded protos for that scope
+    func getEnumDescriptor(forType typeName: String, in protoFile: ProtoFile) async throws -> EnumDescriptor
+
     /// All message types visible when resolving `protoFile` (main file + dependencies), for JSON deserialization
     /// of nested and repeated message fields (`JSONDeserializer` / `TypeRegistry`).
     func makeJSONTypeRegistry(for protoFile: ProtoFile) async throws -> TypeRegistry

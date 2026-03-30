@@ -997,4 +997,121 @@ extension FileSystemProtoRepositoryTests {
         XCTAssertEqual(descriptorA.fields.count, 1)
         XCTAssertEqual(descriptorB.fields.count, 2)
     }
+
+    // MARK: - getEnumDescriptor
+
+    func test_getEnumDescriptor_whenTopLevelEnum_returnsDescriptorWithValues() async throws {
+        // Given - top-level enum in the package (not nested inside any message)
+        let content = """
+        syntax = "proto3";
+        package myapp;
+
+        enum Status {
+          STATUS_UNSPECIFIED = 0;
+          STATUS_ACTIVE = 1;
+          STATUS_INACTIVE = 2;
+        }
+
+        message Request {
+          Status status = 1;
+        }
+        """
+        let url = try createTempProtoFile(content: content, name: "status.proto")
+        defer { try? FileManager.default.removeItem(at: url) }
+        let protoFile = try await sut.loadProto(url: url)
+
+        // When
+        let descriptor = try await sut.getEnumDescriptor(forType: ".myapp.Status", in: protoFile)
+
+        // Then
+        XCTAssertEqual(descriptor.name, "Status")
+        XCTAssertEqual(descriptor.allValues().count, 3)
+        XCTAssertNotNil(descriptor.value(named: "STATUS_ACTIVE"))
+        XCTAssertEqual(descriptor.value(named: "STATUS_ACTIVE")?.number, 1)
+    }
+
+    func test_getEnumDescriptor_whenNestedEnum_returnsDescriptorWithValues() async throws {
+        // Given - enum nested inside a message
+        let content = """
+        syntax = "proto3";
+        package myapp;
+
+        message Response {
+          enum Code {
+            CODE_UNSPECIFIED = 0;
+            CODE_OK = 1;
+            CODE_ERROR = 2;
+          }
+          Code code = 1;
+        }
+        """
+        let url = try createTempProtoFile(content: content, name: "response.proto")
+        defer { try? FileManager.default.removeItem(at: url) }
+        let protoFile = try await sut.loadProto(url: url)
+
+        // When
+        let descriptor = try await sut.getEnumDescriptor(forType: ".myapp.Response.Code", in: protoFile)
+
+        // Then
+        XCTAssertEqual(descriptor.name, "Code")
+        XCTAssertEqual(descriptor.allValues().count, 3)
+        XCTAssertEqual(descriptor.value(named: "CODE_OK")?.number, 1)
+    }
+
+    func test_getEnumDescriptor_whenTypeNotFound_throwsEnumTypeNotFound() async throws {
+        // Given
+        let content = """
+        syntax = "proto3";
+        package myapp;
+        message Empty {}
+        """
+        let url = try createTempProtoFile(content: content, name: "empty.proto")
+        defer { try? FileManager.default.removeItem(at: url) }
+        let protoFile = try await sut.loadProto(url: url)
+
+        // When / Then
+        do {
+            _ = try await sut.getEnumDescriptor(forType: ".myapp.NonExistent", in: protoFile)
+            XCTFail("Expected enumTypeNotFound error")
+        } catch let error as ProtoRepositoryError {
+            guard case .enumTypeNotFound = error else {
+                XCTFail("Expected enumTypeNotFound, got \(error)")
+                return
+            }
+        }
+    }
+
+    func test_getEnumDescriptor_whenEnumOutOfScope_throwsEnumTypeNotFound() async throws {
+        // Given - two files with different enums; enum from file B must not be visible in file A's scope
+        let contentA = """
+        syntax = "proto3";
+        package filea;
+        message A { string name = 1; }
+        """
+        let contentB = """
+        syntax = "proto3";
+        package fileb;
+        enum Color { COLOR_UNSPECIFIED = 0; COLOR_RED = 1; }
+        message B { Color color = 1; }
+        """
+        let urlA = try createTempProtoFile(content: contentA, name: "scope_a.proto")
+        let urlB = try createTempProtoFile(content: contentB, name: "scope_b.proto")
+        defer {
+            try? FileManager.default.removeItem(at: urlA)
+            try? FileManager.default.removeItem(at: urlB)
+        }
+        let protoA = try await sut.loadProto(url: urlA)
+        _ = try await sut.loadProto(url: urlB)
+
+        // When / Then — Color is defined in B, must not be visible in A's scope
+        do {
+            _ = try await sut.getEnumDescriptor(forType: ".fileb.Color", in: protoA)
+            XCTFail("Expected enumTypeNotFound error")
+        } catch let error as ProtoRepositoryError {
+            guard case .enumTypeNotFound = error else {
+                XCTFail("Expected enumTypeNotFound, got \(error)")
+                return
+            }
+        }
+    }
 }

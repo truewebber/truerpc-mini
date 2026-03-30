@@ -109,14 +109,14 @@ final class EditorTabViewModelTests: XCTestCase {
         XCTAssertFalse(sut.isLoading) // Should be false after completion
     }
 
-    func test_loadMockData_whenFails_logsWarning() async {
+    func test_loadMockData_whenFails_logsError() async {
         mockGenerateMockDataUseCase.shouldThrow = true
 
         await sut.loadMockData()
 
-        XCTAssertEqual(mockLogger.warningMessages.count, 1)
-        XCTAssertNotNil(mockLogger.warningMessages[0].metadata["error"])
-        XCTAssertEqual(mockLogger.warningMessages[0].metadata["method"], testMethod.name)
+        XCTAssertEqual(mockLogger.errorMessages.count, 1)
+        XCTAssertNotNil(mockLogger.errorMessages[0].metadata["error"])
+        XCTAssertEqual(mockLogger.errorMessages[0].metadata["method"], "\(testMethod.name)")
     }
 
     func test_loadMockData_whenSucceeds_doesNotLog() async {
@@ -124,7 +124,7 @@ final class EditorTabViewModelTests: XCTestCase {
 
         await sut.loadMockData()
 
-        XCTAssertTrue(mockLogger.warningMessages.isEmpty)
+        XCTAssertTrue(mockLogger.errorMessages.isEmpty)
     }
 
     // MARK: - Update JSON

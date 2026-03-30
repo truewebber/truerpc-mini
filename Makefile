@@ -1,4 +1,4 @@
-.PHONY: lint format test test-unit test-int test-ui coverage build
+.PHONY: lint format test test-unit test-int test-ui coverage build release
 
 SCHEME      := TrueRPCMini
 DESTINATION := platform=macOS
@@ -60,3 +60,16 @@ build: ## Build the application
 		-scheme $(SCHEME) \
 		-destination '$(DESTINATION)' \
 		CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO
+
+release: ## Build Release locally (ad-hoc signed) and open the app
+	@echo "→ Building Release…"
+	xcodebuild build \
+		-scheme $(SCHEME) \
+		-destination '$(DESTINATION)' \
+		-configuration Release \
+		-derivedDataPath $(BUILD_DIR) \
+		CODE_SIGN_IDENTITY="-" CODE_SIGNING_REQUIRED=NO
+	@echo "→ Re-signing with ad-hoc (fixes embedded framework Team ID mismatch)…"
+	@codesign --force --deep --sign - "$(BUILD_DIR)/Build/Products/Release/$(SCHEME).app"
+	@echo "→ Opening app…"
+	@open "$(BUILD_DIR)/Build/Products/Release/$(SCHEME).app"

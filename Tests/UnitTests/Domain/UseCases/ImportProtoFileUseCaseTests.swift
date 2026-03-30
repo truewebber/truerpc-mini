@@ -157,6 +157,10 @@ private final class MockProtoRepository: ProtoRepositoryProtocol {
         return SwiftProtoReflect.MessageDescriptor(name: "MockMessage", parent: fileDesc)
     }
 
+    func getEnumDescriptor(forType typeName: String, in _: ProtoFile) throws -> SwiftProtoReflect.EnumDescriptor {
+        throw ProtoRepositoryError.enumTypeNotFound(typeName)
+    }
+
     func makeJSONTypeRegistry(for _: ProtoFile) throws -> TypeRegistry {
         let registry = TypeRegistry()
         let fileDesc = FileDescriptor(name: "mock.proto", package: "mock")
