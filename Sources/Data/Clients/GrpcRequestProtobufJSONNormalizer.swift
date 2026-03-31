@@ -48,16 +48,30 @@ enum GrpcRequestProtobufJSONNormalizer {
 
         if field.isRepeated {
             if field.type == .message, let typeName = field.typeName {
-                return try normalizeRepeatedMessageValue(value, typeName: typeName, typeRegistry: typeRegistry)
+                return try normalizeRepeatedMessageValue(
+                    value,
+                    typeName: stripLeadingDot(typeName),
+                    typeRegistry: typeRegistry)
             }
             return value
         }
 
         if field.type == .message, let typeName = field.typeName {
-            return try normalizeSingularMessageValue(value, typeName: typeName, typeRegistry: typeRegistry)
+            return try normalizeSingularMessageValue(
+                value,
+                typeName: stripLeadingDot(typeName),
+                typeRegistry: typeRegistry)
         }
 
         return value
+    }
+
+    /// Strips a leading `.` from a protobuf fully-qualified type name.
+    ///
+    /// `FieldDescriptorProto.type_name` always starts with `.` (e.g. `.google.protobuf.Timestamp`),
+    /// but `WellKnownTypeNames` constants and `TypeRegistry` keys do not include it.
+    private static func stripLeadingDot(_ typeName: String) -> String {
+        typeName.hasPrefix(".") ? String(typeName.dropFirst()) : typeName
     }
 
     private static func normalizeMapValue(
@@ -77,7 +91,7 @@ enum GrpcRequestProtobufJSONNormalizer {
             if mapInfo.valueFieldInfo.type == .message, let valueTypeName = mapInfo.valueFieldInfo.typeName {
                 out[key] = try normalizeSingularMessageValue(
                     entryValue,
-                    typeName: valueTypeName,
+                    typeName: stripLeadingDot(valueTypeName),
                     typeRegistry: typeRegistry)
             } else {
                 out[key] = entryValue

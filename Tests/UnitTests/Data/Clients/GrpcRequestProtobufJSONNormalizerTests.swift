@@ -421,6 +421,52 @@ final class GrpcRequestProtobufJSONNormalizerTests: XCTestCase {
         XCTAssertEqual((ts["seconds"] as? NSNumber)?.int64Value, 0)
     }
 
+    // MARK: - Leading-dot typeName (real DescriptorBridge output)
+
+    func test_timestamp_leadingDotTypeName_stringConvertedToObject() throws {
+        // Regression: DescriptorBridge sets field.typeName = ".google.protobuf.Timestamp" (leading dot).
+        // The normalizer must strip the dot before comparing with WellKnownTypeNames and registry lookups.
+        var desc = MessageDescriptor(name: "Msg", parent: file)
+        desc.addField(FieldDescriptor(
+            name: "ts", number: 1, type: .message, typeName: ".\(WellKnownTypeNames.timestamp)"))
+        let reg = registry(with: [desc])
+
+        let input: [String: Any] = ["ts": "1970-01-01T00:00:00Z"]
+        let result = try GrpcRequestProtobufJSONNormalizer.normalizeMessageObject(
+            input, descriptor: desc, typeRegistry: reg)
+
+        let tsObj = try XCTUnwrap(
+            result["ts"] as? [String: Any],
+            "Timestamp string must be converted to {seconds,nanos} even when typeName has a leading dot")
+        XCTAssertEqual((tsObj["seconds"] as? NSNumber)?.int64Value, 0)
+        XCTAssertEqual((tsObj["nanos"] as? NSNumber)?.int32Value, 0)
+    }
+
+    func test_nestedMessage_leadingDotTypeName_recursivelyNormalized() throws {
+        // Regression: DescriptorBridge sets field.typeName = ".pkg.Inner" (leading dot).
+        // The normalizer must strip the dot to find the nested descriptor in the registry,
+        // so that Timestamp fields inside the nested message are also normalized.
+        var innerDesc = MessageDescriptor(name: "Inner", parent: file)
+        innerDesc.addField(FieldDescriptor(
+            name: "ts", number: 1, type: .message, typeName: ".\(WellKnownTypeNames.timestamp)"))
+
+        var outerDesc = MessageDescriptor(name: "Outer", parent: file)
+        outerDesc.addField(FieldDescriptor(
+            name: "inner", number: 1, type: .message, typeName: ".test.Inner"))
+
+        let reg = registry(with: [outerDesc, innerDesc])
+
+        let input: [String: Any] = ["inner": ["ts": "1970-01-01T00:00:00Z"]]
+        let result = try GrpcRequestProtobufJSONNormalizer.normalizeMessageObject(
+            input, descriptor: outerDesc, typeRegistry: reg)
+
+        let inner = try XCTUnwrap(result["inner"] as? [String: Any])
+        let tsObj = try XCTUnwrap(
+            inner["ts"] as? [String: Any],
+            "Timestamp inside nested message must be normalized when outer field typeName has a leading dot")
+        XCTAssertEqual((tsObj["seconds"] as? NSNumber)?.int64Value, 0)
+    }
+
     // MARK: - Repeated Scalar (no normalization needed)
 
     func test_repeatedScalar_passedThrough() throws {
