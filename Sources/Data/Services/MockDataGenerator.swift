@@ -73,7 +73,7 @@ public final class MockDataGenerator: MockDataGeneratorProtocol, Sendable {
                 protoFile: protoFile,
                 pathVisited: nextVisited)
             {
-                result[chosen.jsonName] = value
+                result[chosen.name] = value
             }
         }
 
@@ -83,7 +83,7 @@ public final class MockDataGenerator: MockDataGeneratorProtocol, Sendable {
                 protoFile: protoFile,
                 pathVisited: nextVisited)
             {
-                result[field.jsonName] = value
+                result[field.name] = value
             }
         }
 

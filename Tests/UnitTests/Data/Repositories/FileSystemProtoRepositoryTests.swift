@@ -859,6 +859,78 @@ extension FileSystemProtoRepositoryTests {
         XCTAssertEqual(descriptor.fields.count, 2)
     }
 
+    func test_makeJSONTypeRegistry_whenMessageHasNestedMessage_doesNotThrowDuplicateType() async throws {
+        // Regression: before SwiftProtoReflect 5.3.0, DescriptorBridge passed parent: nil for
+        // nested messages, causing them to be stored under bare names in the pool. When the pool
+        // returned both "pkg.GetListResponse" and "Cursor" independently, registering the parent
+        // triggered recursive re-registration of the nested type → duplicateType crash.
+        let content = """
+        syntax = "proto3";
+        package pkg;
+
+        message GetListResponse {
+          repeated Item items = 1;
+          Cursor cursor = 2;
+          message Cursor {
+            string next_page_token = 1;
+          }
+          message Item {
+            string id = 1;
+          }
+        }
+
+        service ListService {
+          rpc GetList(GetListResponse) returns (GetListResponse);
+        }
+        """
+        let tempURL = try createTempProtoFile(content: content, name: "nested.proto")
+        defer { try? FileManager.default.removeItem(at: tempURL) }
+
+        let protoFile = try await sut.loadProto(url: tempURL)
+
+        // Must not throw — previously crashed with "Type 'Cursor' is already registered"
+        let registry = try await sut.makeJSONTypeRegistry(for: protoFile)
+        XCTAssertTrue(registry.hasMessage(named: "pkg.GetListResponse"), "Parent must be in registry")
+        XCTAssertTrue(
+            registry.hasMessage(named: "pkg.GetListResponse.Cursor"),
+            "Nested Cursor must be registered under qualified name")
+        XCTAssertTrue(
+            registry.hasMessage(named: "pkg.GetListResponse.Item"),
+            "Nested Item must be registered under qualified name")
+    }
+
+    func test_makeJSONTypeRegistry_nestedMessageLookupByQualifiedName_succeeds() async throws {
+        // Regression: before SwiftProtoReflect 5.3.0, DescriptorBridge set fullName = "SearchFilters"
+        // (bare name) for nested messages. JSONDeserializer looked up by the field's qualified
+        // typeName (e.g. "pkg.GetGroupedAdsRequest.SearchFilters") → nestedMessageDescriptorNotFound
+        // (error 16). Fixed in 5.3.0 via the DescriptorParent protocol.
+        let content = """
+        syntax = "proto3";
+        package pkg;
+
+        message GetGroupedAdsRequest {
+          message SearchFilters {
+            string title = 1;
+          }
+          SearchFilters search_filters = 1;
+          int32 limit = 2;
+        }
+
+        service Starlink {
+          rpc GetGroupedAds(GetGroupedAdsRequest) returns (GetGroupedAdsRequest);
+        }
+        """
+        let tempURL = try createTempProtoFile(content: content, name: "starlink.proto")
+        defer { try? FileManager.default.removeItem(at: tempURL) }
+
+        let protoFile = try await sut.loadProto(url: tempURL)
+        let registry = try await sut.makeJSONTypeRegistry(for: protoFile)
+
+        XCTAssertNotNil(
+            registry.findMessage(named: "pkg.GetGroupedAdsRequest.SearchFilters"),
+            "Nested type must be findable by fully-qualified name (as JSONDeserializer looks it up)")
+    }
+
     func test_makeJSONTypeRegistry_whenWellKnownTimestampImported_includesGoogleProtobufTimestamp() async throws {
         let bundleDir = FileManager.default.temporaryDirectory
             .appendingPathComponent("wkt_ts_registry_\(UUID().uuidString)")

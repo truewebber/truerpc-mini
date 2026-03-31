@@ -86,6 +86,35 @@ final class MockDataGeneratorTests: XCTestCase {
         XCTAssertEqual(obj["status"] as? Int, 1)
     }
 
+    func test_generate_forSnakeCaseFieldName_usesSnakeCaseKeyNotCamelCase() async throws {
+        // Regression: SwiftProtoParser sets jsonName = camelCase, but output must use snake_case (field.name).
+        let file = FileDescriptor(name: "t.proto", package: "pkg")
+        var message = MessageDescriptor(name: "Req", parent: file)
+        // Explicitly set jsonName as SwiftProtoParser would: snake_case name, camelCase jsonName.
+        message.addField(FieldDescriptor(
+            name: "competitor_id",
+            number: 1,
+            type: .string,
+            jsonName: "competitorId"))
+        message.addField(FieldDescriptor(
+            name: "interval_group",
+            number: 2,
+            type: .int32,
+            jsonName: "intervalGroup"))
+
+        let repo = StubProtoRepository(descriptors: ["pkg.Req": message])
+        let sut = MockDataGenerator(protoRepository: repo)
+
+        let json = try await sut.generate(for: "pkg.Req", in: protoFile)
+        let data = try XCTUnwrap(json.data(using: .utf8))
+        let obj = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+
+        XCTAssertNotNil(obj["competitor_id"], "Expected snake_case key; got \(obj.keys.sorted())")
+        XCTAssertNil(obj["competitorId"], "Expected no camelCase key in output")
+        XCTAssertNotNil(obj["interval_group"], "Expected snake_case key; got \(obj.keys.sorted())")
+        XCTAssertNil(obj["intervalGroup"], "Expected no camelCase key in output")
+    }
+
     func test_generate_forTopLevelEnumField_returnsNonZeroValue() async throws {
         // top-level enum (not nested in any message) — the original bug case
         let file = FileDescriptor(name: "t.proto", package: "pkg")

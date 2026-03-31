@@ -151,10 +151,10 @@ targets:
 packages:
   SwiftProtoReflect:
     url: https://github.com/truewebber/swift-protoreflect
-    from: 5.1.0
+    from: 5.3.0
   SwiftProtoParser:
     url: https://github.com/truewebber/swift-protoparser
-    from: 0.5.0
+    from: 0.8.4
   GRPCCore:
     url: https://github.com/grpc/grpc-swift-2.git
     from: 2.0.0
