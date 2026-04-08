@@ -53,11 +53,11 @@ public actor FileSystemProtoRepository: ProtoRepositoryProtocol {
         self.wellKnownResourcePath = wellKnownResourcePath
     }
 
-    public func loadProto(url: URL) throws -> ProtoFile {
-        try loadProto(url: url, importPaths: [])
+    public func loadProto(url: URL) async throws -> ProtoFile {
+        try await loadProto(url: url, importPaths: [])
     }
 
-    public func loadProto(url: URL, importPaths: [String]) throws -> ProtoFile {
+    public func loadProto(url: URL, importPaths: [String]) async throws -> ProtoFile {
         // parseFile returns a FileDescriptorSet with all transitive dependencies in
         // topological order (dependencies first, requested file last).
         let result = SwiftProtoParser.parseFile(url.path, importPaths: importPaths)
@@ -73,7 +73,7 @@ public actor FileSystemProtoRepository: ProtoRepositoryProtocol {
                 }
             }
 
-            rebuildPool()
+            await rebuildPool()
 
             let mainFileName = url.lastPathComponent
             guard let mainDescriptor =
@@ -109,10 +109,15 @@ public actor FileSystemProtoRepository: ProtoRepositoryProtocol {
         loadedProtos
     }
 
-    public func getMessageDescriptor(forType typeName: String, in protoFile: ProtoFile) throws -> MessageDescriptor {
+    public func getMessageDescriptor(
+        forType typeName: String,
+        in protoFile: ProtoFile)
+        async throws -> MessageDescriptor
+    {
         let normalized = typeName.hasPrefix(".") ? String(typeName.dropFirst()) : typeName
 
-        if let descriptor = pool.findMessageDescriptor(named: normalized),
+        let poolResult = await pool.findMessageDescriptor(named: normalized)
+        if let descriptor = poolResult,
            isFileInScope(descriptor.fileDescriptorPath, protoFile: protoFile)
         {
             return descriptor
@@ -127,10 +132,11 @@ public actor FileSystemProtoRepository: ProtoRepositoryProtocol {
         throw ProtoRepositoryError.messageTypeNotFound(typeName)
     }
 
-    public func getEnumDescriptor(forType typeName: String, in protoFile: ProtoFile) throws -> EnumDescriptor {
+    public func getEnumDescriptor(forType typeName: String, in protoFile: ProtoFile) async throws -> EnumDescriptor {
         let normalized = typeName.hasPrefix(".") ? String(typeName.dropFirst()) : typeName
 
-        if let descriptor = pool.findEnumDescriptor(named: normalized),
+        let poolEnumResult = await pool.findEnumDescriptor(named: normalized)
+        if let descriptor = poolEnumResult,
            isFileInScope(descriptor.fileDescriptorPath, protoFile: protoFile)
         {
             return descriptor
@@ -144,14 +150,14 @@ public actor FileSystemProtoRepository: ProtoRepositoryProtocol {
         // Fallback 2: nested enum lookup — DescriptorBridge may not propagate fullName into
         // nested EnumDescriptors, so they land in the pool under just their simple name.
         // Decompose "pkg.Message.EnumName" → find message "pkg.Message" then nestedEnum("EnumName").
-        if let descriptor = findNestedEnumByPath(named: normalized, protoFile: protoFile) {
+        if let descriptor = await findNestedEnumByPath(named: normalized, protoFile: protoFile) {
             return descriptor
         }
 
         throw ProtoRepositoryError.enumTypeNotFound(typeName)
     }
 
-    public func makeJSONTypeRegistry(for protoFile: ProtoFile) throws -> TypeRegistry {
+    public func makeJSONTypeRegistry(for protoFile: ProtoFile) async throws -> TypeRegistry {
         // SwiftProtoReflect 5.3.0 fixed DescriptorBridge to correctly assign fully-qualified
         // fullName to nested messages, so we can register descriptors from bridgedFileDescriptors
         // as-is. Iterating top-level messages only ensures each nested type is registered once
@@ -161,7 +167,7 @@ public actor FileSystemProtoRepository: ProtoRepositoryProtocol {
             guard isFileInScope(fileDesc.name, protoFile: protoFile) else { continue }
 
             for (_, msg) in fileDesc.messages {
-                try? registry.registerMessage(msg)
+                try? await registry.registerMessage(msg)
             }
         }
         return registry
@@ -179,14 +185,14 @@ public actor FileSystemProtoRepository: ProtoRepositoryProtocol {
     /// for google/protobuf well-known types that are already registered by the built-in pool.
     /// `bridgedFileDescriptors` retains every converted `FileDescriptor` so that fallback lookups
     /// in `getMessageDescriptor` / `getEnumDescriptor` can still find types the pool silently dropped.
-    private func rebuildPool() {
+    private func rebuildPool() async {
         let newPool = DescriptorPool(includeBuiltinDescriptors: true)
         var newBridged: [String: FileDescriptor] = [:]
         for raw in rawFileDescriptors {
             guard let fd = try? bridge.fromProtobufFileDescriptor(raw) else { continue }
 
             newBridged[fd.name] = fd
-            try? newPool.addFileDescriptor(fd)
+            try? await newPool.addFileDescriptor(fd)
         }
         pool = newPool
         bridgedFileDescriptors = newBridged
@@ -234,7 +240,7 @@ public actor FileSystemProtoRepository: ProtoRepositoryProtocol {
     ///
     /// For `"myapp.Response.Code"` this tries progressively shorter parent paths:
     ///   parent `"myapp.Response"` → `nestedEnum(named: "Code")`.
-    private func findNestedEnumByPath(named typeName: String, protoFile: ProtoFile) -> EnumDescriptor? {
+    private func findNestedEnumByPath(named typeName: String, protoFile: ProtoFile) async -> EnumDescriptor? {
         let components = typeName.split(separator: ".").map(String.init)
         guard components.count >= 2 else { return nil }
 
@@ -242,8 +248,10 @@ public actor FileSystemProtoRepository: ProtoRepositoryProtocol {
         for prefixLen in stride(from: components.count - 1, through: 1, by: -1) {
             let parentName = components.prefix(prefixLen).joined(separator: ".")
 
-            let parentMsg: MessageDescriptor? = if let fromPool = pool.findMessageDescriptor(named: parentName),
-                                                   isFileInScope(fromPool.fileDescriptorPath, protoFile: protoFile)
+            let fromPoolResult = await pool.findMessageDescriptor(named: parentName)
+            let parentMsg: MessageDescriptor? = if let fromPool = fromPoolResult, isFileInScope(
+                fromPool.fileDescriptorPath,
+                protoFile: protoFile)
             {
                 fromPool
             } else {

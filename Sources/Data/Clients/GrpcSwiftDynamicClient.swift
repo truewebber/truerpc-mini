@@ -58,7 +58,7 @@ public final class GrpcSwiftDynamicClient: GrpcClientProtocol, Sendable {
 
         let inputMessage: DynamicMessage
         do {
-            inputMessage = try parseJSON(request.jsonBody, using: inputDescriptor, typeRegistry: typeRegistry)
+            inputMessage = try await parseJSON(request.jsonBody, using: inputDescriptor, typeRegistry: typeRegistry)
         } catch {
             logger.error("Request serialization failed", metadata: [
                 "service": method.serviceName,
@@ -91,9 +91,10 @@ public final class GrpcSwiftDynamicClient: GrpcClientProtocol, Sendable {
                     fullyQualifiedService: method.serviceName,
                     method: method.name)
 
-                // 6. Create serializers
+                // 6. Create serializer — DynamicMessageDeserializer now passes raw bytes through;
+                //    the actual async binary deserialization happens in the response handler below.
                 let serializer = DynamicMessageSerializer()
-                let deserializer = DynamicMessageDeserializer(messageDescriptor: outputDescriptor)
+                let deserializer = DynamicMessageDeserializer()
 
                 // 7. Create client request with metadata
                 var clientRequest = ClientRequest(message: inputMessage)
@@ -101,7 +102,7 @@ public final class GrpcSwiftDynamicClient: GrpcClientProtocol, Sendable {
                     clientRequest.metadata = convertToGrpcMetadata(metadata)
                 }
 
-                // 8. Execute unary call
+                // 8. Execute unary call — response.message is raw Data (protobuf wire bytes)
                 return try await client.unary(
                     request: clientRequest,
                     descriptor: methodDescriptor,
@@ -109,30 +110,47 @@ public final class GrpcSwiftDynamicClient: GrpcClientProtocol, Sendable {
                     deserializer: deserializer,
                     options: .defaults)
                 { response in
-                    // 9. Convert response message to JSON
-                    let responseJSON: String
+                    // response.message has 'get throws' in grpc-swift 2.x — unwrap once up front.
+                    let responseData = try response.message
+
+                    // 9. Async-deserialize raw bytes to DynamicMessage (BinaryDeserializer is
+                    //    async in SwiftProtoReflect 6.0.0 due to actor-isolated TypeRegistry).
+                    let dynamicMessage: DynamicMessage
                     do {
-                        responseJSON = try self.messageToJSON(response.message)
+                        let binaryDeserializer = BinaryDeserializer(
+                            options: DeserializationOptions(typeRegistry: typeRegistry))
+                        dynamicMessage = try await binaryDeserializer.deserialize(
+                            responseData,
+                            using: outputDescriptor)
                     } catch {
-                        let responseBytes: Int = if let binaryData = try? BinarySerializer()
-                            .serialize(response.message)
-                        {
-                            binaryData.count
-                        } else {
-                            0
-                        }
                         self.logger.error("Response deserialization failed", metadata: [
                             "service": method.serviceName,
                             "method": method.name,
                             "error": error.localizedDescription,
                             "expected_type": method.outputType,
-                            "response_size_bytes": String(responseBytes),
+                            "response_size_bytes": String(responseData.count),
                         ])
                         throw error
                     }
+
+                    // 10. Convert DynamicMessage to JSON
+                    let responseJSON: String
+                    do {
+                        responseJSON = try await self.messageToJSON(dynamicMessage, typeRegistry: typeRegistry)
+                    } catch {
+                        self.logger.error("Response JSON serialization failed", metadata: [
+                            "service": method.serviceName,
+                            "method": method.name,
+                            "error": error.localizedDescription,
+                            "expected_type": method.outputType,
+                            "response_size_bytes": String(responseData.count),
+                        ])
+                        throw error
+                    }
+
                     let responseTime = Date().timeIntervalSince(startTime)
 
-                    // 10. Extract metadata from response
+                    // 11. Extract metadata from response
                     let headers = self.convertMetadataToDict(response.metadata)
                     let trailers = self.convertMetadataToDict(response.trailingMetadata)
 
@@ -272,12 +290,14 @@ public final class GrpcSwiftDynamicClient: GrpcClientProtocol, Sendable {
         }
     }
 
-    /// Parse JSON string to DynamicMessage using descriptor
+    /// Parse JSON string to DynamicMessage using descriptor and TypeRegistry.
+    ///
+    /// `JSONDeserializer.deserializeFromJSONObject` is async in SwiftProtoReflect 6.0.0.
     func parseJSON(
         _ jsonString: String,
         using descriptor: MessageDescriptor,
         typeRegistry: TypeRegistry)
-        throws -> DynamicMessage
+        async throws -> DynamicMessage
     {
         guard let jsonData = jsonString.data(using: .utf8) else {
             throw GrpcClientError.invalidJSON("Cannot convert string to data")
@@ -298,18 +318,20 @@ public final class GrpcSwiftDynamicClient: GrpcClientProtocol, Sendable {
             throw GrpcClientError.invalidJSON("Request body must be a JSON object")
         }
 
-        let normalized = try GrpcRequestProtobufJSONNormalizer.normalizeMessageObject(
+        let normalized = try await GrpcRequestProtobufJSONNormalizer.normalizeMessageObject(
             rootObject,
             descriptor: descriptor,
             typeRegistry: typeRegistry)
 
-        return try deserializer.deserializeFromJSONObject(normalized, using: descriptor)
+        return try await deserializer.deserializeFromJSONObject(normalized, using: descriptor)
     }
 
-    /// Convert DynamicMessage to JSON string
-    func messageToJSON(_ message: DynamicMessage) throws -> String {
-        let serializer = JSONSerializer()
-        let data = try serializer.serialize(message)
+    /// Convert DynamicMessage to JSON string.
+    ///
+    /// `JSONSerializer.serialize` is async in SwiftProtoReflect 6.0.0.
+    func messageToJSON(_ message: DynamicMessage, typeRegistry: TypeRegistry) async throws -> String {
+        let serializer = JSONSerializer(options: JSONSerializationOptions(typeRegistry: typeRegistry))
+        let data = try await serializer.serialize(message)
         guard let jsonString = String(data: data, encoding: .utf8) else {
             throw GrpcClientError.invalidResponse
         }

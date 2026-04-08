@@ -93,6 +93,7 @@ public final class ProtoSchemaAutocompleteProvider: AutocompleteProviderProtocol
         switch field.type {
         case .message:
             guard let typeName = field.typeName,
+                  !isWellKnownStringType(typeName),
                   let elementDescriptor = try? await protoRepository.getMessageDescriptor(
                       forType: typeName,
                       in: protoFile)
@@ -175,16 +176,22 @@ public final class ProtoSchemaAutocompleteProvider: AutocompleteProviderProtocol
         switch field.type {
         case .string, .bytes:
             return .string
+
         case .double, .float,
              .int32, .int64, .uint32, .uint64,
              .sint32, .sint64, .fixed32, .fixed64, .sfixed32, .sfixed64:
             return .number
+
         case .bool:
             return .bool
+
         case .message:
+            if isWellKnownStringType(field.typeName) { return .string }
             return .message
+
         case .enum:
             return .enum
+
         case .group:
             return .string
         }
@@ -209,6 +216,15 @@ public final class ProtoSchemaAutocompleteProvider: AutocompleteProviderProtocol
         case .message, .enum: simpleTypeName(from: field.typeName ?? "")
         case .group: "group"
         }
+    }
+
+    /// Returns `true` when `typeName` refers to a WKT whose JSON representation is a plain string
+    /// (`google.protobuf.Timestamp` → RFC 3339, `google.protobuf.Duration` → `"1.5s"`).
+    private func isWellKnownStringType(_ typeName: String?) -> Bool {
+        guard let typeName else { return false }
+
+        let normalized = typeName.hasPrefix(".") ? String(typeName.dropFirst()) : typeName
+        return normalized == WellKnownTypeNames.timestamp || normalized == WellKnownTypeNames.duration
     }
 
     private func simpleTypeName(from fullName: String) -> String {

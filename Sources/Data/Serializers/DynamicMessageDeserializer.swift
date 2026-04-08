@@ -1,19 +1,13 @@
 import Foundation
 import GRPCCore
-import SwiftProtoReflect
 
-/// Deserializer that converts binary bytes to DynamicMessage from gRPC transport
-/// Bridges grpc-swift-2 to SwiftProtoReflect
+/// Deserializer that passes through binary bytes from gRPC transport as raw Data.
+/// The actual dynamic-message deserialization happens asynchronously in the gRPC response
+/// handler via `BinaryDeserializer`, which became async in SwiftProtoReflect 6.0.0.
 public struct DynamicMessageDeserializer: MessageDeserializer {
-    public let messageDescriptor: MessageDescriptor
+    public init() {}
 
-    public init(messageDescriptor: MessageDescriptor) {
-        self.messageDescriptor = messageDescriptor
-    }
-
-    public func deserialize(_ bytes: some GRPCContiguousBytes) throws -> DynamicMessage {
-        let data = bytes.withUnsafeBytes { Data($0) }
-        let binaryDeserializer = BinaryDeserializer()
-        return try binaryDeserializer.deserialize(data, using: messageDescriptor)
+    public func deserialize(_ bytes: some GRPCContiguousBytes) throws -> Data {
+        bytes.withUnsafeBytes { Data($0) }
     }
 }

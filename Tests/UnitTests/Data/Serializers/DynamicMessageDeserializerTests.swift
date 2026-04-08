@@ -1,3 +1,4 @@
+import GRPCCore
 import SwiftProtoReflect
 import XCTest
 @testable import TrueRPCMini
@@ -9,10 +10,8 @@ final class DynamicMessageDeserializerTests: XCTestCase {
     override func setUp() async throws {
         try await super.setUp()
 
-        // Create file descriptor
         fileDescriptor = FileDescriptor(name: "test.proto", package: "test")
 
-        // Create message descriptor for Person
         var tempDescriptor = MessageDescriptor(name: "Person", parent: fileDescriptor)
         let nameField = FieldDescriptor(name: "name", number: 1, type: .string)
         let ageField = FieldDescriptor(name: "age", number: 2, type: .int32)
@@ -27,8 +26,8 @@ final class DynamicMessageDeserializerTests: XCTestCase {
         super.tearDown()
     }
 
-    func test_deserialize_withValidBinaryData_returnsDynamicMessage() throws {
-        // Given
+    func test_deserialize_withValidBinaryData_returnsRawData() throws {
+        // Given: a serialized protobuf message
         var originalMessage = MessageFactory().createMessage(from: messageDescriptor)
         try originalMessage.set("Alice", forField: "name")
         try originalMessage.set(Int32(30), forField: "age")
@@ -36,37 +35,57 @@ final class DynamicMessageDeserializerTests: XCTestCase {
         let binaryData = try BinarySerializer().serialize(originalMessage)
         let bytes = [UInt8](binaryData)
 
-        let sut = DynamicMessageDeserializer(messageDescriptor: messageDescriptor)
+        let sut = DynamicMessageDeserializer()
 
         // When
-        let deserializedMessage = try sut.deserialize(bytes)
+        let result = try sut.deserialize(bytes)
 
-        // Then
-        XCTAssertEqual(try deserializedMessage.get(forField: "name") as? String, "Alice")
-        XCTAssertEqual(try deserializedMessage.get(forField: "age") as? Int32, 30)
+        // Then: DynamicMessageDeserializer is a pass-through — it returns the raw bytes as Data
+        XCTAssertEqual(result, binaryData)
     }
 
-    func test_deserialize_withEmptyBytes_returnsEmptyMessage() throws {
+    func test_deserialize_withEmptyBytes_returnsEmptyData() throws {
         // Given
         let bytes: [UInt8] = []
-        let sut = DynamicMessageDeserializer(messageDescriptor: messageDescriptor)
+        let sut = DynamicMessageDeserializer()
 
         // When
-        let message = try sut.deserialize(bytes)
+        let result = try sut.deserialize(bytes)
 
-        // Then - should have empty/default values
-        XCTAssertNotNil(message)
+        // Then
+        XCTAssertTrue(result.isEmpty)
     }
 
-    func test_deserialize_withInvalidBytes_throwsError() throws {
+    func test_deserialize_withArbitraryBytes_returnsTheSameBytes() throws {
         // Given
-        let invalidBytes: [UInt8] = [0xFF, 0xFF, 0xFF, 0xFF]
-        let sut = DynamicMessageDeserializer(messageDescriptor: messageDescriptor)
+        let bytes: [UInt8] = [0x01, 0x02, 0x03, 0xFF]
+        let sut = DynamicMessageDeserializer()
 
-        // When/Then
-        XCTAssertThrowsError(try sut.deserialize(invalidBytes)) { error in
-            // Should throw some kind of deserialization error
-            XCTAssertNotNil(error)
-        }
+        // When
+        let result = try sut.deserialize(bytes)
+
+        // Then
+        XCTAssertEqual(result, Data(bytes))
+    }
+
+    func test_deserialize_preservesBinaryContent_roundTrip() async throws {
+        // Given: a serialized protobuf message
+        var originalMessage = MessageFactory().createMessage(from: messageDescriptor)
+        try originalMessage.set("Bob", forField: "name")
+        try originalMessage.set(Int32(25), forField: "age")
+
+        let binaryData = try BinarySerializer().serialize(originalMessage)
+
+        // When: pass through DynamicMessageDeserializer then async-deserialize via BinaryDeserializer
+        let passThrough = DynamicMessageDeserializer()
+        let rawData = try passThrough.deserialize([UInt8](binaryData))
+
+        let registry = TypeRegistry()
+        let binaryDeserializer = BinaryDeserializer(options: DeserializationOptions(typeRegistry: registry))
+        let decoded = try await binaryDeserializer.deserialize(rawData, using: messageDescriptor)
+
+        // Then
+        XCTAssertEqual(try decoded.get(forField: "name") as? String, "Bob")
+        XCTAssertEqual(try decoded.get(forField: "age") as? Int32, 25)
     }
 }

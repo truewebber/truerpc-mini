@@ -890,13 +890,12 @@ extension FileSystemProtoRepositoryTests {
 
         // Must not throw — previously crashed with "Type 'Cursor' is already registered"
         let registry = try await sut.makeJSONTypeRegistry(for: protoFile)
-        XCTAssertTrue(registry.hasMessage(named: "pkg.GetListResponse"), "Parent must be in registry")
-        XCTAssertTrue(
-            registry.hasMessage(named: "pkg.GetListResponse.Cursor"),
-            "Nested Cursor must be registered under qualified name")
-        XCTAssertTrue(
-            registry.hasMessage(named: "pkg.GetListResponse.Item"),
-            "Nested Item must be registered under qualified name")
+        let hasGetListResponse = await registry.hasMessage(named: "pkg.GetListResponse")
+        XCTAssertTrue(hasGetListResponse, "Parent must be in registry")
+        let hasGetListResponseCursor = await registry.hasMessage(named: "pkg.GetListResponse.Cursor")
+        XCTAssertTrue(hasGetListResponseCursor, "Nested Cursor must be registered under qualified name")
+        let hasGetListResponseItem = await registry.hasMessage(named: "pkg.GetListResponse.Item")
+        XCTAssertTrue(hasGetListResponseItem, "Nested Item must be registered under qualified name")
     }
 
     func test_makeJSONTypeRegistry_nestedMessageLookupByQualifiedName_succeeds() async throws {
@@ -926,8 +925,9 @@ extension FileSystemProtoRepositoryTests {
         let protoFile = try await sut.loadProto(url: tempURL)
         let registry = try await sut.makeJSONTypeRegistry(for: protoFile)
 
+        let searchFilters = await registry.findMessage(named: "pkg.GetGroupedAdsRequest.SearchFilters")
         XCTAssertNotNil(
-            registry.findMessage(named: "pkg.GetGroupedAdsRequest.SearchFilters"),
+            searchFilters,
             "Nested type must be findable by fully-qualified name (as JSONDeserializer looks it up)")
     }
 
@@ -972,8 +972,9 @@ extension FileSystemProtoRepositoryTests {
 
         let registry = try await sut.makeJSONTypeRegistry(for: protoFile)
 
+        let hasTimestamp = await registry.hasMessage(named: WellKnownTypeNames.timestamp)
         XCTAssertTrue(
-            registry.hasMessage(named: WellKnownTypeNames.timestamp),
+            hasTimestamp,
             "JSON nested WKT fields require google.protobuf.Timestamp in TypeRegistry")
     }
 

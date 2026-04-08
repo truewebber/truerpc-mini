@@ -161,11 +161,11 @@ private final class MockProtoRepository: ProtoRepositoryProtocol {
         throw ProtoRepositoryError.enumTypeNotFound(typeName)
     }
 
-    func makeJSONTypeRegistry(for _: ProtoFile) throws -> TypeRegistry {
+    func makeJSONTypeRegistry(for _: ProtoFile) async throws -> TypeRegistry {
         let registry = TypeRegistry()
         let fileDesc = FileDescriptor(name: "mock.proto", package: "mock")
         let msg = MessageDescriptor(name: "MockMessage", parent: fileDesc)
-        try registry.registerMessage(msg)
+        try? await registry.registerMessage(msg)
         return registry
     }
 }

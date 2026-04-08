@@ -38,6 +38,25 @@ final class ProtoSchemaAutocompleteProviderTests: XCTestCase {
                 number: 9,
                 type: .string,
                 isRepeated: true))
+        rootMsg.addField(
+            FieldDescriptor(
+                name: "created_at",
+                number: 10,
+                type: .message,
+                typeName: "google.protobuf.Timestamp"))
+        rootMsg.addField(
+            FieldDescriptor(
+                name: "ttl",
+                number: 11,
+                type: .message,
+                typeName: "google.protobuf.Duration"))
+        rootMsg.addField(
+            FieldDescriptor(
+                name: "timestamps",
+                number: 12,
+                type: .message,
+                typeName: "google.protobuf.Timestamp",
+                isRepeated: true))
 
         var statusEnum = EnumDescriptor(name: "Status", parent: rootMsg)
         statusEnum.addValue(EnumDescriptor.EnumValue(name: "UNKNOWN", number: 0))
@@ -249,6 +268,60 @@ final class ProtoSchemaAutocompleteProviderTests: XCTestCase {
         let field = suggestions.first(where: { $0.name == "settings" })
         XCTAssertEqual(field?.kind, .message)
         XCTAssertEqual(field?.typeHint, "Settings")
+    }
+
+    func test_keyMode_timestampField_hasStringKind() async {
+        let context = AutocompleteContext(resolvedPath: [], mode: .key)
+
+        let suggestions = await sut.suggestions(for: context, rootMessageType: "test.TestRequest", in: protoFile)
+
+        let field = suggestions.first(where: { $0.name == "created_at" })
+        XCTAssertEqual(field?.kind, .string, "Timestamp WKT must use string kind (RFC 3339 format)")
+        XCTAssertEqual(field?.typeHint, "Timestamp")
+    }
+
+    func test_keyMode_durationField_hasStringKind() async {
+        let context = AutocompleteContext(resolvedPath: [], mode: .key)
+
+        let suggestions = await sut.suggestions(for: context, rootMessageType: "test.TestRequest", in: protoFile)
+
+        let field = suggestions.first(where: { $0.name == "ttl" })
+        XCTAssertEqual(field?.kind, .string, "Duration WKT must use string kind (e.g. \"1.5s\" format)")
+        XCTAssertEqual(field?.typeHint, "Duration")
+    }
+
+    func test_keyMode_repeatedTimestampField_hasRepeatedKind() async {
+        let context = AutocompleteContext(resolvedPath: [], mode: .key)
+
+        let suggestions = await sut.suggestions(for: context, rootMessageType: "test.TestRequest", in: protoFile)
+
+        let field = suggestions.first(where: { $0.name == "timestamps" })
+        XCTAssertEqual(field?.kind, .repeated)
+        XCTAssertEqual(field?.typeHint, "Timestamp[]")
+    }
+
+    func test_keyMode_timestampFieldWithLeadingDot_hasStringKind() async {
+        let file = FileDescriptor(name: "w.proto", package: "w")
+        var msg = MessageDescriptor(name: "Req", parent: file)
+        msg.addField(FieldDescriptor(name: "ts", number: 1, type: .message, typeName: ".google.protobuf.Timestamp"))
+
+        let repo = StubProtoRepository(descriptors: ["w.Req": msg])
+        let provider = ProtoSchemaAutocompleteProvider(protoRepository: repo)
+        let pf = ProtoFile(name: "w.proto", path: URL(fileURLWithPath: "/w.proto"), services: [])
+
+        let context = AutocompleteContext(resolvedPath: [], mode: .key)
+        let suggestions = await provider.suggestions(for: context, rootMessageType: "w.Req", in: pf)
+
+        let field = suggestions.first(where: { $0.name == "ts" })
+        XCTAssertEqual(field?.kind, .string, "Leading-dot typeName must be normalised before WKT check")
+    }
+
+    func test_arrayElementMode_repeatedTimestampField_returnsEmpty() async {
+        let context = AutocompleteContext(resolvedPath: ["timestamps"], mode: .arrayElement)
+
+        let suggestions = await sut.suggestions(for: context, rootMessageType: "test.TestRequest", in: protoFile)
+
+        XCTAssertTrue(suggestions.isEmpty, "Array elements of Timestamp WKT are plain strings — no field suggestions")
     }
 
     func test_keyMode_enumField_hasEnumKind() async {

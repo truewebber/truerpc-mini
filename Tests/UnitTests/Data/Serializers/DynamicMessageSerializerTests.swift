@@ -11,10 +11,8 @@ final class DynamicMessageSerializerTests: XCTestCase {
         try await super.setUp()
         sut = DynamicMessageSerializer()
 
-        // Create file descriptor
         fileDescriptor = FileDescriptor(name: "test.proto", package: "test")
 
-        // Create message descriptor for Person
         var tempDescriptor = MessageDescriptor(name: "Person", parent: fileDescriptor)
         let nameField = FieldDescriptor(name: "name", number: 1, type: .string)
         let ageField = FieldDescriptor(name: "age", number: 2, type: .int32)
@@ -30,7 +28,7 @@ final class DynamicMessageSerializerTests: XCTestCase {
         super.tearDown()
     }
 
-    func test_serialize_withSimpleMessage_returnsValidBinaryData() throws {
+    func test_serialize_withSimpleMessage_returnsValidBinaryData() async throws {
         // Given
         var message = MessageFactory().createMessage(from: messageDescriptor)
         try message.set("Alice", forField: "name")
@@ -43,10 +41,11 @@ final class DynamicMessageSerializerTests: XCTestCase {
         XCTAssertFalse(bytes.isEmpty)
         XCTAssertGreaterThan(bytes.count, 0)
 
-        // Verify it's valid protobuf by deserializing
+        // Verify it's valid protobuf by deserializing asynchronously
         let data = Data(bytes)
-        let deserializer = BinaryDeserializer()
-        let decoded = try deserializer.deserialize(data, using: messageDescriptor)
+        let registry = TypeRegistry()
+        let deserializer = BinaryDeserializer(options: DeserializationOptions(typeRegistry: registry))
+        let decoded = try await deserializer.deserialize(data, using: messageDescriptor)
 
         XCTAssertEqual(try decoded.get(forField: "name") as? String, "Alice")
         XCTAssertEqual(try decoded.get(forField: "age") as? Int32, 30)
@@ -63,7 +62,7 @@ final class DynamicMessageSerializerTests: XCTestCase {
         XCTAssertTrue(bytes.count < 10)
     }
 
-    func test_serialize_withRepeatedFields_handlesArrays() throws {
+    func test_serialize_withRepeatedFields_handlesArrays() async throws {
         // Given
         var listDescriptor = MessageDescriptor(name: "EmailList", parent: fileDescriptor)
         let emailsField = FieldDescriptor(name: "emails", number: 1, type: .string, isRepeated: true)
@@ -78,9 +77,12 @@ final class DynamicMessageSerializerTests: XCTestCase {
         // Then
         XCTAssertFalse(bytes.isEmpty)
 
-        // Verify by deserializing
+        // Verify by deserializing asynchronously
         let data = Data(bytes)
-        let decoded = try BinaryDeserializer().deserialize(data, using: listDescriptor)
+        let registry = TypeRegistry()
+        let decoded = try await BinaryDeserializer(
+            options: DeserializationOptions(typeRegistry: registry))
+            .deserialize(data, using: listDescriptor)
         let emails = try decoded.get(forField: "emails") as? [String]
         XCTAssertEqual(emails?.count, 2)
     }

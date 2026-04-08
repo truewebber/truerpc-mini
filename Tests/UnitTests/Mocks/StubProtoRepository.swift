@@ -89,14 +89,14 @@ final class StubProtoRepository: ProtoRepositoryProtocol, Sendable {
         return found
     }
 
-    func makeJSONTypeRegistry(for _: ProtoFile) throws -> TypeRegistry {
+    func makeJSONTypeRegistry(for _: ProtoFile) async throws -> TypeRegistry {
         let registry = TypeRegistry()
         let descriptors = storage.withLock { Array($0.descriptors.values) }
         for descriptor in descriptors {
-            try? registry.registerMessage(descriptor)
+            try? await registry.registerMessage(descriptor)
         }
         if let fallback = storage.withLock({ $0.defaultDescriptor }) {
-            try? registry.registerMessage(fallback)
+            try? await registry.registerMessage(fallback)
         }
         return registry
     }
