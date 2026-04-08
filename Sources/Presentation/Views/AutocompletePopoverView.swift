@@ -120,7 +120,7 @@ private struct SuggestionRow: View {
             Image(systemName: "checkmark.circle")
                 .foregroundStyle(Color.teal)
 
-        case .enum:
+        case .enum, .enumField:
             Image(systemName: "list.bullet")
                 .foregroundStyle(Color.yellow)
 

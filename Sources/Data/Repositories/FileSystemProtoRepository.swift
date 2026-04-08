@@ -158,17 +158,11 @@ public actor FileSystemProtoRepository: ProtoRepositoryProtocol {
     }
 
     public func makeJSONTypeRegistry(for protoFile: ProtoFile) async throws -> TypeRegistry {
-        // SwiftProtoReflect 5.3.0 fixed DescriptorBridge to correctly assign fully-qualified
-        // fullName to nested messages, so we can register descriptors from bridgedFileDescriptors
-        // as-is. Iterating top-level messages only ensures each nested type is registered once
-        // (via TypeRegistry's internal recursion), avoiding duplicateType errors.
         let registry = TypeRegistry()
         for (_, fileDesc) in bridgedFileDescriptors {
             guard isFileInScope(fileDesc.name, protoFile: protoFile) else { continue }
 
-            for (_, msg) in fileDesc.messages {
-                try? await registry.registerMessage(msg)
-            }
+            try? await registry.registerFile(fileDesc)
         }
         return registry
     }

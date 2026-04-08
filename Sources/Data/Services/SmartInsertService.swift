@@ -37,7 +37,7 @@ struct SmartInsertService {
         case .string:
             return ("\"\(name)\": \"\"", 1)
 
-        case .number, .bool:
+        case .number, .bool, .enumField:
             return ("\"\(name)\": ", 0)
 
         case .message:

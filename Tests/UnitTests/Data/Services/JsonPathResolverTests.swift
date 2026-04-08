@@ -527,6 +527,105 @@ final class JsonPathResolverTests: XCTestCase {
         XCTAssertFalse(context.isOutsideRootObject)
     }
 
+    // MARK: - currentFieldKey
+
+    func test_resolve_cursorAfterColon_currentFieldKeyIsFieldName() {
+        let json = "{\"status\": "
+        let context = sut.resolve(json: json, cursorOffset: json.count)
+        XCTAssertEqual(context.mode, .enumValue)
+        XCTAssertEqual(context.currentFieldKey, "status")
+    }
+
+    func test_resolve_cursorInsideValueString_currentFieldKeyIsFieldName() {
+        let json = "{\"status\": \"ACT"
+        let context = sut.resolve(json: json, cursorOffset: json.count)
+        XCTAssertEqual(context.mode, .enumValue)
+        XCTAssertEqual(context.currentFieldKey, "status")
+    }
+
+    func test_resolve_cursorInsideValueString_partialKeyIsTypedText() {
+        let json = "{\"status\": \"ACT"
+        let context = sut.resolve(json: json, cursorOffset: json.count)
+        XCTAssertEqual(context.mode, .enumValue)
+        XCTAssertEqual(context.partialKey, "ACT")
+    }
+
+    func test_resolve_cursorInsideEmptyValueString_partialKeyIsEmpty() {
+        let json = "{\"status\": \""
+        let context = sut.resolve(json: json, cursorOffset: json.count)
+        XCTAssertEqual(context.mode, .enumValue)
+        XCTAssertEqual(context.partialKey, "")
+        XCTAssertEqual(context.currentFieldKey, "status")
+    }
+
+    func test_resolve_cursorAfterColon_inNestedObject_currentFieldKeyIsCorrect() {
+        let json = "{\"a\": {\"status\": "
+        let context = sut.resolve(json: json, cursorOffset: json.count)
+        XCTAssertEqual(context.mode, .enumValue)
+        XCTAssertEqual(context.resolvedPath, ["a"])
+        XCTAssertEqual(context.currentFieldKey, "status")
+    }
+
+    func test_resolve_cursorInKeyMode_currentFieldKeyIsNil() {
+        let json = "{\"nam"
+        let context = sut.resolve(json: json, cursorOffset: json.count)
+        XCTAssertEqual(context.mode, .key)
+        XCTAssertNil(context.currentFieldKey)
+    }
+
+    func test_resolve_cursorInArrayElement_currentFieldKeyIsNil() {
+        let json = "{\"tags\": ["
+        let context = sut.resolve(json: json, cursorOffset: json.count)
+        XCTAssertEqual(context.mode, .arrayElement)
+        XCTAssertNil(context.currentFieldKey)
+    }
+
+    func test_resolve_cursorAfterSecondField_currentFieldKeyIsCorrect() {
+        let json = "{\"name\": \"Alice\", \"status\": "
+        let context = sut.resolve(json: json, cursorOffset: json.count)
+        XCTAssertEqual(context.mode, .enumValue)
+        XCTAssertEqual(context.currentFieldKey, "status")
+    }
+
+    // MARK: - partialKey inside array string element
+
+    func test_resolve_cursorInsideIncompleteArrayString_partialKeyIsTypedText() {
+        let json = "{\"tags\": [\"ACT"
+        let context = sut.resolve(json: json, cursorOffset: json.count)
+        XCTAssertEqual(context.mode, .arrayElement)
+        XCTAssertEqual(context.resolvedPath, ["tags"])
+        XCTAssertEqual(context.partialKey, "ACT")
+    }
+
+    func test_resolve_cursorInsideEmptyArrayString_partialKeyIsEmpty() {
+        let json = "{\"tags\": [\""
+        let context = sut.resolve(json: json, cursorOffset: json.count)
+        XCTAssertEqual(context.mode, .arrayElement)
+        XCTAssertEqual(context.partialKey, "")
+    }
+
+    func test_resolve_cursorAfterCompletedArrayString_partialKeyIsEmpty() {
+        let json = "{\"tags\": [\"ACTIVE\", "
+        let context = sut.resolve(json: json, cursorOffset: json.count)
+        XCTAssertEqual(context.mode, .arrayElement)
+        XCTAssertEqual(context.resolvedPath, ["tags"])
+        XCTAssertEqual(context.partialKey, "")
+    }
+
+    func test_resolve_cursorInsideSecondArrayString_partialKeyIsCorrect() {
+        let json = "{\"tags\": [\"ACTIVE\", \"INA"
+        let context = sut.resolve(json: json, cursorOffset: json.count)
+        XCTAssertEqual(context.mode, .arrayElement)
+        XCTAssertEqual(context.partialKey, "INA")
+    }
+
+    func test_resolve_cursorAfterArrayOpen_partialKeyIsEmpty() {
+        let json = "{\"tags\": ["
+        let context = sut.resolve(json: json, cursorOffset: json.count)
+        XCTAssertEqual(context.mode, .arrayElement)
+        XCTAssertEqual(context.partialKey, "")
+    }
+
     // MARK: - collectKeysAfterCursor
 
     func test_collectKeysAfterCursor_findsKeysInSameObject() {

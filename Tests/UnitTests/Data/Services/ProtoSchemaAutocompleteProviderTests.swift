@@ -324,13 +324,13 @@ final class ProtoSchemaAutocompleteProviderTests: XCTestCase {
         XCTAssertTrue(suggestions.isEmpty, "Array elements of Timestamp WKT are plain strings — no field suggestions")
     }
 
-    func test_keyMode_enumField_hasEnumKind() async {
+    func test_keyMode_enumField_hasEnumFieldKind() async {
         let context = AutocompleteContext(resolvedPath: [], mode: .key)
 
         let suggestions = await sut.suggestions(for: context, rootMessageType: "test.TestRequest", in: protoFile)
 
         let field = suggestions.first(where: { $0.name == "status" })
-        XCTAssertEqual(field?.kind, .enum)
+        XCTAssertEqual(field?.kind, .enumField)
         XCTAssertEqual(field?.typeHint, "Status")
     }
 
@@ -396,7 +396,7 @@ final class ProtoSchemaAutocompleteProviderTests: XCTestCase {
         }
     }
 
-    // MARK: - Enum value mode
+    // MARK: - Enum value mode — legacy (path.last = field name)
 
     func test_enumValueMode_enumField_returnsAllValues() async {
         let context = AutocompleteContext(resolvedPath: ["status"], mode: .enumValue)
@@ -447,6 +447,128 @@ final class ProtoSchemaAutocompleteProviderTests: XCTestCase {
         let suggestions = await sut.suggestions(for: context, rootMessageType: "test.TestRequest", in: protoFile)
 
         XCTAssertTrue(suggestions.isEmpty)
+    }
+
+    // MARK: - Enum value mode — currentFieldKey (resolver-produced context)
+
+    func test_enumValueMode_withCurrentFieldKey_rootLevel_returnsEnumValues() async {
+        // Realistic context produced by JsonPathResolver: {"status": |cursor|}
+        let context = AutocompleteContext(
+            resolvedPath: [],
+            mode: .enumValue,
+            currentFieldKey: "status")
+
+        let suggestions = await sut.suggestions(for: context, rootMessageType: "test.TestRequest", in: protoFile)
+
+        XCTAssertEqual(suggestions.count, 3)
+        XCTAssertTrue(suggestions.allSatisfy { $0.kind == .enum })
+        let names = Set(suggestions.map(\.name))
+        XCTAssertEqual(names, Set(["UNKNOWN", "ACTIVE", "INACTIVE"]))
+    }
+
+    func test_enumValueMode_withCurrentFieldKey_partialValue_allValuesStillReturned() async {
+        // Resolver also sets partialKey when cursor is inside the value string; provider returns all,
+        // ViewModel applies the prefix filter. Provider must not filter itself.
+        let context = AutocompleteContext(
+            resolvedPath: [],
+            mode: .enumValue,
+            partialKey: "ACT",
+            currentFieldKey: "status")
+
+        let suggestions = await sut.suggestions(for: context, rootMessageType: "test.TestRequest", in: protoFile)
+
+        XCTAssertEqual(suggestions.count, 3, "Provider returns all values; ViewModel applies prefix filter")
+    }
+
+    func test_enumValueMode_withCurrentFieldKey_nonEnumField_returnsEmpty() async {
+        let context = AutocompleteContext(
+            resolvedPath: [],
+            mode: .enumValue,
+            currentFieldKey: "name")
+
+        let suggestions = await sut.suggestions(for: context, rootMessageType: "test.TestRequest", in: protoFile)
+
+        XCTAssertTrue(suggestions.isEmpty)
+    }
+
+    func test_enumValueMode_withCurrentFieldKey_unknownField_returnsEmpty() async {
+        let context = AutocompleteContext(
+            resolvedPath: [],
+            mode: .enumValue,
+            currentFieldKey: "nonexistent")
+
+        let suggestions = await sut.suggestions(for: context, rootMessageType: "test.TestRequest", in: protoFile)
+
+        XCTAssertTrue(suggestions.isEmpty)
+    }
+
+    func test_enumValueMode_withCurrentFieldKey_nilKey_emptyPath_returnsEmpty() async {
+        let context = AutocompleteContext(
+            resolvedPath: [],
+            mode: .enumValue,
+            currentFieldKey: nil)
+
+        let suggestions = await sut.suggestions(for: context, rootMessageType: "test.TestRequest", in: protoFile)
+
+        XCTAssertTrue(suggestions.isEmpty)
+    }
+
+    func test_enumValueMode_externalTopLevelEnum_usesRepository() async {
+        // Set up a message with a field whose enum type is NOT nested — it lives at top level.
+        let file = FileDescriptor(name: "ext.proto", package: "ext")
+        var msg = MessageDescriptor(name: "Order", parent: file)
+        msg.addField(FieldDescriptor(name: "priority", number: 1, type: .enum, typeName: "ext.Priority"))
+
+        var priorityEnum = EnumDescriptor(name: "Priority", parent: file)
+        priorityEnum.addValue(EnumDescriptor.EnumValue(name: "LOW", number: 0))
+        priorityEnum.addValue(EnumDescriptor.EnumValue(name: "HIGH", number: 1))
+
+        let repo = StubProtoRepository(
+            descriptors: ["ext.Order": msg],
+            enumDescriptors: ["ext.Priority": priorityEnum])
+        let provider = ProtoSchemaAutocompleteProvider(protoRepository: repo)
+        let pf = ProtoFile(name: "ext.proto", path: URL(fileURLWithPath: "/ext.proto"), services: [])
+
+        let context = AutocompleteContext(
+            resolvedPath: [],
+            mode: .enumValue,
+            currentFieldKey: "priority")
+
+        let suggestions = await provider.suggestions(for: context, rootMessageType: "ext.Order", in: pf)
+
+        XCTAssertEqual(suggestions.count, 2)
+        let names = Set(suggestions.map(\.name))
+        XCTAssertEqual(names, Set(["LOW", "HIGH"]))
+    }
+
+    func test_arrayElementMode_repeatedExternalEnum_usesRepository() async {
+        let file = FileDescriptor(name: "ext2.proto", package: "ext2")
+        var msg = MessageDescriptor(name: "Batch", parent: file)
+        msg.addField(FieldDescriptor(
+            name: "statuses",
+            number: 1,
+            type: .enum,
+            typeName: "ext2.BatchStatus",
+            isRepeated: true))
+
+        var batchEnum = EnumDescriptor(name: "BatchStatus", parent: file)
+        batchEnum.addValue(EnumDescriptor.EnumValue(name: "PENDING", number: 0))
+        batchEnum.addValue(EnumDescriptor.EnumValue(name: "DONE", number: 1))
+
+        let repo = StubProtoRepository(
+            descriptors: ["ext2.Batch": msg],
+            enumDescriptors: ["ext2.BatchStatus": batchEnum])
+        let provider = ProtoSchemaAutocompleteProvider(protoRepository: repo)
+        let pf = ProtoFile(name: "ext2.proto", path: URL(fileURLWithPath: "/ext2.proto"), services: [])
+
+        let context = AutocompleteContext(resolvedPath: ["statuses"], mode: .arrayElement)
+
+        let suggestions = await provider.suggestions(for: context, rootMessageType: "ext2.Batch", in: pf)
+
+        XCTAssertEqual(suggestions.count, 2)
+        XCTAssertTrue(suggestions.allSatisfy { $0.kind == .enum })
+        let names = Set(suggestions.map(\.name))
+        XCTAssertEqual(names, Set(["PENDING", "DONE"]))
     }
 
     // MARK: - Array element mode

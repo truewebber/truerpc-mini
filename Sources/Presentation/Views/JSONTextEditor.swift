@@ -327,7 +327,9 @@ struct JSONTextEditor: NSViewRepresentable {
             textView: NSTextView,
             vm: AutocompleteViewModel)
         {
-            let continueAutocomplete = suggestion.kind == .message || suggestion.kind == .repeated
+            let continueAutocomplete = suggestion.kind == .message
+                || suggestion.kind == .repeated
+                || suggestion.kind == .enumField
 
             if continueAutocomplete, let protoFile = parent.protoFile {
                 let newText = textView.string

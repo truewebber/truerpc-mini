@@ -394,15 +394,27 @@ final class AutocompleteViewModelTests: XCTestCase {
         XCTAssertEqual(vm.suggestions.count, 2)
     }
 
-    // MARK: - arrayElement mode dismisses
+    // MARK: - arrayElement mode — enum values
 
-    func test_textDidChange_arrayElementMode_dismissesSuggestions() async {
-        let vm = makeSUT(suggestions: [makeSuggestion(name: "name"), makeSuggestion(name: "age")])
-        mockResolver.stubResolve(AutocompleteContext(resolvedPath: ["items"], mode: .arrayElement))
+    func test_textDidChange_arrayElementMode_whenProviderReturnsSuggestions_showsPopover() async {
+        let enumVal = makeSuggestion(name: "ACTIVE", kind: .enum)
+        let vm = makeSUT(suggestions: [enumVal])
+        mockResolver.stubResolve(AutocompleteContext(resolvedPath: ["statuses"], mode: .arrayElement))
 
-        await vm.textDidChange("{\"items\": [", cursorOffset: 11, protoFile: testProtoFile)
+        await vm.textDidChange("{\"statuses\": [", cursorOffset: 14, protoFile: testProtoFile)
 
-        XCTAssertFalse(vm.isVisible, "Popover must not show inside array brackets")
+        XCTAssertTrue(vm.isVisible, "Enum values should be shown inside repeated enum array")
+        XCTAssertEqual(vm.suggestions.count, 1)
+        XCTAssertEqual(vm.suggestions.first?.name, "ACTIVE")
+    }
+
+    func test_textDidChange_arrayElementMode_whenProviderReturnsEmpty_hidesPopover() async {
+        let vm = makeSUT(suggestions: [])
+        mockResolver.stubResolve(AutocompleteContext(resolvedPath: ["labels"], mode: .arrayElement))
+
+        await vm.textDidChange("{\"labels\": [", cursorOffset: 12, protoFile: testProtoFile)
+
+        XCTAssertFalse(vm.isVisible, "No suggestions should be visible when provider returns empty")
         XCTAssertTrue(vm.suggestions.isEmpty)
     }
 

@@ -86,6 +86,8 @@ public final class JsonPathResolver: JsonPathResolverProtocol, Sendable {
         var inString = false
         var stringIsKey = false
         var pendingKey = ""
+        /// Accumulates characters typed inside a value string literal (for enum-value prefix filtering).
+        var pendingValue = ""
         var escapeNext = false
         var popsPathOnClose = false
         var seenKeys: Set<String> = []
@@ -95,6 +97,9 @@ public final class JsonPathResolver: JsonPathResolverProtocol, Sendable {
 
     private struct ArrayFrame {
         var popsPathOnClose = false
+        /// Accumulates characters typed inside an incomplete string element (for enum-value prefix filtering).
+        /// Reset to `""` when the string closes or a new element begins (`,`).
+        var pendingValue = ""
     }
 
     private enum StackEntry {
@@ -110,17 +115,32 @@ public final class JsonPathResolver: JsonPathResolverProtocol, Sendable {
         }
 
         switch top {
-        case .array:
-            return AutocompleteContext(resolvedPath: path, mode: .arrayElement)
+        case let .array(frame):
+            return AutocompleteContext(resolvedPath: path, mode: .arrayElement, partialKey: frame.pendingValue)
         case let .object(frame):
             let siblings = frame.seenKeys
             if frame.inString {
-                let mode: AutocompleteMode = frame.stringIsKey ? .key : .enumValue
-                let partial = frame.stringIsKey ? frame.pendingKey : ""
-                return AutocompleteContext(resolvedPath: path, mode: mode, siblingKeys: siblings, partialKey: partial)
+                if frame.stringIsKey {
+                    return AutocompleteContext(
+                        resolvedPath: path,
+                        mode: .key,
+                        siblingKeys: siblings,
+                        partialKey: frame.pendingKey)
+                } else {
+                    return AutocompleteContext(
+                        resolvedPath: path,
+                        mode: .enumValue,
+                        siblingKeys: siblings,
+                        partialKey: frame.pendingValue,
+                        currentFieldKey: frame.lastKey)
+                }
             }
             if frame.afterColon {
-                return AutocompleteContext(resolvedPath: path, mode: .enumValue, siblingKeys: siblings)
+                return AutocompleteContext(
+                    resolvedPath: path,
+                    mode: .enumValue,
+                    siblingKeys: siblings,
+                    currentFieldKey: frame.lastKey)
             }
             return AutocompleteContext(
                 resolvedPath: path,
@@ -149,6 +169,7 @@ public final class JsonPathResolver: JsonPathResolverProtocol, Sendable {
             if frame.escapeNext {
                 frame.escapeNext = false
                 if frame.stringIsKey { frame.pendingKey.append(ch) }
+                else { frame.pendingValue.append(ch) }
                 return true
             }
             if ch == "\\" {
@@ -162,9 +183,11 @@ public final class JsonPathResolver: JsonPathResolverProtocol, Sendable {
                     frame.seenKeys.insert(frame.pendingKey)
                 }
                 frame.pendingKey = ""
+                frame.pendingValue = ""
                 return true
             }
             if frame.stringIsKey { frame.pendingKey.append(ch) }
+            else { frame.pendingValue.append(ch) }
             return true
         }
 
@@ -193,6 +216,7 @@ public final class JsonPathResolver: JsonPathResolverProtocol, Sendable {
             frame.inString = true
             frame.stringIsKey = !frame.afterColon
             frame.pendingKey = ""
+            frame.pendingValue = ""
             frame.escapeNext = false
             frame.pendingBareText = ""
             advance(json: json, index: &index, processed: &processed)
@@ -263,24 +287,49 @@ public final class JsonPathResolver: JsonPathResolverProtocol, Sendable {
             return false
         }
         if ch == "," {
+            frame.pendingValue = ""
             advance(json: json, index: &index, processed: &processed)
             return true
         }
         if ch == "{" {
+            frame.pendingValue = ""
             stack.append(.object(ObjectFrame()))
             advance(json: json, index: &index, processed: &processed)
             return false
         }
         if ch == "[" {
+            frame.pendingValue = ""
             stack.append(.array(ArrayFrame()))
             advance(json: json, index: &index, processed: &processed)
             return false
         }
         if ch == "\"" {
             advance(json: json, index: &index, processed: &processed)
-            skipString(json: json, limit: limit, index: &index, processed: &processed)
+            // Track partial string content for enum-value prefix filtering.
+            // If the string closes before the limit, reset pendingValue (complete element).
+            // If the limit is reached inside the string, pendingValue holds what the user typed so far.
+            var accumulated = ""
+            var escape = false
+            var completed = false
+            while index < json.endIndex, processed < limit {
+                let c = json[index]
+                advance(json: json, index: &index, processed: &processed)
+                if escape { escape = false
+                    accumulated.append(c)
+                    continue
+                }
+                if c == "\\" { escape = true
+                    continue
+                }
+                if c == "\"" { completed = true
+                    break
+                }
+                accumulated.append(c)
+            }
+            frame.pendingValue = completed ? "" : accumulated
             return true
         }
+        frame.pendingValue = ""
         consumePrimitive(json: json, limit: limit, index: &index, processed: &processed)
         return true
     }

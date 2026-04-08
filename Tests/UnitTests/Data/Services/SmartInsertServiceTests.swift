@@ -62,6 +62,13 @@ final class SmartInsertServiceTests: XCTestCase {
         XCTAssertEqual(cursorBack, 0)
     }
 
+    func test_smartInsertComponents_enumField_returnsKeyWithColon() {
+        let suggestion = AutocompleteSuggestion(name: "status", typeHint: "Status", kind: .enumField)
+        let (text, cursorBack) = sut.smartInsertComponents(for: suggestion)
+        XCTAssertEqual(text, "\"status\": ")
+        XCTAssertEqual(cursorBack, 0)
+    }
+
     func test_smartInsertComponents_repeated_returnsEmptyArray() {
         let suggestion = AutocompleteSuggestion(name: "tags", typeHint: "string[]", kind: .repeated)
         let (text, cursorBack) = sut.smartInsertComponents(for: suggestion)

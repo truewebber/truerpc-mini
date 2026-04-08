@@ -31,6 +31,7 @@ public final class ProtoSchemaAutocompleteProvider: AutocompleteProviderProtocol
         case .enumValue:
             return await enumValueModeSuggestions(
                 path: context.resolvedPath,
+                currentFieldKey: context.currentFieldKey,
                 rootDescriptor: rootDescriptor,
                 protoFile: protoFile)
 
@@ -57,13 +58,26 @@ public final class ProtoSchemaAutocompleteProvider: AutocompleteProviderProtocol
 
     private func enumValueModeSuggestions(
         path: [String],
+        currentFieldKey: String?,
         rootDescriptor: MessageDescriptor,
         protoFile: ProtoFile)
         async -> [AutocompleteSuggestion]
     {
-        guard let fieldName = path.last else { return [] }
+        // When `currentFieldKey` is provided by the resolver, `path` is the path to the current
+        // object and `currentFieldKey` is the field being edited.
+        // Legacy callers (e.g. tests) may pass `currentFieldKey: nil` with the field name as
+        // `path.last` and parent path as `path.dropLast()`.
+        let fieldName: String
+        let parentPath: [String]
+        if let key = currentFieldKey {
+            fieldName = key
+            parentPath = path
+        } else {
+            guard let last = path.last else { return [] }
 
-        let parentPath = Array(path.dropLast())
+            fieldName = last
+            parentPath = Array(path.dropLast())
+        }
 
         guard let parent = await navigate(from: rootDescriptor, path: parentPath, protoFile: protoFile)
         else { return [] }
@@ -71,7 +85,8 @@ public final class ProtoSchemaAutocompleteProvider: AutocompleteProviderProtocol
               field.type == .enum,
               let typeName = field.typeName
         else { return [] }
-        guard let enumDescriptor = resolveEnumDescriptor(typeName: typeName, in: parent) else { return [] }
+        guard let enumDescriptor = await resolveEnumDescriptor(typeName: typeName, in: parent, protoFile: protoFile)
+        else { return [] }
 
         return enumValueSuggestions(from: enumDescriptor, typeName: typeName)
     }
@@ -103,7 +118,7 @@ public final class ProtoSchemaAutocompleteProvider: AutocompleteProviderProtocol
 
         case .enum:
             guard let typeName = field.typeName,
-                  let enumDescriptor = resolveEnumDescriptor(typeName: typeName, in: parent)
+                  let enumDescriptor = await resolveEnumDescriptor(typeName: typeName, in: parent, protoFile: protoFile)
             else { return [] }
 
             return enumValueSuggestions(from: enumDescriptor, typeName: typeName)
@@ -162,9 +177,17 @@ public final class ProtoSchemaAutocompleteProvider: AutocompleteProviderProtocol
         return current
     }
 
-    private func resolveEnumDescriptor(typeName: String, in parent: MessageDescriptor) -> EnumDescriptor? {
+    /// Resolves an enum descriptor by first checking nested enums on `parent`, then falling back
+    /// to the repository for top-level / externally-defined enums.
+    private func resolveEnumDescriptor(
+        typeName: String,
+        in parent: MessageDescriptor,
+        protoFile: ProtoFile)
+        async -> EnumDescriptor?
+    {
         let trimmed = typeName.hasPrefix(".") ? String(typeName.dropFirst()) : typeName
-        return parent.nestedEnum(named: simpleTypeName(from: trimmed))
+        if let nested = parent.nestedEnum(named: simpleTypeName(from: trimmed)) { return nested }
+        return try? await protoRepository.getEnumDescriptor(forType: trimmed, in: protoFile)
     }
 
     // MARK: - Type helpers
@@ -190,7 +213,7 @@ public final class ProtoSchemaAutocompleteProvider: AutocompleteProviderProtocol
             return .message
 
         case .enum:
-            return .enum
+            return .enumField
 
         case .group:
             return .string

@@ -126,9 +126,9 @@ final class AutocompleteEntitiesTests: XCTestCase {
 
     // MARK: - SuggestionKind — all seven cases
 
-    func test_suggestionKind_allSevenCasesExist() {
-        let kinds: [SuggestionKind] = [.message, .string, .number, .bool, .enum, .repeated, .fillDefaults]
-        XCTAssertEqual(Set(kinds).count, 7)
+    func test_suggestionKind_allEightCasesExist() {
+        let kinds: [SuggestionKind] = [.message, .string, .number, .bool, .enumField, .enum, .repeated, .fillDefaults]
+        XCTAssertEqual(Set(kinds).count, 8)
     }
 
     func test_suggestionKind_equality_sameCase_isEqual() {

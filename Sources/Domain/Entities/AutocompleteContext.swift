@@ -12,21 +12,29 @@ public struct AutocompleteContext: Equatable, Sendable {
 
     /// The partial text the user is currently typing at the cursor position.
     /// Non-empty when cursor is inside an unclosed key string (e.g. `"dfdf`) or
-    /// after bare (unquoted) text in key position (e.g. `{dfdf`).
+    /// after bare (unquoted) text in key position (e.g. `{dfdf`), or when cursor
+    /// is inside an unclosed value string in enum-value mode (e.g. `"ACT`).
     /// Used to prefix-filter the suggestion list.
     public let partialKey: String
+
+    /// The field key whose value is currently being edited.
+    /// Set when `mode == .enumValue` to enable enum-value suggestion lookup.
+    /// `nil` for `.key` and `.arrayElement` modes.
+    public let currentFieldKey: String?
 
     public init(
         resolvedPath: [String],
         mode: AutocompleteMode,
         siblingKeys: Set<String> = [],
         isOutsideRootObject: Bool = false,
-        partialKey: String = "")
+        partialKey: String = "",
+        currentFieldKey: String? = nil)
     {
         self.resolvedPath = resolvedPath
         self.mode = mode
         self.siblingKeys = siblingKeys
         self.isOutsideRootObject = isOutsideRootObject
         self.partialKey = partialKey
+        self.currentFieldKey = currentFieldKey
     }
 }

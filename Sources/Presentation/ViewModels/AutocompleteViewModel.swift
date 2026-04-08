@@ -61,7 +61,7 @@ public final class AutocompleteViewModel: ObservableObject {
 
         let context = resolver.resolve(json: text, cursorOffset: cursorOffset)
 
-        if context.isOutsideRootObject || context.mode == .arrayElement {
+        if context.isOutsideRootObject {
             suggestions = []
             isVisible = false
             selectedIndex = 0

@@ -531,6 +531,19 @@ final class JSONTextEditorIntegrationTests: XCTestCase {
         XCTAssertTrue(textView.string.contains("\"ACTIVE\""))
     }
 
+    func test_commitSelection_enumFieldKind_insertsKeyWithColon() {
+        let suggestion = AutocompleteSuggestion(name: "status", typeHint: "Status", kind: .enumField)
+        let (coordinator, vm) = makeCoordinator()
+        vm.suggestions = [suggestion]
+        vm.isVisible = true
+
+        let textView = makeTextView(text: "{\n  ")
+
+        _ = coordinator.textView(textView, doCommandBy: #selector(NSTextView.insertTab(_:)))
+
+        XCTAssertTrue(textView.string.contains("\"status\": "))
+    }
+
     // MARK: - Smart insert — repeated kind (via Tab)
 
     func test_commitSelection_repeatedKind_insertsEmptyArray() {
