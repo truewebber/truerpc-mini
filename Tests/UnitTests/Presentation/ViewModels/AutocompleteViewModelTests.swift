@@ -648,4 +648,25 @@ final class AutocompleteViewModelTests: XCTestCase {
     func test_sortSuggestions_empty_returnsEmpty() {
         XCTAssertTrue(AutocompleteViewModel.sortSuggestions([]).isEmpty)
     }
+
+    // MARK: - wktDefault survives partialKey filtering
+
+    func test_textDidChange_wktDefaultSuggestion_keptWhenPartialKeyIsTyped() async {
+        let wktSuggestion = AutocompleteSuggestion(
+            name: "now",
+            typeHint: "Timestamp RFC 3339",
+            kind: .wktDefault,
+            insertValue: "2026-04-09T17:44:56Z")
+        let vm = makeSUT(suggestions: [wktSuggestion])
+        mockResolver.stubResolve(AutocompleteContext(
+            resolvedPath: [],
+            mode: .enumValue,
+            partialKey: "2026",
+            currentFieldKey: "created_at"))
+
+        await vm.textDidChange("{\"created_at\": \"2026", cursorOffset: 19, protoFile: testProtoFile)
+
+        XCTAssertTrue(vm.isVisible, "wktDefault suggestion must survive partialKey filter")
+        XCTAssertEqual(vm.suggestions.first?.kind, .wktDefault)
+    }
 }

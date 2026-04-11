@@ -485,6 +485,52 @@ final class JSONTextEditorIntegrationTests: XCTestCase {
         XCTAssertTrue(textView.string.contains("\"count\": "))
     }
 
+    func test_commitSelection_numberKind_closingBraceAtRootIndent() {
+        let suggestion = AutocompleteSuggestion(name: "count", typeHint: "int32", kind: .number)
+        let (coordinator, vm) = makeCoordinator()
+        vm.suggestions = [suggestion]
+        vm.isVisible = true
+
+        let textView = makeTextView(text: "{\n  ")
+
+        _ = coordinator.textView(textView, doCommandBy: #selector(NSTextView.insertTab(_:)))
+
+        // Closing brace must be at column 0, not indented by the field's 2-space indent.
+        XCTAssertTrue(
+            textView.string.hasSuffix("\n}"),
+            "Expected closing brace at column 0, got: \(textView.string.debugDescription)")
+    }
+
+    func test_commitSelection_stringKind_closingBraceAtRootIndent() {
+        let suggestion = AutocompleteSuggestion(name: "name", typeHint: "string", kind: .string)
+        let (coordinator, vm) = makeCoordinator()
+        vm.suggestions = [suggestion]
+        vm.isVisible = true
+
+        let textView = makeTextView(text: "{\n  ")
+
+        _ = coordinator.textView(textView, doCommandBy: #selector(NSTextView.insertTab(_:)))
+
+        XCTAssertTrue(
+            textView.string.hasSuffix("\n}"),
+            "Expected closing brace at column 0, got: \(textView.string.debugDescription)")
+    }
+
+    func test_commitSelection_messageKind_closingBraceAtRootIndent() {
+        let suggestion = AutocompleteSuggestion(name: "address", typeHint: "Address", kind: .message)
+        let (coordinator, vm) = makeCoordinator()
+        vm.suggestions = [suggestion]
+        vm.isVisible = true
+
+        let textView = makeTextView(text: "{\n  ")
+
+        _ = coordinator.textView(textView, doCommandBy: #selector(NSTextView.insertTab(_:)))
+
+        XCTAssertTrue(
+            textView.string.hasSuffix("\n}"),
+            "Expected outer closing brace at column 0, got: \(textView.string.debugDescription)")
+    }
+
     // MARK: - Smart insert — bool kind (via Tab)
 
     func test_commitSelection_boolKind_insertsKeyColonSpace() {
@@ -754,7 +800,8 @@ final class JSONTextEditorIntegrationTests: XCTestCase {
             "At depth 0, no leading spaces before closing brace; got: \(result)")
     }
 
-    func test_autocomplete_fieldAtDepth1_closingBraceHasTwoSpaces() {
+    func test_autocomplete_fieldAtDepth1_closingBraceAtColumnZero() {
+        // Cursor inside root `{}` at 2-space indent → the root `}` must land at column 0.
         let suggestion = AutocompleteSuggestion(name: "name", typeHint: "string", kind: .string)
         let (coordinator, _) = makeCoordinator()
         let textView = makeTextView(text: "{\n  ")
@@ -763,11 +810,16 @@ final class JSONTextEditorIntegrationTests: XCTestCase {
 
         let result = textView.string
         XCTAssertTrue(
+            result.hasSuffix("\n}"),
+            "At depth 1 (cursor at 2-space indent), root closing brace must be at column 0; got: \(result)")
+        XCTAssertFalse(
             result.hasSuffix("\n  }"),
-            "At depth 1 (2-space indent), closing brace must have 2 leading spaces; got: \(result)")
+            "Root closing brace must NOT have leading spaces; got: \(result)")
     }
 
     func test_applySmartInsert_messageKindAtDepth1_innerContentAndCloseAreIndented() {
+        // `"{\n  "` → lineIndent = "  ". The .message snippet is self-contained with its own
+        // 2-space closer; the outer root `}` must land at column 0.
         let suggestion = AutocompleteSuggestion(name: "nested", typeHint: "Nested", kind: .message)
         let (coordinator, _) = makeCoordinator()
         let textView = makeTextView(text: "{\n  ")
@@ -780,13 +832,15 @@ final class JSONTextEditorIntegrationTests: XCTestCase {
             "Inner content must be at 4-space indent (lineIndent+2); got: \(result)")
         XCTAssertTrue(
             result.contains("\n  }"),
-            "Snippet closer must be at 2-space indent (lineIndent); got: \(result)")
-        XCTAssertFalse(
-            result.contains("\n}"),
-            "Snippet closer must NOT be at column 0 when lineIndent is 2-space; got: \(result)")
+            "Snippet's own closer must be at 2-space indent; got: \(result)")
+        XCTAssertTrue(
+            result.hasSuffix("\n}"),
+            "Outer root closer must be at column 0; got: \(result)")
     }
 
-    func test_applySmartInsert_messageKindAtDepth2_closingBraceHasFourSpaceIndent() {
+    func test_applySmartInsert_messageKindAtDepth2_closingBracesAtCorrectLevels() {
+        // `"{\n  \"ctx\": {\n    "` → lineIndent = "    ". The .message snippet is self-contained
+        // with its own 4-space closer; the ctx `}` at 2 spaces; root `}` at column 0.
         let suggestion = AutocompleteSuggestion(name: "user", typeHint: "User", kind: .message)
         let (coordinator, _) = makeCoordinator()
         let textView = makeTextView(text: "{\n  \"ctx\": {\n    ")
@@ -797,12 +851,15 @@ final class JSONTextEditorIntegrationTests: XCTestCase {
         XCTAssertTrue(
             result.contains("{\n      "),
             "Inner content must be at 6-space indent (lineIndent+2); got: \(result)")
-        XCTAssertFalse(
-            result.contains("\n}"),
-            "Snippet closer must NOT be at column 0 when lineIndent is 4-space; got: \(result)")
+        XCTAssertTrue(
+            result.hasSuffix("\n}"),
+            "Root closer must be at column 0; got: \(result)")
     }
 
     func test_autocomplete_nestedMessageAtDepth2_closingBracesHaveCorrectIndent() {
+        // `"{\n  \"nested\": {\n    "` → lineIndent = "    ".
+        // middle patch closes the nested `{` (opened at 2-space level) → its `}` at 2 spaces.
+        // trailing patch closes the root `{` → at column 0.
         let suggestion = AutocompleteSuggestion(name: "id", typeHint: "string", kind: .string)
         let (coordinator, _) = makeCoordinator()
         let textView = makeTextView(text: "{\n  \"nested\": {\n    ")
@@ -811,13 +868,65 @@ final class JSONTextEditorIntegrationTests: XCTestCase {
 
         let result = textView.string
         XCTAssertTrue(
-            result.contains("\n    }"),
-            "Inner closer must have 4-space indent; got: \(result)")
+            result.contains("\n  }"),
+            "Nested scope closer must have 2-space indent; got: \(result)")
         XCTAssertTrue(
-            result.hasSuffix("\n  }"),
-            "Outer (trailing) closer must have 2-space indent; got: \(result)")
+            result.hasSuffix("\n}"),
+            "Root closer must be at column 0; got: \(result)")
         XCTAssertFalse(
-            result.hasSuffix("\n    }"),
-            "Trailing closer must not retain the 4-space cursor indent; got: \(result)")
+            result.hasSuffix("\n  }"),
+            "Trailing (root) closer must not have leading spaces; got: \(result)")
+    }
+
+    // MARK: - wktDefault insertion inside existing `""`
+
+    func test_commitSelection_wktDefaultKind_replacesEmptyQuotePlaceholder() {
+        // Simulate: cursor is inside `"created_at": ""` right between the two quotes.
+        // Text: `{\n  "created_at": ""\n}`, cursor at offset of the `|` in `"...": "|"`
+        let fullText = "{\n  \"created_at\": \"\"\n}"
+        // Position of the opening `"` of the value is at offset 18; cursor is at 19 (inside "").
+        let cursorOffset = 19
+        let suggestion = AutocompleteSuggestion(
+            name: "now",
+            typeHint: "Timestamp RFC 3339",
+            kind: .wktDefault,
+            insertValue: "2026-04-09T17:44:56Z")
+        let (coordinator, _) = makeCoordinator()
+        let textView = makeTextView(text: fullText)
+        textView.setSelectedRange(NSRange(location: cursorOffset, length: 0))
+
+        coordinator.applySmartInsert(suggestion: suggestion, to: textView)
+
+        let result = textView.string
+        XCTAssertTrue(
+            result.contains("\"2026-04-09T17:44:56Z\""),
+            "Inserted RFC 3339 value must be present; got: \(result)")
+        XCTAssertFalse(
+            result.contains("\"2026-04-09T17:44:56Z\"\""),
+            "Dangling closing quote must not appear after inserted value; got: \(result)")
+    }
+
+    func test_commitSelection_wktDefaultKind_fromAfterColon_insertsCorrectly() {
+        // Cursor is after `: ` with NO surrounding quotes — fresh insertion.
+        let fullText = "{\n  \"created_at\": "
+        let cursorOffset = fullText.utf16.count
+        let suggestion = AutocompleteSuggestion(
+            name: "now",
+            typeHint: "Timestamp RFC 3339",
+            kind: .wktDefault,
+            insertValue: "2026-04-09T17:44:56Z")
+        let (coordinator, _) = makeCoordinator()
+        let textView = makeTextView(text: fullText)
+        textView.setSelectedRange(NSRange(location: cursorOffset, length: 0))
+
+        coordinator.applySmartInsert(suggestion: suggestion, to: textView)
+
+        let result = textView.string
+        XCTAssertTrue(
+            result.contains("\"2026-04-09T17:44:56Z\""),
+            "Inserted value must be present; got: \(result)")
+        XCTAssertFalse(
+            result.contains("\"2026-04-09T17:44:56Z\"\""),
+            "No duplicate closing quote; got: \(result)")
     }
 }

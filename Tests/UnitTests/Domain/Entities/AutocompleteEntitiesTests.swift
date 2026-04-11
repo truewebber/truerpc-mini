@@ -126,9 +126,34 @@ final class AutocompleteEntitiesTests: XCTestCase {
 
     // MARK: - SuggestionKind — all seven cases
 
-    func test_suggestionKind_allEightCasesExist() {
-        let kinds: [SuggestionKind] = [.message, .string, .number, .bool, .enumField, .enum, .repeated, .fillDefaults]
-        XCTAssertEqual(Set(kinds).count, 8)
+    func test_suggestionKind_allNineCasesExist() {
+        let kinds: [SuggestionKind] = [
+            .message,
+            .string,
+            .number,
+            .bool,
+            .enumField,
+            .enum,
+            .repeated,
+            .wktString,
+            .wktDefault,
+            .fillDefaults,
+        ]
+        XCTAssertEqual(Set(kinds).count, 10)
+    }
+
+    func test_autocompleteSuggestion_insertValue_defaultIsNil() {
+        let s = AutocompleteSuggestion(name: "foo", typeHint: "string", kind: .string)
+        XCTAssertNil(s.insertValue)
+    }
+
+    func test_autocompleteSuggestion_insertValue_canBeSet() {
+        let s = AutocompleteSuggestion(
+            name: "insert default value",
+            typeHint: "Timestamp (RFC 3339)",
+            kind: .wktDefault,
+            insertValue: "1970-01-01T00:00:00Z")
+        XCTAssertEqual(s.insertValue, "1970-01-01T00:00:00Z")
     }
 
     func test_suggestionKind_equality_sameCase_isEqual() {

@@ -13,6 +13,13 @@ final class SmartInsertServiceTests: XCTestCase {
         XCTAssertEqual(cursorBack, 1)
     }
 
+    func test_smartInsertComponents_wktString_returnsSameSnippetAsString() {
+        let suggestion = AutocompleteSuggestion(name: "created_at", typeHint: "Timestamp", kind: .wktString)
+        let (text, cursorBack) = sut.smartInsertComponents(for: suggestion)
+        XCTAssertEqual(text, "\"created_at\": \"\"")
+        XCTAssertEqual(cursorBack, 1)
+    }
+
     func test_smartInsertComponents_number_returnsKeyColonSpace() {
         let suggestion = AutocompleteSuggestion(name: "age", typeHint: "int32", kind: .number)
         let (text, cursorBack) = sut.smartInsertComponents(for: suggestion)
@@ -67,6 +74,23 @@ final class SmartInsertServiceTests: XCTestCase {
         let (text, cursorBack) = sut.smartInsertComponents(for: suggestion)
         XCTAssertEqual(text, "\"status\": ")
         XCTAssertEqual(cursorBack, 0)
+    }
+
+    func test_smartInsertComponents_wktDefault_insertsInsertValue() {
+        let suggestion = AutocompleteSuggestion(
+            name: "now",
+            typeHint: "Timestamp RFC 3339",
+            kind: .wktDefault,
+            insertValue: "2026-04-09T17:44:56Z")
+        let (text, cursorBack) = sut.smartInsertComponents(for: suggestion)
+        XCTAssertEqual(text, "\"2026-04-09T17:44:56Z\"")
+        XCTAssertEqual(cursorBack, 0)
+    }
+
+    func test_smartInsertComponents_wktDefault_fallsBackToNameWhenNoInsertValue() {
+        let suggestion = AutocompleteSuggestion(name: "0s", typeHint: "Duration", kind: .wktDefault)
+        let (text, _) = sut.smartInsertComponents(for: suggestion)
+        XCTAssertEqual(text, "\"0s\"")
     }
 
     func test_smartInsertComponents_repeated_returnsEmptyArray() {
@@ -175,6 +199,39 @@ final class SmartInsertServiceTests: XCTestCase {
     func test_findPartialStringStart_emptyCursor_returnsNil() {
         let ns = "" as NSString
         let result = sut.findPartialStringStart(in: ns, cursorOffset: 0)
+        XCTAssertNil(result)
+    }
+
+    // MARK: - valueStringRange
+
+    func test_valueStringRange_cursorInsideEmptyQuotes_coversBothQuotes() {
+        // `{"f": "█"}` — cursor at position 7 (between the two `"`)
+        let ns = "{\"f\": \"\"}" as NSString
+        let cursor = 7
+        let result = sut.valueStringRange(in: ns, cursorOffset: cursor)
+        XCTAssertEqual(result, NSRange(location: 6, length: 2), "Should cover both empty quotes")
+    }
+
+    func test_valueStringRange_cursorInsidePartialValue_coversFullQuotedToken() {
+        // `{"f": "abc█"}` — cursor after `c` (position 10)
+        let ns = "{\"f\": \"abc\"}" as NSString
+        let cursor = 10
+        let result = sut.valueStringRange(in: ns, cursorOffset: cursor)
+        XCTAssertEqual(result, NSRange(location: 6, length: 5), "Should cover \"abc\"")
+    }
+
+    func test_valueStringRange_cursorAfterColon_returnsNil() {
+        // `{"f": █}` — cursor after space, hits `:` during backward scan
+        let ns = "{\"f\": }" as NSString
+        let cursor = 6
+        let result = sut.valueStringRange(in: ns, cursorOffset: cursor)
+        XCTAssertNil(result, "No surrounding quotes — nothing to replace")
+    }
+
+    func test_valueStringRange_cursorAfterComma_returnsNil() {
+        // `{"a": 1,█` — cursor right after comma
+        let ns = "{\"a\": 1," as NSString
+        let result = sut.valueStringRange(in: ns, cursorOffset: ns.length)
         XCTAssertNil(result)
     }
 

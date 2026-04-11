@@ -81,10 +81,14 @@ public final class ProtoSchemaAutocompleteProvider: AutocompleteProviderProtocol
 
         guard let parent = await navigate(from: rootDescriptor, path: parentPath, protoFile: protoFile)
         else { return [] }
-        guard let field = parent.field(named: fieldName),
-              field.type == .enum,
-              let typeName = field.typeName
-        else { return [] }
+        guard let field = parent.field(named: fieldName) else { return [] }
+
+        // WKT fields whose JSON representation is a string (Timestamp → RFC 3339, Duration → "1.5s").
+        if field.type == .message, let typeName = field.typeName, isWellKnownStringType(typeName) {
+            return wktDefaultSuggestions(for: typeName)
+        }
+
+        guard field.type == .enum, let typeName = field.typeName else { return [] }
         guard let enumDescriptor = await resolveEnumDescriptor(typeName: typeName, in: parent, protoFile: protoFile)
         else { return [] }
 
@@ -107,11 +111,15 @@ public final class ProtoSchemaAutocompleteProvider: AutocompleteProviderProtocol
 
         switch field.type {
         case .message:
-            guard let typeName = field.typeName,
-                  !isWellKnownStringType(typeName),
-                  let elementDescriptor = try? await protoRepository.getMessageDescriptor(
-                      forType: typeName,
-                      in: protoFile)
+            guard let typeName = field.typeName else { return [] }
+
+            if isWellKnownStringType(typeName) {
+                return wktDefaultSuggestions(for: typeName)
+            }
+
+            guard let elementDescriptor = try? await protoRepository.getMessageDescriptor(
+                forType: typeName,
+                in: protoFile)
             else { return [] }
 
             return fieldSuggestions(for: elementDescriptor)
@@ -153,6 +161,52 @@ public final class ProtoSchemaAutocompleteProvider: AutocompleteProviderProtocol
                 name: value.name,
                 typeHint: simpleTypeName(from: typeName),
                 kind: .enum)
+        }
+    }
+
+    /// Returns autocomplete suggestions for a well-known string-represented type.
+    /// Timestamp → one "now" suggestion with the current RFC 3339 time.
+    /// Duration  → one suggestion per common time-unit (second … year).
+    private func wktDefaultSuggestions(for typeName: String) -> [AutocompleteSuggestion] {
+        let normalized = typeName.hasPrefix(".") ? String(typeName.dropFirst()) : typeName
+        switch normalized {
+        case WellKnownTypeNames.timestamp:
+            return [AutocompleteSuggestion(
+                name: "now",
+                typeHint: "Timestamp RFC 3339",
+                kind: .wktDefault,
+                insertValue: Self.currentRFC3339Time())]
+
+        case WellKnownTypeNames.duration:
+            return Self.durationSuggestions()
+
+        default:
+            return []
+        }
+    }
+
+    /// Current UTC time formatted as RFC 3339 (e.g. `"2026-04-09T17:44:56Z"`).
+    private static func currentRFC3339Time() -> String {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+        formatter.timeZone = TimeZone(identifier: "UTC")
+        return formatter.string(from: Date())
+    }
+
+    /// One suggestion per common duration unit, each using the canonical proto JSON format (`Ns`).
+    private static func durationSuggestions() -> [AutocompleteSuggestion] {
+        let units: [(value: String, hint: String)] = [
+            ("0s", "zero"),
+            ("1s", "1 second"),
+            ("60s", "1 minute"),
+            ("3600s", "1 hour"),
+            ("86400s", "1 day"),
+            ("604800s", "1 week"),
+            ("2592000s", "30 days"),
+            ("31536000s", "365 days"),
+        ]
+        return units.map {
+            AutocompleteSuggestion(name: $0.value, typeHint: $0.hint, kind: .wktDefault)
         }
     }
 
@@ -209,7 +263,7 @@ public final class ProtoSchemaAutocompleteProvider: AutocompleteProviderProtocol
             return .bool
 
         case .message:
-            if isWellKnownStringType(field.typeName) { return .string }
+            if isWellKnownStringType(field.typeName) { return .wktString }
             return .message
 
         case .enum:

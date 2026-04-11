@@ -34,7 +34,7 @@ struct SmartInsertService {
     {
         let name = suggestion.name
         switch suggestion.kind {
-        case .string:
+        case .string, .wktString:
             return ("\"\(name)\": \"\"", 1)
 
         case .number, .bool, .enumField:
@@ -46,6 +46,10 @@ struct SmartInsertService {
 
         case .enum:
             return ("\"\(name)\"", 0)
+
+        case .wktDefault:
+            let value = suggestion.insertValue ?? name
+            return ("\"\(value)\"", 0)
 
         case .repeated:
             return ("\"\(name)\": []", 1)
@@ -301,6 +305,56 @@ struct SmartInsertService {
             i -= 1
         }
         return nil
+    }
+
+    // MARK: - Value-string replacement range
+
+    /// When a value-type suggestion (enum value, WKT default) is committed while the cursor
+    /// sits inside an existing quoted value such as `"field": "█"` or `"field": "partial█"`,
+    /// returns the `NSRange` that covers the full quoted token `"..."` (both the opening and
+    /// closing `"` inclusive) so the caller can replace it wholesale.
+    ///
+    /// Returns `nil` when the cursor is **not** inside a quoted value literal — e.g. when
+    /// it is positioned after `: ` with no surrounding quotes, indicating a fresh insertion.
+    func valueStringRange(in ns: NSString, cursorOffset: Int) -> NSRange? {
+        // Scan backward from the cursor to find the opening `"` of the value literal.
+        // Stop early on any structural character that cannot appear inside a string value.
+        var openQ: Int?
+        var j = cursorOffset - 1
+        while j >= 0 {
+            let c = ns.character(at: j)
+            if c == JsonScanUTF16.quote { openQ = j
+                break
+            }
+            if c == JsonScanUTF16.colon || c == JsonScanUTF16.comma
+                || c == JsonScanUTF16.braceOpen || c == JsonScanUTF16.braceClose
+                || c == JsonScanUTF16.bracketOpen || c == JsonScanUTF16.bracketClose
+            { return nil }
+            j -= 1
+        }
+        guard let open = openQ else { return nil }
+
+        // Scan forward from the cursor to find the closing `"` of the value literal.
+        var closeQ: Int?
+        var k = cursorOffset
+        while k < ns.length {
+            let c = ns.character(at: k)
+            if c == JsonScanUTF16.quote { closeQ = k
+                break
+            }
+            if c == JsonScanUTF16.comma
+                || c == JsonScanUTF16.braceClose
+                || c == JsonScanUTF16.bracketClose
+            { break }
+            k += 1
+        }
+
+        if let close = closeQ {
+            return NSRange(location: open, length: close - open + 1)
+        }
+        // No closing quote found — cursor is after the opening `"` of an unclosed string.
+        // Replace from the opening quote to the cursor only.
+        return NSRange(location: open, length: cursorOffset - open)
     }
 
     // MARK: - String-literal context

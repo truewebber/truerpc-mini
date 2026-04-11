@@ -124,6 +124,14 @@ private struct SuggestionRow: View {
             Image(systemName: "list.bullet")
                 .foregroundStyle(Color.yellow)
 
+        case .wktString:
+            Image(systemName: "clock")
+                .foregroundStyle(Color.cyan)
+
+        case .wktDefault:
+            Image(systemName: "clock")
+                .foregroundStyle(Color.cyan)
+
         case .fillDefaults:
             Image(systemName: "sparkles")
                 .foregroundStyle(

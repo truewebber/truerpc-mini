@@ -100,11 +100,12 @@ public final class AutocompleteViewModel: ObservableObject {
 
             // Filter by partial key prefix when the user has already started typing.
             // fillDefaults is never relevant while the user is actively typing a key name.
+            // wktDefault is always kept — its display name doesn't match typed RFC 3339 / duration text.
             let partialKey = context.partialKey
             if !partialKey.isEmpty {
                 let lower = partialKey.lowercased()
                 filtered = filtered.filter {
-                    $0.kind != .fillDefaults && $0.name.lowercased().hasPrefix(lower)
+                    $0.kind == .wktDefault || ($0.kind != .fillDefaults && $0.name.lowercased().hasPrefix(lower))
                 }
             }
 

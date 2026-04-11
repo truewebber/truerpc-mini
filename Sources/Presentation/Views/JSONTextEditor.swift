@@ -330,6 +330,7 @@ struct JSONTextEditor: NSViewRepresentable {
             let continueAutocomplete = suggestion.kind == .message
                 || suggestion.kind == .repeated
                 || suggestion.kind == .enumField
+                || suggestion.kind == .wktString
 
             if continueAutocomplete, let protoFile = parent.protoFile {
                 let newText = textView.string
@@ -403,6 +404,9 @@ struct JSONTextEditor: NSViewRepresentable {
 
         /// Internal for `@testable` integration tests (keyboard path also calls this).
         func applySmartInsert(suggestion: AutocompleteSuggestion, to textView: NSTextView) {
+            // Preserve the original cursor offset before any range adjustments so that
+            // value-specific range logic always operates on the actual cursor position.
+            let originalCursorOffset = textView.selectedRange().location
             var range = textView.selectedRange()
             // When cursor is inside a partial string (e.g. `"nam`) or after bare text
             // (e.g. `{dfdf`), extend the replacement range back to the start of that
@@ -412,6 +416,15 @@ struct JSONTextEditor: NSViewRepresentable {
                 range = NSRange(location: partialStart, length: range.location - partialStart)
             } else if let bareStart = smartInsert.findBareTextStart(in: ns, cursorOffset: range.location) {
                 range = NSRange(location: bareStart, length: range.location - bareStart)
+            }
+            // For value-type suggestions (enum values, WKT defaults) the cursor may sit
+            // inside an existing quoted value placeholder — e.g. `"field": "█"` or
+            // `"field": "partial█"`. `findPartialStringStart` may only capture the opening
+            // `"` without the closing one, leaving a dangling `"` after insertion. We
+            // override the range with a scan that covers the full `"..."` token instead.
+            let isValueSuggestion = suggestion.kind == .enum || suggestion.kind == .wktDefault
+            if isValueSuggestion {
+                range = smartInsert.valueStringRange(in: ns, cursorOffset: originalCursorOffset) ?? range
             }
             // Compute line indentation from pre-insertion text so the snippet and all
             // closing-brace patches share a consistent base indent.
@@ -470,7 +483,9 @@ struct JSONTextEditor: NSViewRepresentable {
                     } ?? false
                     if !skipMiddleInsertion, missingMiddle > 1 {
                         emittedMiddleCount = missingMiddle - 1
-                        let patch = smartInsert.indentedClosingSuffix(count: emittedMiddleCount, baseIndent: lineIndent)
+                        // Each parent-scope `}` goes one level above the cursor, so base is lineIndent - 2.
+                        let middleBase = lineIndent.count >= 2 ? String(lineIndent.dropLast(2)) : ""
+                        let patch = smartInsert.indentedClosingSuffix(count: emittedMiddleCount, baseIndent: middleBase)
                         Self.replaceInTextViewWithoutShouldChangeGate(
                             textView,
                             range: NSRange(location: insertEnd, length: 0),
@@ -482,7 +497,9 @@ struct JSONTextEditor: NSViewRepresentable {
 
                 let missingTrailing = smartInsert.unclosedBraceCount(in: textView.string)
                 if missingTrailing == 1 {
-                    var trailingIndent = lineIndent
+                    // The trailing `}` closes the scope that *contains* the cursor, so it must
+                    // be one indentation level out from `lineIndent` (the cursor's own level).
+                    var trailingIndent = lineIndent.count >= 2 ? String(lineIndent.dropLast(2)) : ""
                     for _ in 0 ..< emittedMiddleCount {
                         trailingIndent = trailingIndent.count >= 2
                             ? String(trailingIndent.dropLast(2))

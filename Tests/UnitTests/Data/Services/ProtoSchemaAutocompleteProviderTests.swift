@@ -270,23 +270,23 @@ final class ProtoSchemaAutocompleteProviderTests: XCTestCase {
         XCTAssertEqual(field?.typeHint, "Settings")
     }
 
-    func test_keyMode_timestampField_hasStringKind() async {
+    func test_keyMode_timestampField_hasWktStringKind() async {
         let context = AutocompleteContext(resolvedPath: [], mode: .key)
 
         let suggestions = await sut.suggestions(for: context, rootMessageType: "test.TestRequest", in: protoFile)
 
         let field = suggestions.first(where: { $0.name == "created_at" })
-        XCTAssertEqual(field?.kind, .string, "Timestamp WKT must use string kind (RFC 3339 format)")
+        XCTAssertEqual(field?.kind, .wktString, "Timestamp WKT must use wktString kind to re-trigger autocomplete")
         XCTAssertEqual(field?.typeHint, "Timestamp")
     }
 
-    func test_keyMode_durationField_hasStringKind() async {
+    func test_keyMode_durationField_hasWktStringKind() async {
         let context = AutocompleteContext(resolvedPath: [], mode: .key)
 
         let suggestions = await sut.suggestions(for: context, rootMessageType: "test.TestRequest", in: protoFile)
 
         let field = suggestions.first(where: { $0.name == "ttl" })
-        XCTAssertEqual(field?.kind, .string, "Duration WKT must use string kind (e.g. \"1.5s\" format)")
+        XCTAssertEqual(field?.kind, .wktString, "Duration WKT must use wktString kind to re-trigger autocomplete")
         XCTAssertEqual(field?.typeHint, "Duration")
     }
 
@@ -300,7 +300,7 @@ final class ProtoSchemaAutocompleteProviderTests: XCTestCase {
         XCTAssertEqual(field?.typeHint, "Timestamp[]")
     }
 
-    func test_keyMode_timestampFieldWithLeadingDot_hasStringKind() async {
+    func test_keyMode_timestampFieldWithLeadingDot_hasWktStringKind() async {
         let file = FileDescriptor(name: "w.proto", package: "w")
         var msg = MessageDescriptor(name: "Req", parent: file)
         msg.addField(FieldDescriptor(name: "ts", number: 1, type: .message, typeName: ".google.protobuf.Timestamp"))
@@ -313,15 +313,20 @@ final class ProtoSchemaAutocompleteProviderTests: XCTestCase {
         let suggestions = await provider.suggestions(for: context, rootMessageType: "w.Req", in: pf)
 
         let field = suggestions.first(where: { $0.name == "ts" })
-        XCTAssertEqual(field?.kind, .string, "Leading-dot typeName must be normalised before WKT check")
+        XCTAssertEqual(field?.kind, .wktString, "Leading-dot typeName must be normalised before WKT check")
     }
 
-    func test_arrayElementMode_repeatedTimestampField_returnsEmpty() async {
+    func test_arrayElementMode_repeatedTimestampField_returnsWktDefault() async {
         let context = AutocompleteContext(resolvedPath: ["timestamps"], mode: .arrayElement)
 
         let suggestions = await sut.suggestions(for: context, rootMessageType: "test.TestRequest", in: protoFile)
 
-        XCTAssertTrue(suggestions.isEmpty, "Array elements of Timestamp WKT are plain strings — no field suggestions")
+        XCTAssertEqual(
+            suggestions.count,
+            1,
+            "Array elements of Timestamp WKT should offer a single WKT default suggestion")
+        XCTAssertEqual(suggestions.first?.kind, .wktDefault)
+        XCTAssertEqual(suggestions.first?.name, "now")
     }
 
     func test_keyMode_enumField_hasEnumFieldKind() async {
@@ -668,5 +673,92 @@ final class ProtoSchemaAutocompleteProviderTests: XCTestCase {
         for name in lookup.keys where name != "fillDefaults" {
             XCTAssertEqual(lookup[name]?.kind, .number, "\(name) should be .number")
         }
+    }
+
+    // MARK: - WKT default value suggestions
+
+    func test_enumValueMode_timestampField_returnsNowSuggestion() async throws {
+        let context = AutocompleteContext(
+            resolvedPath: [],
+            mode: .enumValue,
+            currentFieldKey: "created_at")
+
+        let suggestions = await sut.suggestions(for: context, rootMessageType: "test.TestRequest", in: protoFile)
+
+        XCTAssertEqual(suggestions.count, 1)
+        let s = try XCTUnwrap(suggestions.first)
+        XCTAssertEqual(s.kind, .wktDefault)
+        XCTAssertEqual(s.name, "now")
+        XCTAssertEqual(s.typeHint, "Timestamp RFC 3339")
+        XCTAssertFalse(s.insertValue?.isEmpty ?? true)
+    }
+
+    func test_enumValueMode_timestampField_insertValueIsCurrentRFC3339() async throws {
+        let before = Date()
+        let context = AutocompleteContext(
+            resolvedPath: [],
+            mode: .enumValue,
+            currentFieldKey: "created_at")
+
+        let suggestions = await sut.suggestions(for: context, rootMessageType: "test.TestRequest", in: protoFile)
+        let after = Date()
+
+        let s = try XCTUnwrap(suggestions.first)
+        let insertedStr = try XCTUnwrap(s.insertValue)
+
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+        let parsed = try XCTUnwrap(formatter.date(from: insertedStr))
+        XCTAssertGreaterThanOrEqual(parsed, before.addingTimeInterval(-1))
+        XCTAssertLessThanOrEqual(parsed, after.addingTimeInterval(1))
+    }
+
+    func test_enumValueMode_durationField_returnsMultipleSuggestions() async {
+        let context = AutocompleteContext(
+            resolvedPath: [],
+            mode: .enumValue,
+            currentFieldKey: "ttl")
+
+        let suggestions = await sut.suggestions(for: context, rootMessageType: "test.TestRequest", in: protoFile)
+
+        XCTAssertGreaterThan(suggestions.count, 1, "Duration should offer multiple unit suggestions")
+        XCTAssertTrue(suggestions.allSatisfy { $0.kind == .wktDefault })
+    }
+
+    func test_enumValueMode_durationField_containsCommonUnits() async {
+        let context = AutocompleteContext(
+            resolvedPath: [],
+            mode: .enumValue,
+            currentFieldKey: "ttl")
+
+        let suggestions = await sut.suggestions(for: context, rootMessageType: "test.TestRequest", in: protoFile)
+        let names = Set(suggestions.map(\.name))
+
+        XCTAssertTrue(names.contains("0s"))
+        XCTAssertTrue(names.contains("1s"))
+        XCTAssertTrue(names.contains("60s"))
+        XCTAssertTrue(names.contains("3600s"))
+        XCTAssertTrue(names.contains("86400s"))
+    }
+
+    func test_arrayElementMode_repeatedTimestampField_returnsNowSuggestion() async {
+        let context = AutocompleteContext(resolvedPath: ["timestamps"], mode: .arrayElement)
+
+        let suggestions = await sut.suggestions(for: context, rootMessageType: "test.TestRequest", in: protoFile)
+
+        XCTAssertEqual(suggestions.count, 1)
+        XCTAssertEqual(suggestions.first?.kind, .wktDefault)
+        XCTAssertEqual(suggestions.first?.name, "now")
+    }
+
+    func test_enumValueMode_regularStringField_returnsEmpty() async {
+        let context = AutocompleteContext(
+            resolvedPath: [],
+            mode: .enumValue,
+            currentFieldKey: "name")
+
+        let suggestions = await sut.suggestions(for: context, rootMessageType: "test.TestRequest", in: protoFile)
+
+        XCTAssertTrue(suggestions.isEmpty)
     }
 }
