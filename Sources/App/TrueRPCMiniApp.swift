@@ -342,6 +342,7 @@ struct TrueRPCMiniApp: App {
 
                     if let editorTab = appViewModel.selectedEditorTab {
                         RequestEditorView(viewModel: editorTab, globalEnvironmentViewModel: globalEnvironmentViewModel)
+                            .id(editorTab.editorTab.id)
                     } else {
                         placeholderView
                     }
