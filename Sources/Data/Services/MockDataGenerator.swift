@@ -14,10 +14,10 @@ public final class MockDataGenerator: MockDataGeneratorProtocol, Sendable {
 
         switch descriptor.fullName {
         case WellKnownTypeNames.timestamp:
-            return Self.jsonEncodedString("2006-01-02T15:04:05Z")
+            return Self.jsonEncodedString(Self.currentRFC3339Time())
 
         case WellKnownTypeNames.duration:
-            return Self.jsonEncodedString("1.5s")
+            return Self.jsonEncodedString("0s")
 
         case WellKnownTypeNames.empty:
             return "{}"
@@ -177,36 +177,30 @@ public final class MockDataGenerator: MockDataGeneratorProtocol, Sendable {
         async throws -> Any?
     {
         switch field.type {
-        case .double:
-            return Double.random(in: -1000 ... 1000)
-
-        case .float:
-            return Float.random(in: -100 ... 100)
+        case .double, .float:
+            return 0.0
 
         case .int32, .sint32, .sfixed32:
-            return Int32.random(in: -100 ... 100)
+            return Int32(0)
 
         case .uint32, .fixed32:
-            return UInt32.random(in: 0 ... 100)
+            return UInt32(0)
 
+        // Proto JSON spec encodes int64/uint64 as decimal strings.
         case .int64, .sint64, .sfixed64:
-            return String(Int64.random(in: -1000 ... 1000))
+            return "0"
 
         case .uint64, .fixed64:
-            return String(UInt64.random(in: 0 ... 1000))
+            return "0"
 
         case .bool:
-            return Bool.random()
+            return false
 
         case .string:
-            return "Lorem ipsum dolor sit amet"
+            return ""
 
         case .bytes:
-            var bytes = [UInt8](repeating: 0, count: 4)
-            for i in bytes.indices {
-                bytes[i] = UInt8.random(in: 0 ... 255)
-            }
-            return Data(bytes).base64EncodedString()
+            return ""
 
         case .enum:
             guard let typeName = field.typeName else {
@@ -215,9 +209,9 @@ public final class MockDataGenerator: MockDataGeneratorProtocol, Sendable {
 
             let enumDesc = try await protoRepository.getEnumDescriptor(forType: typeName, in: protoFile)
             let values = enumDesc.allValues()
-            let candidates = values.filter { $0.number != 0 }
-            let pick = candidates.randomElement() ?? values.randomElement()!
-            return Int(pick.number)
+            // Prefer first non-zero value so the result is a meaningful example; fall back to first.
+            let pick = values.first(where: { $0.number != 0 }) ?? values[0]
+            return pick.name
 
         case .message:
             guard let typeName = field.typeName else {
@@ -228,10 +222,10 @@ public final class MockDataGenerator: MockDataGeneratorProtocol, Sendable {
 
             switch nested.fullName {
             case WellKnownTypeNames.timestamp:
-                return "2006-01-02T15:04:05Z"
+                return Self.currentRFC3339Time()
 
             case WellKnownTypeNames.duration:
-                return "1.5s"
+                return "0s"
 
             case WellKnownTypeNames.empty:
                 return [String: Any]()
@@ -256,6 +250,14 @@ public final class MockDataGenerator: MockDataGeneratorProtocol, Sendable {
         case .group:
             throw MockDataGeneratorError.unsupportedFieldType("group")
         }
+    }
+
+    /// Current UTC time formatted as RFC 3339 (e.g. `"2026-04-09T17:44:56Z"`).
+    private static func currentRFC3339Time() -> String {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+        formatter.timeZone = TimeZone(identifier: "UTC")
+        return formatter.string(from: Date())
     }
 
     private static func jsonEncodedObject(_ object: [String: Any]) throws -> String {

@@ -41,15 +41,15 @@ final class MockDataGeneratorTests: XCTestCase {
         let obj = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
 
         XCTAssertEqual(obj.keys.count, 9)
-        XCTAssertNotNil(obj["d"] as? Double)
-        XCTAssertNotNil(obj["f"] as? Double)
-        XCTAssertNotNil(obj["i32"] as? Int)
-        XCTAssertNotNil(obj["i64"] as? String)
-        XCTAssertNotNil(obj["u32"] as? Int)
-        XCTAssertNotNil(obj["u64"] as? String)
-        XCTAssertNotNil(obj["b"] as? Bool)
-        XCTAssertEqual(obj["s"] as? String, "Lorem ipsum dolor sit amet")
-        XCTAssertNotNil(obj["raw"] as? String)
+        XCTAssertEqual(obj["d"] as? Double, 0.0)
+        XCTAssertEqual(obj["f"] as? Double, 0.0)
+        XCTAssertEqual(obj["i32"] as? Int, 0)
+        XCTAssertEqual(obj["i64"] as? String, "0")
+        XCTAssertEqual(obj["u32"] as? Int, 0)
+        XCTAssertEqual(obj["u64"] as? String, "0")
+        XCTAssertEqual(obj["b"] as? Bool, false)
+        XCTAssertEqual(obj["s"] as? String, "")
+        XCTAssertEqual(obj["raw"] as? String, "")
     }
 
     func test_generate_forRepeatedField_returnsArrayWithOneElement() async throws {
@@ -65,7 +65,7 @@ final class MockDataGeneratorTests: XCTestCase {
         let obj = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
         let items = try XCTUnwrap(obj["items"] as? [Any])
         XCTAssertEqual(items.count, 1)
-        XCTAssertEqual(items[0] as? String, "Lorem ipsum dolor sit amet")
+        XCTAssertEqual(items[0] as? String, "")
     }
 
     func test_generate_forNestedEnumField_skipsZeroIndex() async throws {
@@ -83,7 +83,7 @@ final class MockDataGeneratorTests: XCTestCase {
         let json = try await sut.generate(for: "en.Msg", in: protoFile)
         let data = try XCTUnwrap(json.data(using: .utf8))
         let obj = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
-        XCTAssertEqual(obj["status"] as? Int, 1)
+        XCTAssertEqual(obj["status"] as? String, "ACTIVE")
     }
 
     func test_generate_forSnakeCaseFieldName_usesSnakeCaseKeyNotCamelCase() async throws {
@@ -138,8 +138,8 @@ final class MockDataGeneratorTests: XCTestCase {
         let json = try await sut.generate(for: "pkg.GetGroupedAdsRequest", in: protoFile)
         let data = try XCTUnwrap(json.data(using: .utf8))
         let obj = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
-        let value = try XCTUnwrap(obj["interval_group"] as? Int)
-        XCTAssertTrue(value == 1 || value == 2, "Expected non-zero enum value, got \(value)")
+        let value = try XCTUnwrap(obj["interval_group"] as? String)
+        XCTAssertEqual(value, "INTERVAL_GROUP_TYPE_DAYS", "Expected first non-zero enum name string")
     }
 
     func test_generate_forOneOfField_fillsExactlyOneOption() async throws {
@@ -176,20 +176,28 @@ final class MockDataGeneratorTests: XCTestCase {
         XCTAssertTrue(child.isEmpty)
     }
 
-    func test_generate_forTimestampWKT_returnsRfc3339String() async throws {
+    func test_generate_forTimestampWKT_returnsCurrentRfc3339Time() async throws {
         let file = FileDescriptor(name: "ts.proto", package: "google.protobuf")
         let message = MessageDescriptor(name: "Timestamp", parent: file)
 
         let repo = StubProtoRepository(descriptors: [WellKnownTypeNames.timestamp: message])
         let sut = MockDataGenerator(protoRepository: repo)
 
+        let before = Date()
         let json = try await sut.generate(for: WellKnownTypeNames.timestamp, in: protoFile)
+        let after = Date()
+
         XCTAssertTrue(json.hasPrefix("\"") && json.hasSuffix("\""))
         let inner = String(json.dropFirst().dropLast())
-        XCTAssertEqual(inner, "2006-01-02T15:04:05Z")
+
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+        let parsed = try XCTUnwrap(formatter.date(from: inner), "Generated value '\(inner)' is not valid RFC 3339")
+        XCTAssertGreaterThanOrEqual(parsed, before.addingTimeInterval(-1))
+        XCTAssertLessThanOrEqual(parsed, after.addingTimeInterval(1))
     }
 
-    func test_generate_forDurationWKT_returnsCorrectFormat() async throws {
+    func test_generate_forDurationWKT_returnsZeroSeconds() async throws {
         let file = FileDescriptor(name: "dur.proto", package: "google.protobuf")
         let message = MessageDescriptor(name: "Duration", parent: file)
 
@@ -197,12 +205,7 @@ final class MockDataGeneratorTests: XCTestCase {
         let sut = MockDataGenerator(protoRepository: repo)
 
         let json = try await sut.generate(for: WellKnownTypeNames.duration, in: protoFile)
-        XCTAssertTrue(json.hasPrefix("\"") && json.hasSuffix("\""))
-        let inner = String(json.dropFirst().dropLast())
-        let pattern = #"^[0-9]+(\.[0-9]+)?s$"#
-        let range = NSRange(inner.startIndex..., in: inner)
-        let regex = try NSRegularExpression(pattern: pattern)
-        XCTAssertNotNil(regex.firstMatch(in: inner, options: [], range: range))
+        XCTAssertEqual(json, "\"0s\"")
     }
 
     func test_generate_returnsValidJSON() async throws {
