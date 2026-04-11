@@ -3,14 +3,14 @@
     <channel>
         <title>TrueRPCMini</title>
         <item>
-            <title>0.0.17</title>
-            <pubDate>Sat, 11 Apr 2026 12:45:46 +0000</pubDate>
+            <title>0.0.18</title>
+            <pubDate>Sat, 11 Apr 2026 13:49:46 +0000</pubDate>
             <link>https://github.com/truewebber/truerpc-mini</link>
-            <sparkle:fullReleaseNotesLink>https://github.com/truewebber/truerpc-mini/releases/tag/v0.0.17</sparkle:fullReleaseNotesLink>
-            <sparkle:version>137</sparkle:version>
-            <sparkle:shortVersionString>0.0.17</sparkle:shortVersionString>
+            <sparkle:fullReleaseNotesLink>https://github.com/truewebber/truerpc-mini/releases/tag/v0.0.18</sparkle:fullReleaseNotesLink>
+            <sparkle:version>138</sparkle:version>
+            <sparkle:shortVersionString>0.0.18</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
-            <enclosure url="https://github.com/truewebber/truerpc-mini/releases/download/v0.0.17/TrueRPCMini-v0.0.17.zip" length="44705761" type="application/octet-stream" sparkle:edSignature="ML1McK0gpkZKf4C220/AnIYwJ+53DkYN41JvlW3AkXwGeK6GSEL7XD9mfNQ8J3kM/Gu8oYg/OdbXU/4lyi7GCw=="/>
+            <enclosure url="https://github.com/truewebber/truerpc-mini/releases/download/v0.0.18/TrueRPCMini-v0.0.18.zip" length="44706720" type="application/octet-stream" sparkle:edSignature="QznesnLCSK6XHbS8Ud47sWriwc+UbnZ2veNEvUZQUxcJaYITk+MIfMnjUTJo0uPl/A5F5yerrW0Ndx1FXM33CA=="/>
         </item>
     </channel>
 </rss>
