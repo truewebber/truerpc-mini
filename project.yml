@@ -70,7 +70,11 @@ targets:
         Debug:
           SWIFT_ACTIVE_COMPILATION_CONDITIONS: DEBUG
           CODE_SIGN_STYLE: Automatic
-          ENABLE_HARDENED_RUNTIME: YES
+          # Previews load the ad-hoc signed SPM products (Sparkle, AmplitudeCore)
+          # from the build products directory. Hardened runtime rejects them
+          # because their Team ID differs from the app's, and the preview never
+          # finishes launching. Release keeps the hardened runtime.
+          ENABLE_HARDENED_RUNTIME: NO
         Release:
           CODE_SIGN_STYLE: Manual
           CODE_SIGN_IDENTITY: "Apple Development"
