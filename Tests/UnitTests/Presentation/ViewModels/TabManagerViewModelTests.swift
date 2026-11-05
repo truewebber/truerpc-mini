@@ -42,7 +42,8 @@ final class TabManagerViewModelTests: XCTestCase {
 
     func makeEditorTabViewModel(
         methodName: String = "GetUser",
-        serviceName: String = "UserService")
+        serviceName: String = "UserService",
+        protoFilePath: String = "/test/test.proto")
         -> EditorTabViewModel
     {
         let method = TrueRPCMini.Method(
@@ -51,9 +52,10 @@ final class TabManagerViewModelTests: XCTestCase {
             inputType: ".test.Request",
             outputType: ".test.Response")
         let service = Service(name: serviceName, methods: [method])
+        let protoFileURL = URL(fileURLWithPath: protoFilePath)
         let protoFile = ProtoFile(
-            name: "test.proto",
-            path: URL(fileURLWithPath: "/test/test.proto"),
+            name: protoFileURL.lastPathComponent,
+            path: protoFileURL,
             services: [service])
         let editorTab = CreateEditorTabUseCase().execute(method: method, service: service, protoFile: protoFile)
         return EditorTabViewModel(
@@ -289,6 +291,231 @@ final class TabManagerViewModelTests: XCTestCase {
         sut.addTab(tabVM)
 
         XCTAssertEqual(sut.selectedTab?.editorTab.id, tabVM.editorTab.id)
+    }
+
+    // MARK: - Selection After Closing
+
+    private func addTabs(_ methodNames: [String], protoFilePath: String = "/test/test.proto")
+        -> [EditorTabViewModel]
+    {
+        methodNames.map { name in
+            let tab = makeEditorTabViewModel(methodName: name, protoFilePath: protoFilePath)
+            sut.addTab(tab)
+            return tab
+        }
+    }
+
+    func test_removeTab_whenSelectedTabHasRightNeighbor_selectsRightNeighbor() {
+        let tabs = addTabs(["A", "B", "C"])
+        sut.selectTab(id: tabs[1].editorTab.id)
+
+        sut.removeTab(id: tabs[1].editorTab.id)
+
+        XCTAssertEqual(sut.selectedTabId, tabs[2].editorTab.id)
+    }
+
+    func test_removeTab_whenSelectedTabIsLast_selectsLeftNeighbor() {
+        let tabs = addTabs(["A", "B", "C"])
+
+        sut.removeTab(id: tabs[2].editorTab.id)
+
+        XCTAssertEqual(sut.selectedTabId, tabs[1].editorTab.id)
+    }
+
+    func test_removeTab_whenTabIsNotSelected_keepsSelection() {
+        let tabs = addTabs(["A", "B", "C"])
+
+        sut.removeTab(id: tabs[0].editorTab.id)
+
+        XCTAssertEqual(sut.selectedTabId, tabs[2].editorTab.id)
+        XCTAssertEqual(sut.tabs.map(\.editorTab.methodName), ["B", "C"])
+    }
+
+    func test_removeTab_withUnknownId_doesNotSave() {
+        _ = addTabs(["A"])
+        mockSaveTabState.savedStates = []
+
+        sut.removeTab(id: UUID())
+
+        XCTAssertTrue(mockSaveTabState.savedStates.isEmpty)
+    }
+
+    func test_closeSelectedTab_removesSelectedTab() {
+        let tabs = addTabs(["A", "B"])
+
+        sut.closeSelectedTab()
+
+        XCTAssertEqual(sut.tabs.map(\.editorTab.id), [tabs[0].editorTab.id])
+        XCTAssertEqual(sut.selectedTabId, tabs[0].editorTab.id)
+    }
+
+    func test_closeSelectedTab_withoutSelection_keepsTabs() {
+        _ = addTabs(["A"])
+        sut.selectTab(id: nil)
+
+        sut.closeSelectedTab()
+
+        XCTAssertEqual(sut.tabs.count, 1)
+    }
+
+    // MARK: - Bulk Closing
+
+    func test_removeOtherTabs_keepsOnlyGivenTabAndSelectsIt() {
+        let tabs = addTabs(["A", "B", "C"])
+
+        sut.removeOtherTabs(keeping: tabs[1].editorTab.id)
+
+        XCTAssertEqual(sut.tabs.map(\.editorTab.id), [tabs[1].editorTab.id])
+        XCTAssertEqual(sut.selectedTabId, tabs[1].editorTab.id)
+    }
+
+    func test_removeOtherTabs_savesOnce() {
+        let tabs = addTabs(["A", "B", "C"])
+        mockSaveTabState.savedStates = []
+
+        sut.removeOtherTabs(keeping: tabs[0].editorTab.id)
+
+        XCTAssertEqual(mockSaveTabState.savedStates.count, 1)
+    }
+
+    func test_removeTabsToTheRight_removesLaterTabsAndSelectsGivenTabWhenSelectionWasRemoved() {
+        let tabs = addTabs(["A", "B", "C", "D"])
+
+        sut.removeTabsToTheRight(of: tabs[1].editorTab.id)
+
+        XCTAssertEqual(sut.tabs.map(\.editorTab.methodName), ["A", "B"])
+        XCTAssertEqual(sut.selectedTabId, tabs[1].editorTab.id)
+    }
+
+    func test_removeTabsToTheRight_whenSelectionIsKept_keepsSelection() {
+        let tabs = addTabs(["A", "B", "C"])
+        sut.selectTab(id: tabs[0].editorTab.id)
+
+        sut.removeTabsToTheRight(of: tabs[1].editorTab.id)
+
+        XCTAssertEqual(sut.selectedTabId, tabs[0].editorTab.id)
+    }
+
+    func test_removeTabsInProtoFile_removesOnlyThatContractsTabs() {
+        let users = addTabs(["GetUser", "DeleteUser"], protoFilePath: "/protos/users.proto")
+        let billing = addTabs(["CreateInvoice"], protoFilePath: "/protos/billing.proto")
+
+        sut.removeTabs(inProtoFileAt: URL(fileURLWithPath: "/protos/users.proto"))
+
+        XCTAssertEqual(sut.tabs.map(\.editorTab.id), [billing[0].editorTab.id])
+        XCTAssertFalse(sut.tabs.contains { $0.editorTab.id == users[0].editorTab.id })
+    }
+
+    func test_removeTabsInProtoFile_whenSelectedTabIsRemoved_selectsNearestRemainingTabToTheRight() {
+        let first = addTabs(["CreateInvoice"], protoFilePath: "/protos/billing.proto")
+        let users = addTabs(["GetUser", "DeleteUser"], protoFilePath: "/protos/users.proto")
+        let last = addTabs(["ListInvoices"], protoFilePath: "/protos/billing.proto")
+        sut.selectTab(id: users[0].editorTab.id)
+
+        sut.removeTabs(inProtoFileAt: URL(fileURLWithPath: "/protos/users.proto"))
+
+        XCTAssertEqual(sut.selectedTabId, last[0].editorTab.id)
+        XCTAssertEqual(sut.tabs.map(\.editorTab.id), [first[0].editorTab.id, last[0].editorTab.id])
+    }
+
+    // MARK: - Keyboard Navigation
+
+    func test_selectNextTab_selectsTabToTheRight() {
+        let tabs = addTabs(["A", "B", "C"])
+        sut.selectTab(id: tabs[0].editorTab.id)
+
+        sut.selectNextTab()
+
+        XCTAssertEqual(sut.selectedTabId, tabs[1].editorTab.id)
+    }
+
+    func test_selectNextTab_onLastTab_wrapsToFirst() {
+        let tabs = addTabs(["A", "B", "C"])
+
+        sut.selectNextTab()
+
+        XCTAssertEqual(sut.selectedTabId, tabs[0].editorTab.id)
+    }
+
+    func test_selectPreviousTab_selectsTabToTheLeft() {
+        let tabs = addTabs(["A", "B", "C"])
+
+        sut.selectPreviousTab()
+
+        XCTAssertEqual(sut.selectedTabId, tabs[1].editorTab.id)
+    }
+
+    func test_selectPreviousTab_onFirstTab_wrapsToLast() {
+        let tabs = addTabs(["A", "B", "C"])
+        sut.selectTab(id: tabs[0].editorTab.id)
+
+        sut.selectPreviousTab()
+
+        XCTAssertEqual(sut.selectedTabId, tabs[2].editorTab.id)
+    }
+
+    func test_selectNextTab_withoutTabs_keepsSelectionEmpty() {
+        sut.selectNextTab()
+
+        XCTAssertNil(sut.selectedTabId)
+    }
+
+    // MARK: - Focusing Open Tabs
+
+    func test_selectExistingTab_whenMethodIsOpen_selectsItsTabAndReturnsTrue() {
+        let tabs = addTabs(["GetUser", "DeleteUser"])
+
+        let found = sut.selectExistingTab(
+            methodName: "GetUser",
+            serviceName: "UserService",
+            protoFilePath: URL(fileURLWithPath: "/test/test.proto"))
+
+        XCTAssertTrue(found)
+        XCTAssertEqual(sut.selectedTabId, tabs[0].editorTab.id)
+    }
+
+    func test_selectExistingTab_whenMethodIsNotOpen_returnsFalseAndKeepsSelection() {
+        let tabs = addTabs(["GetUser"])
+
+        let found = sut.selectExistingTab(
+            methodName: "GetUser",
+            serviceName: "UserService",
+            protoFilePath: URL(fileURLWithPath: "/other/test.proto"))
+
+        XCTAssertFalse(found)
+        XCTAssertEqual(sut.selectedTabId, tabs[0].editorTab.id)
+    }
+
+    func test_selectExistingTab_whenSelectedTabMatches_keepsSelectedDuplicate() {
+        let tabs = addTabs(["GetUser", "GetUser"])
+
+        _ = sut.selectExistingTab(
+            methodName: "GetUser",
+            serviceName: "UserService",
+            protoFilePath: URL(fileURLWithPath: "/test/test.proto"))
+
+        XCTAssertEqual(sut.selectedTabId, tabs[1].editorTab.id)
+    }
+
+    func test_selectExistingTab_matchesStandardizedProtoFilePath() {
+        let tabs = addTabs(["GetUser"])
+        sut.selectTab(id: nil)
+
+        let found = sut.selectExistingTab(
+            methodName: "GetUser",
+            serviceName: "UserService",
+            protoFilePath: URL(fileURLWithPath: "/test/../test/test.proto"))
+
+        XCTAssertTrue(found)
+        XCTAssertEqual(sut.selectedTabId, tabs[0].editorTab.id)
+    }
+
+    // MARK: - Tab Switcher Data Source
+
+    func test_editorTabs_returnsTabsInOrder() {
+        let tabs = addTabs(["A", "B"])
+
+        XCTAssertEqual(sut.editorTabs.map(\.id), tabs.map(\.editorTab.id))
     }
 }
 

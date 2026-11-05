@@ -45,16 +45,95 @@ public final class TabManagerViewModel: ObservableObject {
         saveTabs()
     }
 
+    /// Closes a tab. When it was selected, selects the tab to its right, or to its left when it was the last one.
     public func removeTab(id: UUID) {
-        tabs.removeAll { $0.editorTab.id == id }
-        if selectedTabId == id {
-            selectedTabId = tabs.first?.editorTab.id
+        removeTabs { $0.id == id }
+    }
+
+    public func closeSelectedTab() {
+        guard let selectedTabId else { return }
+
+        removeTab(id: selectedTabId)
+    }
+
+    /// Closes every tab except the given one and selects it.
+    public func removeOtherTabs(keeping id: UUID) {
+        guard tabs.contains(where: { $0.editorTab.id == id }) else { return }
+
+        selectedTabId = id
+        removeTabs { $0.id != id }
+    }
+
+    /// Closes the tabs after the given one. Selects the given tab when the selected tab was closed.
+    public func removeTabsToTheRight(of id: UUID) {
+        guard let index = tabs.firstIndex(where: { $0.editorTab.id == id }) else { return }
+
+        let laterIDs = Set(tabs[(index + 1)...].map(\.editorTab.id))
+        if let selectedTabId, laterIDs.contains(selectedTabId) {
+            self.selectedTabId = id
         }
-        saveTabs()
+        removeTabs { laterIDs.contains($0.id) }
+    }
+
+    /// Closes every tab opened from the given proto contract.
+    public func removeTabs(inProtoFileAt protoFilePath: URL) {
+        let path = protoFilePath.standardizedFileURL
+        removeTabs { $0.protoFile.path.standardizedFileURL == path }
     }
 
     public func selectTab(id: UUID?) {
         selectedTabId = id
+    }
+
+    /// Selects the tab to the right of the selected one, wrapping around to the first tab.
+    public func selectNextTab() {
+        selectTab(offsetFromSelection: 1)
+    }
+
+    /// Selects the tab to the left of the selected one, wrapping around to the last tab.
+    public func selectPreviousTab() {
+        selectTab(offsetFromSelection: -1)
+    }
+
+    /// Selects an open tab for the method. Prefers the selected tab when the method is open more than once.
+    /// - Returns: `false` when no tab shows the method.
+    public func selectExistingTab(methodName: String, serviceName: String, protoFilePath: URL) -> Bool {
+        let path = protoFilePath.standardizedFileURL
+        let matches: (EditorTab) -> Bool = {
+            $0.methodName == methodName
+                && $0.serviceName == serviceName
+                && $0.protoFile.path.standardizedFileURL == path
+        }
+        if let selectedTab, matches(selectedTab.editorTab) {
+            return true
+        }
+        guard let tab = tabs.first(where: { matches($0.editorTab) }) else { return false }
+
+        selectedTabId = tab.editorTab.id
+        return true
+    }
+
+    private func selectTab(offsetFromSelection offset: Int) {
+        guard !tabs.isEmpty else { return }
+
+        let currentIndex = tabs.firstIndex { $0.editorTab.id == selectedTabId } ?? (offset > 0 ? -1 : tabs.count)
+        let nextIndex = (currentIndex + offset + tabs.count) % tabs.count
+        selectedTabId = tabs[nextIndex].editorTab.id
+    }
+
+    private func removeTabs(where shouldRemove: (EditorTab) -> Bool) {
+        let removedIDs = Set(tabs.lazy.map(\.editorTab).filter(shouldRemove).map(\.id))
+        guard !removedIDs.isEmpty else { return }
+
+        if let selectedTabId, let selectedIndex = tabs.firstIndex(where: { $0.editorTab.id == selectedTabId }),
+           removedIDs.contains(selectedTabId)
+        {
+            let isKept: (EditorTabViewModel) -> Bool = { !removedIDs.contains($0.editorTab.id) }
+            let neighbor = tabs[selectedIndex...].first(where: isKept) ?? tabs[..<selectedIndex].last(where: isKept)
+            self.selectedTabId = neighbor?.editorTab.id
+        }
+        tabs.removeAll { removedIDs.contains($0.editorTab.id) }
+        saveTabs()
     }
 
     /// Switches tabs using the given environment to custom URL mode with that env's address
@@ -78,5 +157,11 @@ public final class TabManagerViewModel: ObservableObject {
     private func saveTabs() {
         let states = tabs.map(\.currentTabState)
         saveTabStateUseCase.execute(states)
+    }
+}
+
+extension TabManagerViewModel: TabSwitcherDataSource {
+    public var editorTabs: [EditorTab] {
+        tabs.map(\.editorTab)
     }
 }

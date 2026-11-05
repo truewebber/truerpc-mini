@@ -523,6 +523,69 @@ final class AppViewModelTests: XCTestCase {
         XCTAssertEqual(sut.selectedEditorTab?.editorTab.methodName, "Method2")
         XCTAssertEqual(sut.selectedEditorTab?.editorTab.serviceName, "Service2")
     }
+
+    // MARK: - Focusing Open Tabs
+
+    private struct UsersContract {
+        let getUser = TrueRPCMini.Method(
+            name: "GetUser",
+            serviceName: "UserService",
+            inputType: ".test.GetUserRequest",
+            outputType: ".test.User")
+        let deleteUser = TrueRPCMini.Method(
+            name: "DeleteUser",
+            serviceName: "UserService",
+            inputType: ".test.DeleteUserRequest",
+            outputType: ".test.Empty")
+
+        var service: Service {
+            Service(name: "UserService", methods: [getUser, deleteUser])
+        }
+
+        var protoFile: ProtoFile {
+            ProtoFile(name: "users.proto", path: URL(fileURLWithPath: "/protos/users.proto"), services: [service])
+        }
+    }
+
+    func test_openMethod_whenMethodIsAlreadyOpen_selectsItsTab() {
+        let contract = UsersContract()
+        sut.openMethod(method: contract.getUser, service: contract.service, protoFile: contract.protoFile)
+        let getUserTabID = sut.selectedEditorTab?.editorTab.id
+        sut.openMethod(method: contract.deleteUser, service: contract.service, protoFile: contract.protoFile)
+
+        sut.openMethod(method: contract.getUser, service: contract.service, protoFile: contract.protoFile)
+
+        XCTAssertEqual(sut.tabManager.tabs.count, 2)
+        XCTAssertEqual(sut.selectedEditorTab?.editorTab.id, getUserTabID)
+    }
+
+    func test_openMethod_inNewTab_whenMethodIsAlreadyOpen_opensAnotherTab() {
+        let contract = UsersContract()
+        sut.openMethod(method: contract.getUser, service: contract.service, protoFile: contract.protoFile)
+        let firstTabID = sut.selectedEditorTab?.editorTab.id
+
+        sut.openMethod(
+            method: contract.getUser,
+            service: contract.service,
+            protoFile: contract.protoFile,
+            inNewTab: true)
+
+        XCTAssertEqual(sut.tabManager.tabs.count, 2)
+        XCTAssertNotEqual(sut.selectedEditorTab?.editorTab.id, firstTabID)
+        XCTAssertEqual(sut.selectedEditorTab?.editorTab.methodName, "GetUser")
+    }
+
+    func test_openMethod_whenMethodIsAlreadyOpen_tracksOnlyTabSwitched() async {
+        let contract = UsersContract()
+        sut.openMethod(method: contract.getUser, service: contract.service, protoFile: contract.protoFile)
+        await waitForEvent(named: "request_form_opened")
+        mockTelemetry.reset()
+
+        sut.openMethod(method: contract.getUser, service: contract.service, protoFile: contract.protoFile)
+        await waitForEvent(named: "tab_switched")
+
+        XCTAssertEqual(mockTelemetry.trackedEvents.map(\.name), ["tab_switched"])
+    }
 }
 
 // MARK: - Mock Execute Request Use Case

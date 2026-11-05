@@ -96,14 +96,25 @@ public final class AppViewModel: ObservableObject {
 
     // MARK: - Public Methods
 
-    /// Opens an editor tab for the selected method, inheriting the current global environment
+    /// Shows the method in an editor tab. Selects the tab that already shows the method unless `inNewTab` is set;
+    /// a new tab inherits the current global environment.
     public func openMethod(
         method: Method,
         service: Service,
         protoFile: ProtoFile,
         initialEnvironment: ServerEnvironment? = nil,
-        availableEnvironments: [ServerEnvironment] = [])
+        availableEnvironments: [ServerEnvironment] = [],
+        inNewTab: Bool = false)
     {
+        if !inNewTab, tabManager.selectExistingTab(
+            methodName: method.name,
+            serviceName: service.name,
+            protoFilePath: protoFile.path)
+        {
+            Task { await telemetry.track(.tabSwitched(tabName: "request")) }
+            return
+        }
+
         let editorTab = createEditorTabUseCase.execute(method: method, service: service, protoFile: protoFile)
         let tabViewModel = EditorTabViewModel(
             editorTab: editorTab,

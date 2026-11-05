@@ -13,6 +13,7 @@ final class SidebarViewModelTests: XCTestCase {
     var mockLoadSavedProtosUseCase: MockLoadSavedProtosUseCase!
     var mockLogger: MockAppLogger!
     var mockTelemetry: MockTelemetryService!
+    var mockAssignColorSlots: MockAssignContractColorSlotsUseCase!
 
     override func setUp() async throws {
         try await super.setUp()
@@ -24,6 +25,7 @@ final class SidebarViewModelTests: XCTestCase {
         mockLoadSavedProtosUseCase = MockLoadSavedProtosUseCase()
         mockLogger = MockAppLogger()
         mockTelemetry = MockTelemetryService()
+        mockAssignColorSlots = MockAssignContractColorSlotsUseCase()
         sut = SidebarViewModel(
             importProtoFileUseCase: mockUseCase,
             refreshProtoFileUseCase: mockRefreshUseCase,
@@ -31,6 +33,7 @@ final class SidebarViewModelTests: XCTestCase {
             importPathsRepository: mockImportPathsRepository,
             protoPathsPersistence: mockProtoPathsPersistence,
             loadSavedProtosUseCase: mockLoadSavedProtosUseCase,
+            assignContractColorSlotsUseCase: mockAssignColorSlots,
             logger: mockLogger,
             telemetry: mockTelemetry)
     }
@@ -45,6 +48,7 @@ final class SidebarViewModelTests: XCTestCase {
         mockLoadSavedProtosUseCase = nil
         mockLogger = nil
         mockTelemetry = nil
+        mockAssignColorSlots = nil
         try await super.tearDown()
     }
 
@@ -68,6 +72,7 @@ final class SidebarViewModelTests: XCTestCase {
             importPathsRepository: mockImportPathsRepository,
             protoPathsPersistence: mockProtoPathsPersistence,
             loadSavedProtosUseCase: mockLoadSavedProtosUseCase,
+            assignContractColorSlotsUseCase: mockAssignColorSlots,
             logger: mockLogger,
             telemetry: mockTelemetry)
 
@@ -284,6 +289,43 @@ final class SidebarViewModelTests: XCTestCase {
         await sut.removeProtoFile(proto)
 
         XCTAssertTrue(mockProtoPathsPersistence.savedPaths.isEmpty)
+    }
+
+    // MARK: - Contract Color Tests
+
+    func test_init_hasNoContractColorSlots() {
+        XCTAssertTrue(sut.contractColorSlots.isEmpty)
+    }
+
+    func test_importProtoFile_whenSuccess_publishesSlotsFromUseCase() async {
+        let testURL = URL(fileURLWithPath: "/test/users.proto")
+        mockUseCase.mockResultsByURL[testURL] = .success(ProtoFile(name: "users.proto", path: testURL, services: []))
+        mockAssignColorSlots.stubbedSlots = [testURL: 3]
+
+        await sut.importProtoFile(url: testURL)
+
+        XCTAssertEqual(mockAssignColorSlots.calls.last?.protoFilePaths, [testURL])
+        XCTAssertEqual(mockAssignColorSlots.calls.last?.currentSlots, [:])
+        XCTAssertEqual(sut.contractColorSlots, [testURL: 3])
+    }
+
+    func test_removeProtoFile_reassignsSlotsFromRemainingContractsAndCurrentSlots() async {
+        let usersURL = URL(fileURLWithPath: "/test/users.proto")
+        let billingURL = URL(fileURLWithPath: "/test/billing.proto")
+        let users = ProtoFile(name: "users.proto", path: usersURL, services: [])
+        mockUseCase.mockResultsByURL[usersURL] = .success(users)
+        mockUseCase.mockResultsByURL[billingURL] = .success(ProtoFile(
+            name: "billing.proto",
+            path: billingURL,
+            services: []))
+        await sut.importProtoFile(url: usersURL)
+        await sut.importProtoFile(url: billingURL)
+        let slotsBeforeRemoval = sut.contractColorSlots
+
+        await sut.removeProtoFile(users)
+
+        XCTAssertEqual(mockAssignColorSlots.calls.last?.protoFilePaths, [billingURL])
+        XCTAssertEqual(mockAssignColorSlots.calls.last?.currentSlots, slotsBeforeRemoval)
     }
 
     func test_importProtoFile_trackEventPropertiesContainNoFilePath() async {

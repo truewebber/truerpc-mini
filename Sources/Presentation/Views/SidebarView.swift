@@ -1,17 +1,23 @@
 import SwiftUI
 
+/// Opens a method from the sidebar. `inNewTab` is set for a click with the open-in-new-tab modifiers held
+/// and for "Open in New Tab"; otherwise the tab that already shows the method is selected.
+public typealias MethodSelectionHandler = (Method, Service, ProtoFile, _ inNewTab: Bool) -> Void
+
 /// Sidebar view displaying imported proto files and their services/methods hierarchy.
 public struct SidebarView: View {
     @StateObject private var viewModel: SidebarViewModel
     @EnvironmentObject private var di: AppDI
+    @Environment(\.hotkeys) private var hotkeys
     @State private var isImporterPresented = false
     @State private var isImportPathsSheetPresented = false
-    let onMethodSelected: (Method, Service, ProtoFile) -> Void
+    @State private var isNewTabModifierPressed = false
+    let onMethodSelected: MethodSelectionHandler
     let onSettingsOpened: () -> Void
 
     public init(
         viewModel: SidebarViewModel,
-        onMethodSelected: @escaping (Method, Service, ProtoFile) -> Void,
+        onMethodSelected: @escaping MethodSelectionHandler,
         onSettingsOpened: @escaping () -> Void = {})
     {
         _viewModel = StateObject(wrappedValue: viewModel)
@@ -110,7 +116,10 @@ public struct SidebarView: View {
             ForEach(viewModel.protoFiles, id: \.path) { protoFile in
                 ProtoFileRow(
                     protoFile: protoFile,
-                    onMethodSelected: onMethodSelected,
+                    colorSlot: viewModel.contractColorSlots[protoFile.path],
+                    onMethodSelected: { method, service, file, inNewTab in
+                        onMethodSelected(method, service, file, inNewTab || isNewTabModifierPressed)
+                    },
                     onRefresh: { await viewModel.refreshProtoFile(protoFile) })
                     .contextMenu {
                         Button {
@@ -134,6 +143,9 @@ public struct SidebarView: View {
             }
         }
         .listStyle(.sidebar)
+        .onModifierKeysChanged(mask: hotkeys.openInNewTabModifiers.eventModifiers) { _, pressed in
+            isNewTabModifierPressed = hotkeys.opensInNewTab(withPressed: KeyModifiers(pressed))
+        }
     }
 
     private func handleFileImport(result: Result<[URL], Error>) {
@@ -153,7 +165,8 @@ public struct SidebarView: View {
 
 private struct ProtoFileRow: View {
     let protoFile: ProtoFile
-    let onMethodSelected: (Method, Service, ProtoFile) -> Void
+    let colorSlot: Int?
+    let onMethodSelected: MethodSelectionHandler
     let onRefresh: () async -> Void
     @State private var isExpanded = true
     @State private var isHovered = false
@@ -180,8 +193,7 @@ private struct ProtoFileRow: View {
                     Text(protoFile.name)
                         .font(.body)
                 } icon: {
-                    Image(systemName: "doc.text.fill")
-                        .foregroundStyle(.blue)
+                    ContractIcon(colorSlot: colorSlot)
                 }
 
                 Spacer()
@@ -217,7 +229,7 @@ private struct ProtoFileRow: View {
 private struct ServiceRow: View {
     let service: Service
     let protoFile: ProtoFile
-    let onMethodSelected: (Method, Service, ProtoFile) -> Void
+    let onMethodSelected: MethodSelectionHandler
     @State private var isExpanded = true
 
     var body: some View {
@@ -242,7 +254,7 @@ private struct ServiceRow: View {
                     .font(.body)
             } icon: {
                 Image(systemName: "list.bullet.rectangle")
-                    .foregroundStyle(.purple)
+                    .foregroundStyle(.secondary)
             }
         }
     }
@@ -252,11 +264,12 @@ private struct MethodRow: View {
     let method: Method
     let service: Service
     let protoFile: ProtoFile
-    let onMethodSelected: (Method, Service, ProtoFile) -> Void
+    let onMethodSelected: MethodSelectionHandler
+    @Environment(\.hotkeys) private var hotkeys
 
     var body: some View {
         Button {
-            onMethodSelected(method, service, protoFile)
+            onMethodSelected(method, service, protoFile, false)
         } label: {
             HStack {
                 MethodKindIcon(isStreaming: method.isStreaming)
@@ -275,6 +288,11 @@ private struct MethodRow: View {
             }
         }
         .buttonStyle(.plain)
+        .help("\(hotkeys.openInNewTabModifiers.symbols)-click to open in a new tab")
+        .contextMenu {
+            Button("Open") { onMethodSelected(method, service, protoFile, false) }
+            Button("Open in New Tab") { onMethodSelected(method, service, protoFile, true) }
+        }
     }
 }
 
@@ -299,8 +317,12 @@ private struct MethodRow: View {
         previewSidebar(files: [.previewLongNames])
     }
 
+    #Preview("Contracts", traits: .fixedLayout(width: 320, height: 700)) {
+        previewSidebar(files: PreviewContracts.all)
+    }
+
     #Preview("Dark", traits: .fixedLayout(width: 320, height: 700)) {
-        previewSidebar(files: [.previewCatalog])
+        previewSidebar(files: PreviewContracts.all)
             .preferredColorScheme(.dark)
     }
 
@@ -313,7 +335,7 @@ private struct MethodRow: View {
     {
         SidebarView(
             viewModel: previewSidebarViewModel(files: files, isLoading: isLoading, error: error),
-            onMethodSelected: { _, _, _ in },
+            onMethodSelected: { _, _, _, _ in },
             onSettingsOpened: {})
             .environmentObject(previewSidebarDI())
     }
@@ -332,6 +354,7 @@ private struct MethodRow: View {
             importPathsRepository: PreviewImportPathsRepository(),
             protoPathsPersistence: PreviewProtoPathsPersistence(),
             loadSavedProtosUseCase: PreviewLoadSavedProtosUseCase(),
+            assignContractColorSlotsUseCase: AssignContractColorSlotsUseCase(),
             logger: NullLogger(),
             telemetry: PreviewSidebarTelemetry())
         viewModel.protoFiles = files

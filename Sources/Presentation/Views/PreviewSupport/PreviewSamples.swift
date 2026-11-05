@@ -87,6 +87,97 @@
         }()
     }
 
+    /// Five loaded contracts and tabs opened from all of them, for tab bar and tab switcher previews.
+    enum PreviewContracts {
+        static let users = contract("users.proto", service: "UserService", methods: [
+            "GetUser", "ListUsers", "UpdateUserProfile", "DeleteUser",
+        ])
+        static let billing = contract("billing.proto", service: "InvoiceService", methods: [
+            "CreateInvoice", "ListInvoices", "RefundPayment",
+        ])
+        static let orders = contract("orders.proto", service: "OrderService", methods: [
+            "PlaceOrder", "CancelOrder", "TrackShipment",
+        ])
+        static let inventory = contract("inventory.proto", service: "StockService", methods: [
+            "ReserveStock", "ReleaseStock",
+        ])
+        static let notifications = contract("notifications.proto", service: "PushService", methods: [
+            "SendPush", "StreamDeliveryReceipts",
+        ])
+
+        static let all = [users, billing, orders, inventory, notifications]
+
+        static let colorSlots: [URL: Int] = Dictionary(
+            uniqueKeysWithValues: all.enumerated().map { ($1.path, $0) })
+
+        /// Tabs interleaved across contracts, the way they pile up during a working day.
+        static let mixedTabs: [EditorTab] = [
+            tab("GetUser", in: users),
+            tab("CreateInvoice", in: billing),
+            tab("PlaceOrder", in: orders),
+            tab("ListUsers", in: users),
+            tab("ReserveStock", in: inventory),
+            tab("SendPush", in: notifications),
+            tab("RefundPayment", in: billing),
+            tab("TrackShipment", in: orders),
+            tab("UpdateUserProfile", in: users),
+            tab("StreamDeliveryReceipts", in: notifications),
+        ]
+
+        static let longNameTabs: [EditorTab] = {
+            let protoFile = ProtoFile.previewLongNames
+            let service = protoFile.services[0]
+            let method = service.methods[0]
+            return [
+                EditorTab(methodName: method.name, serviceName: service.name, protoFile: protoFile, method: method),
+                EditorTab(
+                    methodName: "GetUserProfileWithVeryLongMethodNameForAuditTrail",
+                    serviceName: service.name,
+                    protoFile: protoFile,
+                    method: method),
+                tab("GetUser", in: users),
+            ]
+        }()
+
+        static let longNameColorSlots: [URL: Int] = colorSlots.merging(
+            [ProtoFile.previewLongNames.path: 5],
+            uniquingKeysWith: { first, _ in first })
+
+        /// Enough tabs to overflow any window width.
+        static let manyTabs: [EditorTab] = (0 ..< 6).flatMap { round in
+            all.flatMap { protoFile in
+                protoFile.services[0].methods.map { method in
+                    EditorTab(
+                        methodName: round == 0 ? method.name : "\(method.name)V\(round + 1)",
+                        serviceName: method.serviceName,
+                        protoFile: protoFile,
+                        method: method)
+                }
+            }
+        }
+
+        private static func contract(_ name: String, service: String, methods: [String]) -> ProtoFile {
+            let methods = methods.map {
+                Method(
+                    name: $0,
+                    serviceName: service,
+                    inputType: "\($0)Request",
+                    outputType: "\($0)Response",
+                    isStreaming: $0.hasPrefix("Stream"))
+            }
+            return ProtoFile(
+                name: name,
+                path: URL(fileURLWithPath: "/Users/shared/protos/\(name)"),
+                services: [Service(name: service, methods: methods)])
+        }
+
+        private static func tab(_ methodName: String, in protoFile: ProtoFile) -> EditorTab {
+            let service = protoFile.services[0]
+            let method = service.methods.first { $0.name == methodName } ?? service.methods[0]
+            return EditorTab(methodName: method.name, serviceName: service.name, protoFile: protoFile, method: method)
+        }
+    }
+
     extension GrpcResponse {
         static let previewSuccess = GrpcResponse(
             jsonBody: PreviewJSON.shortObject,

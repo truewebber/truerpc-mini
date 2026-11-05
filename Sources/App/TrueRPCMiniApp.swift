@@ -18,11 +18,17 @@ struct TrueRPCMiniApp: App {
     /// Sparkle delegate — must be retained; SPUUpdater holds it weakly.
     private let sparkleUpdaterDelegate: SparkleUpdaterDelegate
 
+    /// Shortcuts of the menu commands, also injected into the views through the environment.
+    private let hotkeys = HotkeyConfiguration.standard
+
     /// Sidebar ViewModel (created once and reused)
     @StateObject private var sidebarViewModel: SidebarViewModel
 
     /// App coordinator ViewModel
     @StateObject private var appViewModel: AppViewModel
+
+    /// "Show All Tabs" switcher state, shared by the tab bar button and the Window menu command
+    @StateObject private var tabSwitcherViewModel: TabSwitcherViewModel
 
     /// Global environment selection (singleton)
     @StateObject private var globalEnvironmentViewModel: GlobalEnvironmentViewModel
@@ -43,6 +49,9 @@ struct TrueRPCMiniApp: App {
         let isUITesting = ProcessInfo.processInfo.arguments.contains("--uitesting")
 
         UserDefaults.runAnalyticsMigration()
+
+        // Editor tabs live inside the window; native window tabs would add a second "Show All Tabs" on ⇧⌘\.
+        NSWindow.allowsAutomaticWindowTabbing = false
 
         let config = Config.fromBundle
 
@@ -213,6 +222,14 @@ struct TrueRPCMiniApp: App {
             CreateEditorTabUseCase()
         }
 
+        di.register(AssignContractColorSlotsUseCaseProtocol.self) {
+            AssignContractColorSlotsUseCase()
+        }
+
+        di.register(SearchEditorTabsUseCaseProtocol.self) {
+            SearchEditorTabsUseCase()
+        }
+
         di.register(GenerateMockDataUseCase.self) {
             GenerateMockDataUseCase(
                 mockDataGenerator: di.resolve(MockDataGeneratorProtocol.self)!)
@@ -247,6 +264,12 @@ struct TrueRPCMiniApp: App {
                 restoreTabsUseCase: di.resolve(RestoreTabsUseCaseProtocol.self)!)
         }
 
+        di.register(TabSwitcherViewModel.self) {
+            TabSwitcherViewModel(
+                dataSource: di.resolve(TabManagerViewModel.self)!,
+                searchEditorTabsUseCase: di.resolve(SearchEditorTabsUseCaseProtocol.self)!)
+        }
+
         // Create SidebarViewModel once
         let sidebarVM = SidebarViewModel(
             importProtoFileUseCase: di.resolve(ImportProtoFileUseCaseProtocol.self)!,
@@ -255,6 +278,7 @@ struct TrueRPCMiniApp: App {
             importPathsRepository: di.resolve(ImportPathsRepositoryProtocol.self)!,
             protoPathsPersistence: di.resolve(ProtoPathsPersistenceProtocol.self)!,
             loadSavedProtosUseCase: di.resolve(LoadSavedProtosUseCase.self)!,
+            assignContractColorSlotsUseCase: di.resolve(AssignContractColorSlotsUseCaseProtocol.self)!,
             logger: logger,
             telemetry: di.resolve(TelemetryServiceProtocol.self)!)
 
@@ -300,6 +324,7 @@ struct TrueRPCMiniApp: App {
         // Use _StateObject to initialize @StateObject properties
         _sidebarViewModel = StateObject(wrappedValue: sidebarVM)
         _appViewModel = StateObject(wrappedValue: appVM)
+        _tabSwitcherViewModel = StateObject(wrappedValue: di.resolve(TabSwitcherViewModel.self)!)
         _globalEnvironmentViewModel = StateObject(wrappedValue: globalEnvVM)
         _updaterViewModel = StateObject(wrappedValue: di.resolve(UpdaterViewModel.self)!)
         _aboutViewModel = StateObject(wrappedValue: AboutViewModel())
@@ -312,13 +337,14 @@ struct TrueRPCMiniApp: App {
             NavigationSplitView {
                 SidebarView(
                     viewModel: sidebarViewModel,
-                    onMethodSelected: { method, service, protoFile in
+                    onMethodSelected: { method, service, protoFile, inNewTab in
                         appViewModel.openMethod(
                             method: method,
                             service: service,
                             protoFile: protoFile,
                             initialEnvironment: globalEnvironmentViewModel.selectedEnvironment,
-                            availableEnvironments: globalEnvironmentViewModel.environments)
+                            availableEnvironments: globalEnvironmentViewModel.environments,
+                            inNewTab: inNewTab)
                     },
                     onSettingsOpened: {
                         appViewModel.onSettingsOpened()
@@ -338,7 +364,10 @@ struct TrueRPCMiniApp: App {
                     }
             } detail: {
                 VStack(spacing: 0) {
-                    TabBarView(tabManager: appViewModel.tabManager)
+                    TabBarView(
+                        tabManager: appViewModel.tabManager,
+                        switcher: tabSwitcherViewModel,
+                        contractColorSlots: sidebarViewModel.contractColorSlots)
 
                     if let editorTab = appViewModel.selectedEditorTab {
                         RequestEditorView(viewModel: editorTab, globalEnvironmentViewModel: globalEnvironmentViewModel)
@@ -363,6 +392,7 @@ struct TrueRPCMiniApp: App {
             .sheet(isPresented: $isAboutPresented) {
                 AboutView(viewModel: aboutViewModel)
             }
+            .environment(\.hotkeys, hotkeys)
         }
         .commands {
             CommandGroup(replacing: .appInfo) {
@@ -376,6 +406,14 @@ struct TrueRPCMiniApp: App {
                     updaterViewModel.checkForUpdates()
                 }
                 .disabled(!updaterViewModel.canCheckForUpdates)
+            }
+
+            CommandGroup(replacing: .saveItem) {
+                closeCommands
+            }
+
+            CommandGroup(before: .windowArrangement) {
+                tabNavigationCommands
             }
         }
         .defaultSize(width: 1100, height: 700)
@@ -409,6 +447,55 @@ struct TrueRPCMiniApp: App {
                 window.minSize = NSSize(width: 420, height: 400)
             }
         }
+    }
+
+    // MARK: - Commands
+
+    /// The Close Tab shortcut closes the selected tab while one is open and the window otherwise,
+    /// like Safari and Xcode.
+    @ViewBuilder
+    private var closeCommands: some View {
+        if appViewModel.tabManager.selectedTabId != nil {
+            Button("Close Tab") {
+                appViewModel.tabManager.closeSelectedTab()
+            }
+            .keyboardShortcut(hotkeys.keyboardShortcut(for: .closeTab))
+
+            Button("Close Window") {
+                NSApp.keyWindow?.performClose(nil)
+            }
+            .keyboardShortcut(hotkeys.keyboardShortcut(for: .closeWindow))
+        } else {
+            Button("Close Window") {
+                NSApp.keyWindow?.performClose(nil)
+            }
+            .keyboardShortcut(hotkeys.keyboardShortcut(for: .closeTab))
+        }
+    }
+
+    @ViewBuilder
+    private var tabNavigationCommands: some View {
+        let tabCount = appViewModel.tabManager.tabs.count
+
+        Button("Show Previous Tab") {
+            appViewModel.tabManager.selectPreviousTab()
+        }
+        .keyboardShortcut(hotkeys.keyboardShortcut(for: .showPreviousTab))
+        .disabled(tabCount < 2)
+
+        Button("Show Next Tab") {
+            appViewModel.tabManager.selectNextTab()
+        }
+        .keyboardShortcut(hotkeys.keyboardShortcut(for: .showNextTab))
+        .disabled(tabCount < 2)
+
+        Button("Show All Tabs") {
+            tabSwitcherViewModel.togglePresentation()
+        }
+        .keyboardShortcut(hotkeys.keyboardShortcut(for: .showAllTabs))
+        .disabled(tabCount == 0)
+
+        Divider()
     }
 
     // MARK: - Subviews

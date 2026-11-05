@@ -7,6 +7,7 @@ import UniformTypeIdentifiers
 struct RequestEditorView: View {
     @ObservedObject var viewModel: EditorTabViewModel
     @ObservedObject var globalEnvironmentViewModel: GlobalEnvironmentViewModel
+    @Environment(\.hotkeys) private var hotkeys
     @State private var showExportError: Bool
     @State private var exportErrorMessage: String
     @State private var isResponseCopied: Bool
@@ -113,7 +114,7 @@ struct RequestEditorView: View {
                 .padding(.vertical, 8)
             }
             .buttonStyle(.borderedProminent)
-            .keyboardShortcut(.return, modifiers: .command)
+            .keyboardShortcut(hotkeys.keyboardShortcut(for: .executeRequest))
             .disabled(viewModel.isExecuting || viewModel.url.isEmpty || viewModel.requestJson.isEmpty)
 
             if viewModel.isLoading {

@@ -6,10 +6,15 @@ import SwiftUI
 public final class SidebarViewModel: ObservableObject {
     // MARK: - Published Properties
 
-    @Published public var protoFiles: [ProtoFile] = []
+    @Published public var protoFiles: [ProtoFile] = [] {
+        didSet { updateContractColorSlots() }
+    }
+
     @Published public var error: String?
     @Published public var isLoading: Bool = false
     @Published public private(set) var importPathsCount: Int = 0
+    /// Color slot of every loaded contract, keyed by proto file path.
+    @Published public private(set) var contractColorSlots: [URL: Int] = [:]
 
     // MARK: - Dependencies
 
@@ -19,6 +24,7 @@ public final class SidebarViewModel: ObservableObject {
     private let importPathsRepository: ImportPathsRepositoryProtocol
     private let protoPathsPersistence: ProtoPathsPersistenceProtocol
     private let loadSavedProtosUseCase: LoadSavedProtosUseCaseProtocol
+    private let assignContractColorSlotsUseCase: AssignContractColorSlotsUseCaseProtocol
     private let logger: AppLogger
     private let telemetry: TelemetryServiceProtocol
 
@@ -33,6 +39,7 @@ public final class SidebarViewModel: ObservableObject {
         importPathsRepository: ImportPathsRepositoryProtocol,
         protoPathsPersistence: ProtoPathsPersistenceProtocol,
         loadSavedProtosUseCase: LoadSavedProtosUseCaseProtocol,
+        assignContractColorSlotsUseCase: AssignContractColorSlotsUseCaseProtocol,
         logger: AppLogger,
         telemetry: TelemetryServiceProtocol)
     {
@@ -42,6 +49,7 @@ public final class SidebarViewModel: ObservableObject {
         self.importPathsRepository = importPathsRepository
         self.protoPathsPersistence = protoPathsPersistence
         self.loadSavedProtosUseCase = loadSavedProtosUseCase
+        self.assignContractColorSlotsUseCase = assignContractColorSlotsUseCase
         self.logger = logger
         self.telemetry = telemetry
         self.importPathsCount = importPathsRepository.getImportPaths().count
@@ -224,6 +232,12 @@ public final class SidebarViewModel: ObservableObject {
             "error": error.localizedDescription,
         ])
         self.error = error.localizedDescription
+    }
+
+    private func updateContractColorSlots() {
+        contractColorSlots = assignContractColorSlotsUseCase.execute(
+            protoFilePaths: protoFiles.map(\.path),
+            currentSlots: contractColorSlots)
     }
 
     private func addOrReplaceProtoFile(_ protoFile: ProtoFile) {
