@@ -105,7 +105,7 @@ Config/Secrets.xcconfig
 TrueRPCMini.xcodeproj
 
 # Cursor AI
-.cursor/
+.cursor
 
 # IDE
 .idea
