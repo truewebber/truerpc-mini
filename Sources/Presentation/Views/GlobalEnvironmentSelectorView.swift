@@ -26,13 +26,11 @@ public struct GlobalEnvironmentSelectorView: View {
         }
     }
 
-    // MARK: - Subviews
-
     @ViewBuilder
     private var envMenuItems: some View {
         if viewModel.environments.isEmpty {
             Text("No environments saved")
-                .foregroundColor(.secondary)
+                .foregroundStyle(.secondary)
         } else {
             ForEach(viewModel.environments) { env in
                 Button {
@@ -62,9 +60,11 @@ public struct GlobalEnvironmentSelectorView: View {
             Image(systemName: "server.rack")
             if let selected = viewModel.selectedEnvironment {
                 Text(selected.name)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
             } else {
                 Text("No Environment")
-                    .foregroundColor(.secondary)
+                    .foregroundStyle(.secondary)
             }
         }
         .contentShape(Rectangle())
@@ -72,50 +72,30 @@ public struct GlobalEnvironmentSelectorView: View {
 }
 
 #if DEBUG
-    struct GlobalEnvironmentSelectorView_Previews: PreviewProvider {
-        static var previews: some View {
-            GlobalEnvironmentSelectorView(viewModel: PreviewGlobalEnvironmentViewModel())
-                .padding()
-        }
+    #Preview("Empty", traits: .fixedLayout(width: 280, height: 44)) {
+        GlobalEnvironmentSelectorView(viewModel: PreviewGlobalEnvironments.viewModel(environments: []))
+            .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    @MainActor
-    private final class PreviewGlobalEnvironmentViewModel: GlobalEnvironmentViewModel {
-        init() {
-            super.init(
-                loadEnvironmentsUseCase: PreviewLoadUseCase(),
-                saveEnvironmentUseCase: PreviewNoOpSave(),
-                deleteEnvironmentUseCase: PreviewNoOpDelete(),
-                selectEnvironmentUseCase: PreviewNoOpSelect(),
-                getSelectedEnvironmentUseCase: PreviewNoOpGetSelected())
-            loadEnvironments()
-        }
+    #Preview("Selected", traits: .fixedLayout(width: 280, height: 44)) {
+        GlobalEnvironmentSelectorView(
+            viewModel: PreviewGlobalEnvironments.viewModel(selected: .previewLocal))
+            .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private final class PreviewLoadUseCase: LoadEnvironmentsUseCaseProtocol {
-        func execute() -> [ServerEnvironment] {
-            [
-                ServerEnvironment(name: "Local", host: "localhost", port: 50051),
-                ServerEnvironment(name: "Staging", host: "staging.example.com", port: 443),
-            ]
-        }
+    #Preview("Long Content", traits: .fixedLayout(width: 280, height: 44)) {
+        GlobalEnvironmentSelectorView(
+            viewModel: PreviewGlobalEnvironments.viewModel(
+                environments: [.previewLongName],
+                selected: .previewLongName))
+            .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private final class PreviewNoOpSave: SaveEnvironmentUseCaseProtocol {
-        func execute(_: ServerEnvironment) {}
-    }
-
-    private final class PreviewNoOpDelete: DeleteEnvironmentUseCaseProtocol {
-        func execute(id _: UUID) {}
-    }
-
-    private final class PreviewNoOpSelect: SelectEnvironmentUseCaseProtocol {
-        func execute(_: ServerEnvironment?) {}
-    }
-
-    private final class PreviewNoOpGetSelected: GetSelectedEnvironmentUseCaseProtocol {
-        func execute() -> ServerEnvironment? {
-            nil
-        }
+    #Preview("Dark", traits: .fixedLayout(width: 280, height: 44)) {
+        GlobalEnvironmentSelectorView(
+            viewModel: PreviewGlobalEnvironments.viewModel(selected: .previewStaging))
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+            .background(.background)
+            .preferredColorScheme(.dark)
     }
 #endif

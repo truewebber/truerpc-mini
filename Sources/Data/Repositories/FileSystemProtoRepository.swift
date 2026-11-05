@@ -198,23 +198,33 @@ public actor FileSystemProtoRepository: ProtoRepositoryProtocol {
         for (_, fileDesc) in bridgedFileDescriptors {
             guard isFileInScope(fileDesc.name, protoFile: protoFile) else { continue }
 
-            if let msg = findMessage(in: fileDesc, named: typeName) { return msg }
+            if let msg = findMessage(in: fileDesc, named: typeName) {
+                return msg
+            }
         }
         return nil
     }
 
     private func findMessage(in fileDesc: FileDescriptor, named typeName: String) -> MessageDescriptor? {
         for (_, msg) in fileDesc.messages {
-            if msg.fullName == typeName { return msg }
-            if let found = findNestedMessage(in: msg, named: typeName) { return found }
+            if msg.fullName == typeName {
+                return msg
+            }
+            if let found = findNestedMessage(in: msg, named: typeName) {
+                return found
+            }
         }
         return nil
     }
 
     private func findNestedMessage(in msg: MessageDescriptor, named typeName: String) -> MessageDescriptor? {
         for (_, nested) in msg.nestedMessages {
-            if nested.fullName == typeName { return nested }
-            if let deep = findNestedMessage(in: nested, named: typeName) { return deep }
+            if nested.fullName == typeName {
+                return nested
+            }
+            if let deep = findNestedMessage(in: nested, named: typeName) {
+                return deep
+            }
         }
         return nil
     }
@@ -224,7 +234,9 @@ public actor FileSystemProtoRepository: ProtoRepositoryProtocol {
             guard isFileInScope(fileDesc.name, protoFile: protoFile) else { continue }
 
             for (_, enumDesc) in fileDesc.enums {
-                if enumDesc.fullName == typeName { return enumDesc }
+                if enumDesc.fullName == typeName {
+                    return enumDesc
+                }
             }
         }
         return nil
@@ -278,7 +290,9 @@ public actor FileSystemProtoRepository: ProtoRepositoryProtocol {
     private func isFileInScope(_ filePath: String?, protoFile: ProtoFile) -> Bool {
         guard let path = filePath else { return true }
 
-        if path.hasPrefix("google/protobuf/") { return true }
+        if path.hasPrefix("google/protobuf/") {
+            return true
+        }
         let allowed = allowedDescriptorBasenames(for: protoFile)
         let lastComponent = (path as NSString).lastPathComponent
         return allowed.contains(path) || allowed.contains(lastComponent)
@@ -310,7 +324,9 @@ public actor FileSystemProtoRepository: ProtoRepositoryProtocol {
             let candidate = URL(fileURLWithPath: importPath).appendingPathComponent(importString)
             guard FileManager.default.fileExists(atPath: candidate.path) else { continue }
 
-            if let wellKnown = wellKnownResourcePath, candidate.path.hasPrefix(wellKnown) { return nil }
+            if let wellKnown = wellKnownResourcePath, candidate.path.hasPrefix(wellKnown) {
+                return nil
+            }
             return candidate
         }
         return nil

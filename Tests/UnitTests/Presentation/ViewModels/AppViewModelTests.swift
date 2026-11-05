@@ -409,7 +409,9 @@ final class AppViewModelTests: XCTestCase {
     /// Polls until the given event name appears in trackedEvents (up to ~1 second).
     private func waitForEvent(named name: String) async {
         for _ in 0 ..< 1000 {
-            if mockTelemetry.trackedEvents.contains(where: { $0.name == name }) { return }
+            if mockTelemetry.trackedEvents.contains(where: { $0.name == name }) {
+                return
+            }
             await Task.yield()
         }
     }

@@ -44,7 +44,9 @@ public struct TLSConfiguration: Equatable, Codable, Sendable {
     public var lockIndicatorState: LockIndicatorState {
         guard isTLSEnabled else { return .plaintext }
 
-        if allowInsecure || customCAURL != nil { return .insecure }
+        if allowInsecure || customCAURL != nil {
+            return .insecure
+        }
         return .secure
     }
 }

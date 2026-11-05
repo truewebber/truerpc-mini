@@ -240,7 +240,9 @@ public final class ProtoSchemaAutocompleteProvider: AutocompleteProviderProtocol
         async -> EnumDescriptor?
     {
         let trimmed = typeName.hasPrefix(".") ? String(typeName.dropFirst()) : typeName
-        if let nested = parent.nestedEnum(named: simpleTypeName(from: trimmed)) { return nested }
+        if let nested = parent.nestedEnum(named: simpleTypeName(from: trimmed)) {
+            return nested
+        }
         return try? await protoRepository.getEnumDescriptor(forType: trimmed, in: protoFile)
     }
 
@@ -263,7 +265,9 @@ public final class ProtoSchemaAutocompleteProvider: AutocompleteProviderProtocol
             return .bool
 
         case .message:
-            if isWellKnownStringType(field.typeName) { return .wktString }
+            if isWellKnownStringType(field.typeName) {
+                return .wktString
+            }
             return .message
 
         case .enum:

@@ -103,7 +103,9 @@ private final class MockProtoRepositoryForRefresh: ProtoRepositoryProtocol {
         loadProtoCalled = true
         loadProtoURL = url
         loadProtoImportPaths = nil
-        if shouldThrowError { throw errorToThrow }
+        if shouldThrowError {
+            throw errorToThrow
+        }
         guard let protoFile = protoFileToReturn else { throw RefreshProtoError.fileNotFound }
 
         return protoFile
@@ -113,7 +115,9 @@ private final class MockProtoRepositoryForRefresh: ProtoRepositoryProtocol {
         loadProtoCalled = true
         loadProtoURL = url
         loadProtoImportPaths = importPaths
-        if shouldThrowError { throw errorToThrow }
+        if shouldThrowError {
+            throw errorToThrow
+        }
         guard let protoFile = protoFileToReturn else { throw RefreshProtoError.fileNotFound }
 
         return protoFile

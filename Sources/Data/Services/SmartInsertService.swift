@@ -68,19 +68,25 @@ struct SmartInsertService {
         var escaped = false
 
         for char in text {
-            if escaped { escaped = false
+            if escaped {
+                escaped = false
                 continue
             }
-            if char == "\\", inString { escaped = true
+            if char == "\\", inString {
+                escaped = true
                 continue
             }
-            if char == "\"" { inString.toggle()
+            if char == "\"" {
+                inString.toggle()
                 continue
             }
             guard !inString else { continue }
 
-            if char == "{" { balance += 1 }
-            else if char == "}" { balance -= 1 }
+            if char == "{" {
+                balance += 1
+            } else if char == "}" {
+                balance -= 1
+            }
         }
 
         return max(0, balance)
@@ -101,8 +107,11 @@ struct SmartInsertService {
                 continue
             }
             if inString {
-                if c == JsonScanUTF16.backslash { escaped = true }
-                else if c == JsonScanUTF16.quote { inString = false }
+                if c == JsonScanUTF16.backslash {
+                    escaped = true
+                } else if c == JsonScanUTF16.quote {
+                    inString = false
+                }
                 i += 1
                 continue
             }
@@ -111,8 +120,11 @@ struct SmartInsertService {
                 i += 1
                 continue
             }
-            if c == JsonScanUTF16.bracketOpen { balance += 1 }
-            else if c == JsonScanUTF16.bracketClose { balance -= 1 }
+            if c == JsonScanUTF16.bracketOpen {
+                balance += 1
+            } else if c == JsonScanUTF16.bracketClose {
+                balance -= 1
+            }
             i += 1
         }
         return balance
@@ -133,8 +145,11 @@ struct SmartInsertService {
                 continue
             }
             if inString {
-                if c == JsonScanUTF16.backslash { escaped = true }
-                else if c == JsonScanUTF16.quote { inString = false }
+                if c == JsonScanUTF16.backslash {
+                    escaped = true
+                } else if c == JsonScanUTF16.quote {
+                    inString = false
+                }
                 i += 1
                 continue
             }
@@ -143,8 +158,11 @@ struct SmartInsertService {
                 i += 1
                 continue
             }
-            if c == JsonScanUTF16.braceOpen { balance += 1 }
-            else if c == JsonScanUTF16.braceClose { balance -= 1 }
+            if c == JsonScanUTF16.braceOpen {
+                balance += 1
+            } else if c == JsonScanUTF16.braceClose {
+                balance -= 1
+            }
             i += 1
         }
         return max(0, balance)
@@ -189,8 +207,11 @@ struct SmartInsertService {
                 continue
             }
             if inString {
-                if c == JsonScanUTF16.backslash { escaped = true }
-                else if c == JsonScanUTF16.quote { inString = false }
+                if c == JsonScanUTF16.backslash {
+                    escaped = true
+                } else if c == JsonScanUTF16.quote {
+                    inString = false
+                }
                 i += 1
                 continue
             }
@@ -203,7 +224,9 @@ struct SmartInsertService {
                 pending += 1
             } else if c == JsonScanUTF16.bracketClose {
                 pending -= 1
-                if pending == 0 { return i }
+                if pending == 0 {
+                    return i
+                }
             }
             i += 1
         }
@@ -224,8 +247,11 @@ struct SmartInsertService {
                 continue
             }
             if inString {
-                if c == JsonScanUTF16.backslash { escaped = true }
-                else if c == JsonScanUTF16.quote { inString = false }
+                if c == JsonScanUTF16.backslash {
+                    escaped = true
+                } else if c == JsonScanUTF16.quote {
+                    inString = false
+                }
                 i += 1
                 continue
             }
@@ -323,13 +349,16 @@ struct SmartInsertService {
         var j = cursorOffset - 1
         while j >= 0 {
             let c = ns.character(at: j)
-            if c == JsonScanUTF16.quote { openQ = j
+            if c == JsonScanUTF16.quote {
+                openQ = j
                 break
             }
             if c == JsonScanUTF16.colon || c == JsonScanUTF16.comma
                 || c == JsonScanUTF16.braceOpen || c == JsonScanUTF16.braceClose
                 || c == JsonScanUTF16.bracketOpen || c == JsonScanUTF16.bracketClose
-            { return nil }
+            {
+                return nil
+            }
             j -= 1
         }
         guard let open = openQ else { return nil }
@@ -339,13 +368,16 @@ struct SmartInsertService {
         var k = cursorOffset
         while k < ns.length {
             let c = ns.character(at: k)
-            if c == JsonScanUTF16.quote { closeQ = k
+            if c == JsonScanUTF16.quote {
+                closeQ = k
                 break
             }
             if c == JsonScanUTF16.comma
                 || c == JsonScanUTF16.braceClose
                 || c == JsonScanUTF16.bracketClose
-            { break }
+            {
+                break
+            }
             k += 1
         }
 
@@ -374,12 +406,17 @@ struct SmartInsertService {
                 continue
             }
             if inString {
-                if c == JsonScanUTF16.backslash { escaped = true }
-                else if c == JsonScanUTF16.quote { inString = false }
+                if c == JsonScanUTF16.backslash {
+                    escaped = true
+                } else if c == JsonScanUTF16.quote {
+                    inString = false
+                }
                 i += 1
                 continue
             }
-            if c == JsonScanUTF16.quote { inString = true }
+            if c == JsonScanUTF16.quote {
+                inString = true
+            }
             i += 1
         }
         return inString

@@ -129,7 +129,9 @@ final class FSEventsProtoFileWatcherTests: XCTestCase {
         let task = Task {
             for await change in sut.changes {
                 received.append(change)
-                if received.count == 1 { expectation.fulfill() }
+                if received.count == 1 {
+                    expectation.fulfill()
+                }
             }
         }
 

@@ -57,28 +57,24 @@ public struct ImportPathsSettingsView: View {
         .padding()
     }
 
+    @ViewBuilder
     private var contentView: some View {
-        Group {
-            if viewModel.paths.isEmpty {
-                emptyStateView
-            } else {
-                pathsListView
-            }
+        if viewModel.paths.isEmpty {
+            emptyStateView
+        } else {
+            pathsListView
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private var emptyStateView: some View {
-        VStack(spacing: 12) {
-            Image(systemName: "folder")
-                .font(.system(size: 40))
-                .foregroundColor(.secondary)
-            Text("No import paths")
-                .font(.headline)
-            Text("Add folders to resolve proto file dependencies")
-                .font(.caption)
-                .foregroundColor(.secondary)
-                .multilineTextAlignment(.center)
+        ContentUnavailableView {
+            Label("No Import Paths", systemImage: "folder")
+        } description: {
+            Text("Add folders to resolve proto file dependencies.")
+        } actions: {
+            Button("Add Folder…") {
+                isFolderPickerPresented = true
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -88,19 +84,21 @@ public struct ImportPathsSettingsView: View {
             ForEach(Array(viewModel.paths.enumerated()), id: \.offset) { index, path in
                 HStack {
                     Image(systemName: "folder.fill")
-                        .foregroundColor(.blue)
+                        .foregroundStyle(.blue)
                         .frame(width: 20)
                     Text(path)
-                        .font(.system(.body, design: .monospaced))
+                        .font(.body.monospaced())
                         .lineLimit(1)
                         .truncationMode(.middle)
                     Spacer()
                     Button(role: .destructive) {
                         viewModel.removePath(at: index)
                     } label: {
-                        Image(systemName: "trash")
+                        Label("Remove", systemImage: "trash")
+                            .labelStyle(.iconOnly)
                     }
                     .buttonStyle(.borderless)
+                    .help("Remove")
                 }
             }
         }
@@ -121,21 +119,45 @@ public struct ImportPathsSettingsView: View {
 }
 
 #if DEBUG
-    struct ImportPathsSettingsView_Previews: PreviewProvider {
-        static var previews: some View {
-            ImportPathsSettingsView(
-                viewModel: ImportPathsViewModel(importPathsRepository: PreviewImportPathsRepository()),
-                settingsViewModel: SettingsViewModel(telemetry: PreviewNullTelemetry()))
-                .frame(width: 450, height: 400)
-        }
+    #Preview("Empty", traits: .fixedLayout(width: 480, height: 420)) {
+        previewImportPathsSettings(paths: [])
     }
 
-    private final class PreviewNullTelemetry: TelemetryServiceProtocol {
+    #Preview("Paths", traits: .fixedLayout(width: 480, height: 420)) {
+        previewImportPathsSettings(paths: ["/tmp/proto", "/Users/test/protos"])
+    }
+
+    #Preview("Long Content", traits: .fixedLayout(width: 480, height: 420)) {
+        previewImportPathsSettings(paths: [
+            "/Users/shared/proto-includes/third-party/googleapis/google/cloud/billing/v1/customer_billing_and_subscription_admin",
+        ])
+    }
+
+    #Preview("Dark", traits: .fixedLayout(width: 480, height: 420)) {
+        previewImportPathsSettings(paths: ["/tmp/proto", "/Users/test/protos"])
+            .preferredColorScheme(.dark)
+    }
+
+    @MainActor
+    private func previewImportPathsSettings(paths: [String]) -> some View {
+        ImportPathsSettingsView(
+            viewModel: ImportPathsViewModel(
+                importPathsRepository: PreviewImportPathsRepository(paths: paths)),
+            settingsViewModel: SettingsViewModel(telemetry: PreviewSettingsTelemetry()))
+    }
+
+    @MainActor
+    private final class PreviewSettingsTelemetry: TelemetryServiceProtocol {
         func track(_: TelemetryEvent) {}
     }
 
-    private class PreviewImportPathsRepository: ImportPathsRepositoryProtocol {
-        var paths: [String] = ["/tmp/proto", "/Users/test/protos"]
+    private final class PreviewImportPathsRepository: ImportPathsRepositoryProtocol {
+        var paths: [String]
+
+        init(paths: [String]) {
+            self.paths = paths
+        }
+
         func getImportPaths() -> [String] {
             paths
         }

@@ -23,13 +23,11 @@ struct ConnectionSecurityIndicatorView: View {
                 connectionSecurity.isPopoverPresented = true
             }
         } label: {
-            Image(systemName: lockSymbol)
-                .foregroundColor(lockColor)
-                .font(.system(size: 16))
+            ConnectionLockBadge(state: connectionSecurity.lockState)
                 .frame(width: 24, height: 24)
         }
         .buttonStyle(.borderless)
-        .help(lockHelp)
+        .help(ConnectionLockBadge.helpText(for: connectionSecurity.lockState))
         .popover(isPresented: $isInfoPopoverPresented, arrowEdge: .bottom) {
             environmentInfoPopover
         }
@@ -38,48 +36,10 @@ struct ConnectionSecurityIndicatorView: View {
         }
     }
 
-    // MARK: - Lock Appearance
-
-    private var lockSymbol: String {
-        switch connectionSecurity.lockState {
-        case .plaintext:
-            "lock.open"
-        case .secure:
-            "lock.fill"
-        case .insecure:
-            "lock.trianglebadge.exclamationmark.fill"
-        }
-    }
-
-    private var lockColor: Color {
-        switch connectionSecurity.lockState {
-        case .plaintext:
-            .secondary
-        case .secure:
-            .green
-        case .insecure:
-            .yellow
-        }
-    }
-
-    private var lockHelp: String {
-        switch connectionSecurity.lockState {
-        case .plaintext:
-            "Plaintext connection — no TLS"
-        case .secure:
-            "Secure TLS connection"
-        case .insecure:
-            "TLS enabled with relaxed verification"
-        }
-    }
-
-    // MARK: - Environment Info Popover
-
     private var environmentInfoPopover: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 6) {
-                Image(systemName: lockSymbol)
-                    .foregroundColor(lockColor)
+                ConnectionLockBadge(state: connectionSecurity.lockState)
                 Text("Connection Info")
                     .font(.headline)
             }
@@ -108,41 +68,63 @@ struct ConnectionSecurityIndicatorView: View {
 }
 
 #if DEBUG
-    struct ConnectionSecurityIndicatorView_Previews: PreviewProvider {
-        static var previews: some View {
-            Group {
-                ConnectionSecurityIndicatorView(
-                    connectionSecurity: makeVM(tlsEnabled: false, envName: nil),
-                    activeEnvironmentName: nil,
-                    onEditEnvironment: nil)
-                    .previewDisplayName("Plaintext")
+    #Preview("Plaintext", traits: .fixedLayout(width: 48, height: 32)) {
+        ConnectionSecurityIndicatorView(
+            connectionSecurity: previewSecurityViewModel(tlsEnabled: false),
+            activeEnvironmentName: nil,
+            onEditEnvironment: nil)
+    }
 
-                ConnectionSecurityIndicatorView(
-                    connectionSecurity: makeVM(tlsEnabled: true, envName: nil),
-                    activeEnvironmentName: nil,
-                    onEditEnvironment: nil)
-                    .previewDisplayName("Secure")
+    #Preview("Secure", traits: .fixedLayout(width: 48, height: 32)) {
+        ConnectionSecurityIndicatorView(
+            connectionSecurity: previewSecurityViewModel(tlsEnabled: true),
+            activeEnvironmentName: nil,
+            onEditEnvironment: nil)
+    }
 
-                ConnectionSecurityIndicatorView(
-                    connectionSecurity: makeVM(tlsEnabled: true, envName: "Production"),
-                    activeEnvironmentName: "Production",
-                    onEditEnvironment: {})
-                    .previewDisplayName("Environment Mode")
-            }
-            .padding()
-        }
+    #Preview("Insecure", traits: .fixedLayout(width: 48, height: 32)) {
+        ConnectionSecurityIndicatorView(
+            connectionSecurity: previewSecurityViewModel(tlsEnabled: true, allowInsecure: true),
+            activeEnvironmentName: nil,
+            onEditEnvironment: nil)
+    }
 
-        @MainActor
-        private static func makeVM(tlsEnabled: Bool, envName: String?) -> ConnectionSecurityViewModel {
-            let vm = ConnectionSecurityViewModel()
-            let env = envName.map { ServerEnvironment(
-                name: $0,
+    #Preview("Environment", traits: .fixedLayout(width: 48, height: 32)) {
+        ConnectionSecurityIndicatorView(
+            connectionSecurity: previewSecurityViewModel(tlsEnabled: true, environmentName: "Production"),
+            activeEnvironmentName: "Production",
+            onEditEnvironment: {})
+    }
+
+    #Preview("Dark", traits: .fixedLayout(width: 48, height: 32)) {
+        ConnectionSecurityIndicatorView(
+            connectionSecurity: previewSecurityViewModel(tlsEnabled: true),
+            activeEnvironmentName: nil,
+            onEditEnvironment: nil)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(.background)
+            .preferredColorScheme(.dark)
+    }
+
+    @MainActor
+    private func previewSecurityViewModel(
+        tlsEnabled: Bool,
+        allowInsecure: Bool = false,
+        environmentName: String? = nil)
+        -> ConnectionSecurityViewModel
+    {
+        let viewModel = ConnectionSecurityViewModel()
+        let configuration = TLSConfiguration(isTLSEnabled: tlsEnabled, allowInsecure: allowInsecure)
+        if let environmentName {
+            let environment = ServerEnvironment(
+                name: environmentName,
                 host: "localhost",
                 port: 50051,
-                tlsConfiguration: TLSConfiguration(isTLSEnabled: tlsEnabled))
-            }
-            vm.update(activeEnvironment: env, restoredAdHocConfig: nil)
-            return vm
+                tlsConfiguration: configuration)
+            viewModel.update(activeEnvironment: environment, restoredAdHocConfig: nil)
+        } else {
+            viewModel.update(activeEnvironment: nil, restoredAdHocConfig: configuration)
         }
+        return viewModel
     }
 #endif

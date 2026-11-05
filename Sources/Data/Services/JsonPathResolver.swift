@@ -168,8 +168,11 @@ public final class JsonPathResolver: JsonPathResolverProtocol, Sendable {
             advance(json: json, index: &index, processed: &processed)
             if frame.escapeNext {
                 frame.escapeNext = false
-                if frame.stringIsKey { frame.pendingKey.append(ch) }
-                else { frame.pendingValue.append(ch) }
+                if frame.stringIsKey {
+                    frame.pendingKey.append(ch)
+                } else {
+                    frame.pendingValue.append(ch)
+                }
                 return true
             }
             if ch == "\\" {
@@ -186,8 +189,11 @@ public final class JsonPathResolver: JsonPathResolverProtocol, Sendable {
                 frame.pendingValue = ""
                 return true
             }
-            if frame.stringIsKey { frame.pendingKey.append(ch) }
-            else { frame.pendingValue.append(ch) }
+            if frame.stringIsKey {
+                frame.pendingKey.append(ch)
+            } else {
+                frame.pendingValue.append(ch)
+            }
             return true
         }
 
@@ -195,7 +201,9 @@ public final class JsonPathResolver: JsonPathResolverProtocol, Sendable {
         if ch == "}" {
             let pops = frame.popsPathOnClose
             stack.removeLast()
-            if pops, !path.isEmpty { path.removeLast() }
+            if pops, !path.isEmpty {
+                path.removeLast()
+            }
             advance(json: json, index: &index, processed: &processed)
             return false
         }
@@ -282,7 +290,9 @@ public final class JsonPathResolver: JsonPathResolverProtocol, Sendable {
         if ch == "]" {
             let pops = frame.popsPathOnClose
             stack.removeLast()
-            if pops, !path.isEmpty { path.removeLast() }
+            if pops, !path.isEmpty {
+                path.removeLast()
+            }
             advance(json: json, index: &index, processed: &processed)
             return false
         }
@@ -314,14 +324,17 @@ public final class JsonPathResolver: JsonPathResolverProtocol, Sendable {
             while index < json.endIndex, processed < limit {
                 let c = json[index]
                 advance(json: json, index: &index, processed: &processed)
-                if escape { escape = false
+                if escape {
+                    escape = false
                     accumulated.append(c)
                     continue
                 }
-                if c == "\\" { escape = true
+                if c == "\\" {
+                    escape = true
                     continue
                 }
-                if c == "\"" { completed = true
+                if c == "\"" {
+                    completed = true
                     break
                 }
                 accumulated.append(c)
@@ -453,12 +466,16 @@ public final class JsonPathResolver: JsonPathResolverProtocol, Sendable {
 
             if escaped {
                 escaped = false
-                if inString, isKey { pendingKey.append(ch) }
+                if inString, isKey {
+                    pendingKey.append(ch)
+                }
                 continue
             }
 
             if ch == "\\" {
-                if inString { escaped = true }
+                if inString {
+                    escaped = true
+                }
                 continue
             }
 
@@ -478,7 +495,9 @@ public final class JsonPathResolver: JsonPathResolverProtocol, Sendable {
             }
 
             if inString {
-                if isKey { pendingKey.append(ch) }
+                if isKey {
+                    pendingKey.append(ch)
+                }
                 continue
             }
 
@@ -487,14 +506,20 @@ public final class JsonPathResolver: JsonPathResolverProtocol, Sendable {
                 depth += 1
 
             case "}", "]":
-                if depth == 0 { return keys }
+                if depth == 0 {
+                    return keys
+                }
                 depth -= 1
 
             case ":":
-                if depth == 0 { afterColon = true }
+                if depth == 0 {
+                    afterColon = true
+                }
 
             case ",":
-                if depth == 0 { afterColon = false }
+                if depth == 0 {
+                    afterColon = false
+                }
 
             default:
                 break
@@ -533,13 +558,17 @@ public final class JsonPathResolver: JsonPathResolverProtocol, Sendable {
         while index < json.endIndex, processed < limit {
             let c = json[index]
             advance(json: json, index: &index, processed: &processed)
-            if escape { escape = false
+            if escape {
+                escape = false
                 continue
             }
-            if c == "\\" { escape = true
+            if c == "\\" {
+                escape = true
                 continue
             }
-            if c == "\"" { break }
+            if c == "\"" {
+                break
+            }
         }
     }
 
@@ -557,7 +586,9 @@ public final class JsonPathResolver: JsonPathResolverProtocol, Sendable {
 
             let c = json[index]
             advance(json: json, index: &index, processed: &processed)
-            if c != expected { return false }
+            if c != expected {
+                return false
+            }
         }
         return true
     }

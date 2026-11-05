@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Sidebar view displaying imported proto files and their services/methods hierarchy
+/// Sidebar view displaying imported proto files and their services/methods hierarchy.
 public struct SidebarView: View {
     @StateObject private var viewModel: SidebarViewModel
     @EnvironmentObject private var di: AppDI
@@ -46,7 +46,6 @@ public struct SidebarView: View {
 
             Divider()
 
-            // Content area
             if viewModel.isLoading {
                 loadingView
             } else if let error = viewModel.error {
@@ -73,50 +72,35 @@ public struct SidebarView: View {
                 }
         }
         .onChange(of: isImportPathsSheetPresented) { _, isPresented in
-            if isPresented { onSettingsOpened() }
+            if isPresented {
+                onSettingsOpened()
+            }
         }
     }
 
-    // MARK: - Subviews
-
     private var loadingView: some View {
-        VStack {
-            ProgressView()
-                .progressViewStyle(.circular)
-            Text("Loading proto file...")
-                .font(.caption)
-                .foregroundColor(.secondary)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        ProgressView("Loading proto file...")
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private func errorView(message: String) -> some View {
-        VStack(spacing: 12) {
-            Image(systemName: "exclamationmark.triangle")
-                .font(.system(size: 40))
-                .foregroundColor(.red)
-            Text("Error")
-                .font(.headline)
+        ContentUnavailableView {
+            Label("Could Not Load Protos", systemImage: "exclamationmark.triangle")
+        } description: {
             Text(message)
-                .font(.caption)
-                .foregroundColor(.secondary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private var emptyStateView: some View {
-        VStack(spacing: 12) {
-            Image(systemName: "doc.text")
-                .font(.system(size: 40))
-                .foregroundColor(.secondary)
-            Text("No proto files imported")
-                .font(.headline)
-            Text("Click the + button to import a .proto file")
-                .font(.caption)
-                .foregroundColor(.secondary)
-                .multilineTextAlignment(.center)
+        ContentUnavailableView {
+            Label("No Proto Files", systemImage: "doc.text")
+        } description: {
+            Text("Import a .proto file to browse its services.")
+        } actions: {
+            Button("Import…") {
+                isImporterPresented = true
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -152,8 +136,6 @@ public struct SidebarView: View {
         .listStyle(.sidebar)
     }
 
-    // MARK: - Actions
-
     private func handleFileImport(result: Result<[URL], Error>) {
         switch result {
         case let .success(urls):
@@ -169,9 +151,6 @@ public struct SidebarView: View {
     }
 }
 
-// MARK: - ProtoFileRow
-
-/// Row displaying a single proto file with its services and methods
 private struct ProtoFileRow: View {
     let protoFile: ProtoFile
     let onMethodSelected: (Method, Service, ProtoFile) -> Void
@@ -185,7 +164,7 @@ private struct ProtoFileRow: View {
             if protoFile.services.isEmpty {
                 Text("No services found")
                     .font(.caption)
-                    .foregroundColor(.secondary)
+                    .foregroundStyle(.secondary)
                     .padding(.leading)
             } else {
                 ForEach(protoFile.services, id: \.name) { service in
@@ -202,7 +181,7 @@ private struct ProtoFileRow: View {
                         .font(.body)
                 } icon: {
                     Image(systemName: "doc.text.fill")
-                        .foregroundColor(.blue)
+                        .foregroundStyle(.blue)
                 }
 
                 Spacer()
@@ -221,11 +200,12 @@ private struct ProtoFileRow: View {
                             ProgressView()
                                 .controlSize(.small)
                         } else {
-                            Image(systemName: "arrow.clockwise")
-                                .foregroundColor(.secondary)
+                            Label("Refresh", systemImage: "arrow.clockwise")
+                                .labelStyle(.iconOnly)
                         }
                     }
                     .buttonStyle(.borderless)
+                    .help("Refresh")
                     .disabled(isRefreshing)
                 }
             }
@@ -234,9 +214,6 @@ private struct ProtoFileRow: View {
     }
 }
 
-// MARK: - ServiceRow
-
-/// Row displaying a service with its methods
 private struct ServiceRow: View {
     let service: Service
     let protoFile: ProtoFile
@@ -248,7 +225,7 @@ private struct ServiceRow: View {
             if service.methods.isEmpty {
                 Text("No methods found")
                     .font(.caption)
-                    .foregroundColor(.secondary)
+                    .foregroundStyle(.secondary)
                     .padding(.leading)
             } else {
                 ForEach(service.methods, id: \.name) { method in
@@ -265,15 +242,12 @@ private struct ServiceRow: View {
                     .font(.body)
             } icon: {
                 Image(systemName: "list.bullet.rectangle")
-                    .foregroundColor(.purple)
+                    .foregroundStyle(.purple)
             }
         }
     }
 }
 
-// MARK: - MethodRow
-
-/// Row displaying a single method
 private struct MethodRow: View {
     let method: Method
     let service: Service
@@ -285,8 +259,7 @@ private struct MethodRow: View {
             onMethodSelected(method, service, protoFile)
         } label: {
             HStack {
-                Image(systemName: methodIcon)
-                    .foregroundColor(methodColor)
+                MethodKindIcon(isStreaming: method.isStreaming)
                     .frame(width: 16)
 
                 Text(method.name)
@@ -297,132 +270,91 @@ private struct MethodRow: View {
                 if method.isStreaming {
                     Image(systemName: "arrow.triangle.2.circlepath")
                         .font(.caption)
-                        .foregroundColor(.secondary)
+                        .foregroundStyle(.secondary)
                 }
             }
         }
         .buttonStyle(.plain)
     }
-
-    private var methodIcon: String {
-        method.isStreaming ? "arrow.left.arrow.right" : "arrow.right"
-    }
-
-    private var methodColor: Color {
-        method.isStreaming ? .orange : .green
-    }
 }
 
-// MARK: - Preview
-
 #if DEBUG
-    struct SidebarView_Previews: PreviewProvider {
-        static var previewDI: AppDI {
-            let di = AppDI()
-            di.register(ImportPathsRepositoryProtocol.self) { UserDefaultsImportPathsRepository() }
-            di.register(ImportPathsViewModel.self, lifecycle: .transient) {
-                ImportPathsViewModel(importPathsRepository: di.resolve(ImportPathsRepositoryProtocol.self)!)
-            }
-            return di
-        }
-
-        static var previews: some View {
-            // Preview with empty state
-            SidebarView(
-                viewModel: SidebarViewModel(
-                    importProtoFileUseCase: PreviewMockUseCase(),
-                    refreshProtoFileUseCase: PreviewMockRefreshUseCase(),
-                    watcher: PreviewNullWatcher(),
-                    importPathsRepository: PreviewMockImportPathsRepository(),
-                    protoPathsPersistence: PreviewMockProtoPathsPersistence(),
-                    loadSavedProtosUseCase: PreviewMockLoadSavedProtosUseCase(),
-                    logger: NullLogger(),
-                    telemetry: PreviewNullTelemetry()),
-                onMethodSelected: { _, _, _ in })
-                .environmentObject(previewDI)
-                .previewDisplayName("Empty State")
-
-            // Preview with data
-            SidebarView(
-                viewModel: {
-                    let vm = SidebarViewModel(
-                        importProtoFileUseCase: PreviewMockUseCase(),
-                        refreshProtoFileUseCase: PreviewMockRefreshUseCase(),
-                        watcher: PreviewNullWatcher(),
-                        importPathsRepository: PreviewMockImportPathsRepository(),
-                        protoPathsPersistence: PreviewMockProtoPathsPersistence(),
-                        loadSavedProtosUseCase: PreviewMockLoadSavedProtosUseCase(),
-                        logger: NullLogger(),
-                        telemetry: PreviewNullTelemetry())
-                    vm.protoFiles = [
-                        ProtoFile(
-                            name: "example.proto",
-                            path: URL(fileURLWithPath: "/test/example.proto"),
-                            services: [
-                                Service(
-                                    name: "UserService",
-                                    methods: [
-                                        Method(
-                                            name: "GetUser",
-                                            inputType: "GetUserRequest",
-                                            outputType: "GetUserResponse",
-                                            isStreaming: false),
-                                        Method(
-                                            name: "StreamUsers",
-                                            inputType: "StreamUsersRequest",
-                                            outputType: "User",
-                                            isStreaming: true),
-                                    ]),
-                            ]),
-                    ]
-                    return vm
-                }(),
-                onMethodSelected: { _, _, _ in
-                })
-                .environmentObject(previewDI)
-                .previewDisplayName("With Data")
-
-            // Preview with loading state
-            SidebarView(
-                viewModel: {
-                    let vm = SidebarViewModel(
-                        importProtoFileUseCase: PreviewMockUseCase(),
-                        refreshProtoFileUseCase: PreviewMockRefreshUseCase(),
-                        watcher: PreviewNullWatcher(),
-                        importPathsRepository: PreviewMockImportPathsRepository(),
-                        protoPathsPersistence: PreviewMockProtoPathsPersistence(),
-                        loadSavedProtosUseCase: PreviewMockLoadSavedProtosUseCase(),
-                        logger: NullLogger(),
-                        telemetry: PreviewNullTelemetry())
-                    vm.isLoading = true
-                    return vm
-                }(),
-                onMethodSelected: { _, _, _ in })
-                .environmentObject(previewDI)
-                .previewDisplayName("Loading")
-
-            // Preview with error
-            SidebarView(
-                viewModel: {
-                    let vm = SidebarViewModel(
-                        importProtoFileUseCase: PreviewMockUseCase(),
-                        refreshProtoFileUseCase: PreviewMockRefreshUseCase(),
-                        watcher: PreviewNullWatcher(),
-                        importPathsRepository: PreviewMockImportPathsRepository(),
-                        protoPathsPersistence: PreviewMockProtoPathsPersistence(),
-                        loadSavedProtosUseCase: PreviewMockLoadSavedProtosUseCase(),
-                        logger: NullLogger(),
-                        telemetry: PreviewNullTelemetry())
-                    vm.error = "Failed to load proto file"
-                    return vm
-                }(),
-                onMethodSelected: { _, _, _ in })
-                .environmentObject(previewDI)
-                .previewDisplayName("Error")
-        }
+    #Preview("Empty", traits: .fixedLayout(width: 320, height: 700)) {
+        previewSidebar()
     }
 
-    private final class PreviewMockUseCase: ImportProtoFileUseCaseProtocol {
+    #Preview("Loading", traits: .fixedLayout(width: 320, height: 700)) {
+        previewSidebar(isLoading: true)
+    }
+
+    #Preview("Error", traits: .fixedLayout(width: 320, height: 700)) {
+        previewSidebar(error: "Failed to load proto file: missing import \"google/protobuf/timestamp.proto\".")
+    }
+
+    #Preview("Data", traits: .fixedLayout(width: 320, height: 700)) {
+        previewSidebar(files: [.previewCatalog])
+    }
+
+    #Preview("Long Content", traits: .fixedLayout(width: 320, height: 700)) {
+        previewSidebar(files: [.previewLongNames])
+    }
+
+    #Preview("Dark", traits: .fixedLayout(width: 320, height: 700)) {
+        previewSidebar(files: [.previewCatalog])
+            .preferredColorScheme(.dark)
+    }
+
+    @MainActor
+    private func previewSidebar(
+        files: [ProtoFile] = [],
+        isLoading: Bool = false,
+        error: String? = nil)
+        -> some View
+    {
+        SidebarView(
+            viewModel: previewSidebarViewModel(files: files, isLoading: isLoading, error: error),
+            onMethodSelected: { _, _, _ in },
+            onSettingsOpened: {})
+            .environmentObject(previewSidebarDI())
+    }
+
+    @MainActor
+    private func previewSidebarViewModel(
+        files: [ProtoFile],
+        isLoading: Bool,
+        error: String?)
+        -> SidebarViewModel
+    {
+        let viewModel = SidebarViewModel(
+            importProtoFileUseCase: PreviewImportUseCase(),
+            refreshProtoFileUseCase: PreviewRefreshUseCase(),
+            watcher: PreviewNullWatcher(),
+            importPathsRepository: PreviewImportPathsRepository(),
+            protoPathsPersistence: PreviewProtoPathsPersistence(),
+            loadSavedProtosUseCase: PreviewLoadSavedProtosUseCase(),
+            logger: NullLogger(),
+            telemetry: PreviewSidebarTelemetry())
+        viewModel.protoFiles = files
+        viewModel.isLoading = isLoading
+        viewModel.error = error
+        return viewModel
+    }
+
+    @MainActor
+    private func previewSidebarDI() -> AppDI {
+        let repository = PreviewImportPathsRepository()
+        let di = AppDI()
+        di.register(ImportPathsRepositoryProtocol.self) { repository }
+        di.register(ImportPathsViewModel.self, lifecycle: .transient) {
+            ImportPathsViewModel(importPathsRepository: repository)
+        }
+        di.register(SettingsViewModel.self, lifecycle: .transient) {
+            SettingsViewModel(telemetry: PreviewSidebarTelemetry())
+        }
+        return di
+    }
+
+    private final class PreviewImportUseCase: ImportProtoFileUseCaseProtocol, Sendable {
         func execute(url: URL) throws -> ProtoFile {
             ProtoFile(name: "test.proto", path: url, services: [])
         }
@@ -432,44 +364,41 @@ private struct MethodRow: View {
         }
     }
 
-    private class PreviewMockImportPathsRepository: ImportPathsRepositoryProtocol {
+    private final class PreviewImportPathsRepository: ImportPathsRepositoryProtocol {
         func getImportPaths() -> [String] {
             []
         }
 
-        func saveImportPaths(_: [String]) {
-            // No-op for preview
-        }
+        func saveImportPaths(_: [String]) {}
     }
 
-    private class PreviewMockProtoPathsPersistence: ProtoPathsPersistenceProtocol {
-        func saveProtoPaths(_: [URL]) {
-            // No-op for preview
-        }
+    private final class PreviewProtoPathsPersistence: ProtoPathsPersistenceProtocol {
+        func saveProtoPaths(_: [URL]) {}
 
         func getProtoPaths() -> [URL] {
             []
         }
     }
 
-    private final class PreviewMockLoadSavedProtosUseCase: LoadSavedProtosUseCaseProtocol {
+    private final class PreviewLoadSavedProtosUseCase: LoadSavedProtosUseCaseProtocol, Sendable {
         func execute(urls _: [URL], importPaths _: [String]) -> [ProtoFile] {
             []
         }
     }
 
-    private final class PreviewNullTelemetry: TelemetryServiceProtocol {
+    @MainActor
+    private final class PreviewSidebarTelemetry: TelemetryServiceProtocol {
         func track(_: TelemetryEvent) {}
     }
 
-    private final class PreviewMockRefreshUseCase: RefreshProtoFileUseCaseProtocol {
+    private final class PreviewRefreshUseCase: RefreshProtoFileUseCaseProtocol, Sendable {
         func execute(protoFile: ProtoFile, importPaths _: [String]) throws -> ProtoFile {
             protoFile
         }
     }
 
-    private class PreviewNullWatcher: ProtoFileWatcherProtocol {
-        let changes: AsyncStream<ProtoFile> = AsyncStream { _ in }
+    private final class PreviewNullWatcher: ProtoFileWatcherProtocol, Sendable {
+        let changes: AsyncStream<ProtoFile> = AsyncStream { $0.finish() }
 
         func startWatching(_: ProtoFile) {}
         func stopWatching(_: ProtoFile) {}

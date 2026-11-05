@@ -102,7 +102,7 @@ public struct AboutView: View {
     private var trueRPCPromoSection: some View {
         HStack(alignment: .top, spacing: 14) {
             Image(systemName: "arrow.trianglehead.2.counterclockwise")
-                .font(.system(size: 28, weight: .light))
+                .font(.title.weight(.light))
                 .foregroundStyle(Color.accentColor)
                 .frame(width: 36, height: 36)
                 .padding(.top, 2)
@@ -224,9 +224,12 @@ public struct AboutView: View {
 }
 
 #if DEBUG
-    struct AboutView_Previews: PreviewProvider {
-        static var previews: some View {
-            AboutView(viewModel: AboutViewModel())
-        }
+    #Preview("Default", traits: .fixedLayout(width: 500, height: 720)) {
+        AboutView(viewModel: AboutViewModel())
+    }
+
+    #Preview("Dark", traits: .fixedLayout(width: 500, height: 720)) {
+        AboutView(viewModel: AboutViewModel())
+            .preferredColorScheme(.dark)
     }
 #endif

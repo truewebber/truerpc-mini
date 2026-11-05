@@ -271,8 +271,12 @@ struct JSONTextEditor: NSViewRepresentable {
             var i = cursorOffset - 1
             while i >= 0 {
                 let c = ns.character(at: i)
-                if c == JsonScanUTF16.lf || c == JsonScanUTF16.cr { return nil }
-                if c != JsonScanUTF16.space, c != JsonScanUTF16.tab { return (i, c) }
+                if c == JsonScanUTF16.lf || c == JsonScanUTF16.cr {
+                    return nil
+                }
+                if c != JsonScanUTF16.space, c != JsonScanUTF16.tab {
+                    return (i, c)
+                }
                 i -= 1
             }
             return nil
@@ -288,8 +292,12 @@ struct JSONTextEditor: NSViewRepresentable {
             var i = cursorOffset
             while i < ns.length {
                 let c = ns.character(at: i)
-                if c == JsonScanUTF16.lf || c == JsonScanUTF16.cr { return nil }
-                if c != JsonScanUTF16.space, c != JsonScanUTF16.tab { return (i, c) }
+                if c == JsonScanUTF16.lf || c == JsonScanUTF16.cr {
+                    return nil
+                }
+                if c != JsonScanUTF16.space, c != JsonScanUTF16.tab {
+                    return (i, c)
+                }
                 i += 1
             }
             return nil
@@ -516,3 +524,17 @@ struct JSONTextEditor: NSViewRepresentable {
         }
     }
 }
+
+#if DEBUG
+    #Preview("Empty", traits: .fixedLayout(width: 390, height: 280)) {
+        JSONTextEditor(text: .constant(""))
+    }
+
+    #Preview("Document", traits: .fixedLayout(width: 390, height: 280)) {
+        JSONTextEditor(text: .constant(PreviewJSON.shortObject))
+    }
+
+    #Preview("Long Content", traits: .fixedLayout(width: 390, height: 280)) {
+        JSONTextEditor(text: .constant(PreviewJSON.longDocument))
+    }
+#endif

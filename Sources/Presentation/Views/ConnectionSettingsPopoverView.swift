@@ -1,4 +1,3 @@
-import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -70,8 +69,6 @@ public struct ConnectionSettingsPopoverView: View {
         .frame(width: 360)
     }
 
-    // MARK: - Helpers
-
     private var sniBinding: Binding<String> {
         Binding(
             get: { viewModel.adHocConfig.sniOverride ?? "" },
@@ -89,74 +86,42 @@ public struct ConnectionSettingsPopoverView: View {
     }
 }
 
-// MARK: - SecurityScopedFilePickerButton
-
-/// A button that shows the selected file's name and opens a file picker on tap.
-/// Uses SwiftUI's `.fileImporter` which handles security-scoped resources automatically.
-struct SecurityScopedFilePickerButton: View {
-    let label: String
-    let placeholder: String
-    @Binding var url: URL?
-    let contentTypes: [UTType]
-
-    @State private var isPickerPresented = false
-
-    var body: some View {
-        HStack {
-            Text(label)
-            Spacer()
-            Button {
-                isPickerPresented = true
-            } label: {
-                Text(url?.lastPathComponent ?? placeholder)
-                    .foregroundColor(url == nil ? .secondary : .primary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                    .frame(maxWidth: 160, alignment: .trailing)
-            }
-            .buttonStyle(.borderless)
-
-            if url != nil {
-                Button {
-                    url = nil
-                } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .foregroundColor(.secondary)
-                }
-                .buttonStyle(.borderless)
-            }
-        }
-        .fileImporter(
-            isPresented: $isPickerPresented,
-            allowedContentTypes: contentTypes,
-            allowsMultipleSelection: false)
-        { result in
-            if case let .success(urls) = result {
-                url = urls.first
-            }
-        }
-    }
-}
-
 #if DEBUG
-    struct ConnectionSettingsPopoverView_Previews: PreviewProvider {
-        static var previews: some View {
-            Group {
-                ConnectionSettingsPopoverView(viewModel: previewViewModel(tlsEnabled: false))
-                    .previewDisplayName("Plaintext")
+    #Preview("Plaintext", traits: .fixedLayout(width: 360, height: 180)) {
+        ConnectionSettingsPopoverView(viewModel: previewConnectionSettingsViewModel(tlsEnabled: false))
+    }
 
-                ConnectionSettingsPopoverView(viewModel: previewViewModel(tlsEnabled: true))
-                    .previewDisplayName("TLS Enabled")
-            }
-        }
+    #Preview("TLS", traits: .fixedLayout(width: 360, height: 520)) {
+        ConnectionSettingsPopoverView(viewModel: previewConnectionSettingsViewModel(tlsEnabled: true))
+    }
 
-        @MainActor
-        private static func previewViewModel(tlsEnabled: Bool) -> ConnectionSecurityViewModel {
-            let vm = ConnectionSecurityViewModel()
-            vm.update(
-                activeEnvironment: nil,
-                restoredAdHocConfig: TLSConfiguration(isTLSEnabled: tlsEnabled))
-            return vm
-        }
+    #Preview("Long Content", traits: .fixedLayout(width: 360, height: 520)) {
+        ConnectionSettingsPopoverView(viewModel: previewConnectionSettingsViewModel(
+            tlsEnabled: true,
+            sniOverride: "edge.payments.customer-facing.eu-west-1.internal.example.com",
+            customCAURL: URL(
+                fileURLWithPath: "/Users/shared/certs/production/west-europe/customer-facing/intermediates/internal-corporate-root-certificate-authority.pem")))
+    }
+
+    #Preview("Dark", traits: .fixedLayout(width: 360, height: 520)) {
+        ConnectionSettingsPopoverView(viewModel: previewConnectionSettingsViewModel(tlsEnabled: true))
+            .preferredColorScheme(.dark)
+    }
+
+    @MainActor
+    private func previewConnectionSettingsViewModel(
+        tlsEnabled: Bool,
+        sniOverride: String? = nil,
+        customCAURL: URL? = nil)
+        -> ConnectionSecurityViewModel
+    {
+        let viewModel = ConnectionSecurityViewModel()
+        viewModel.update(
+            activeEnvironment: nil,
+            restoredAdHocConfig: TLSConfiguration(
+                isTLSEnabled: tlsEnabled,
+                customCAURL: customCAURL,
+                sniOverride: sniOverride))
+        return viewModel
     }
 #endif

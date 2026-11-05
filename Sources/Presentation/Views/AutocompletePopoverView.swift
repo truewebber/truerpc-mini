@@ -29,7 +29,9 @@ public struct AutocompletePopoverView: View {
     private static let rowHeight: CGFloat = 28
 
     private var contentHeight: CGFloat {
-        min(CGFloat(viewModel.suggestions.count) * Self.rowHeight, maxHeight)
+        guard !viewModel.suggestions.isEmpty else { return Self.rowHeight }
+
+        return min(CGFloat(viewModel.suggestions.count) * Self.rowHeight, maxHeight)
     }
 
     public var body: some View {
@@ -65,8 +67,6 @@ public struct AutocompletePopoverView: View {
     }
 }
 
-// MARK: - SuggestionRow
-
 private struct SuggestionRow: View {
     let suggestion: AutocompleteSuggestion
     let isSelected: Bool
@@ -78,23 +78,30 @@ private struct SuggestionRow: View {
                 .frame(width: 16, height: 16)
 
             Text(suggestion.name)
-                .font(.system(.body, design: .monospaced))
+                .font(.body.monospaced())
                 .lineLimit(1)
                 .frame(maxWidth: .infinity, alignment: .leading)
+                .foregroundStyle(rowTextStyle)
                 .accessibilityIdentifier("suggestion_name_\(index)")
 
             Text(suggestion.typeHint)
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(isSelected ? rowTextStyle : AnyShapeStyle(.secondary))
                 .lineLimit(1)
                 .accessibilityIdentifier("suggestion_type_\(index)")
         }
         .padding(.horizontal, 10)
         .frame(height: 28)
-        .background(isSelected ? Color.accentColor.opacity(0.15) : Color.clear)
+        .background(isSelected ? Color(nsColor: .selectedContentBackgroundColor) : Color.clear)
         .opacity(suggestion.oneOfGroup != nil ? 0.7 : 1.0)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("suggestion_row_\(index)")
+    }
+
+    private var rowTextStyle: AnyShapeStyle {
+        isSelected
+            ? AnyShapeStyle(Color(nsColor: .alternateSelectedControlTextColor))
+            : AnyShapeStyle(.primary)
     }
 
     @ViewBuilder
@@ -102,35 +109,39 @@ private struct SuggestionRow: View {
         switch suggestion.kind {
         case .message:
             Image(systemName: "curlybraces")
-                .foregroundStyle(Color.purple)
+                .foregroundStyle(.purple)
 
         case .repeated:
             Image(systemName: "square.stack")
-                .foregroundStyle(Color.orange)
+                .foregroundStyle(.orange)
 
         case .string:
             Image(systemName: "text.quote")
-                .foregroundStyle(Color.green)
+                .foregroundStyle(.green)
 
         case .number:
             Image(systemName: "number.circle")
-                .foregroundStyle(Color.blue)
+                .foregroundStyle(.blue)
 
         case .bool:
             Image(systemName: "checkmark.circle")
-                .foregroundStyle(Color.teal)
+                .foregroundStyle(.teal)
 
-        case .enum, .enumField:
+        case .enumField:
             Image(systemName: "list.bullet")
-                .foregroundStyle(Color.yellow)
+                .foregroundStyle(.yellow)
+
+        case .enum:
+            Image(systemName: "checklist")
+                .foregroundStyle(.yellow)
 
         case .wktString:
             Image(systemName: "clock")
-                .foregroundStyle(Color.cyan)
+                .foregroundStyle(.cyan)
 
         case .wktDefault:
-            Image(systemName: "clock")
-                .foregroundStyle(Color.cyan)
+            Image(systemName: "clock.badge.checkmark")
+                .foregroundStyle(.cyan)
 
         case .fillDefaults:
             Image(systemName: "sparkles")
@@ -144,33 +155,74 @@ private struct SuggestionRow: View {
 }
 
 #if DEBUG
-    struct AutocompletePopoverView_Previews: PreviewProvider {
-        static var previews: some View {
-            AutocompletePopoverView(viewModel: previewViewModel)
-                .padding()
-                .previewDisplayName("Autocomplete Popover")
-        }
+    #Preview("Suggestions", traits: .fixedLayout(width: 320, height: 240)) {
+        AutocompletePopoverView(viewModel: previewAutocompleteViewModel(
+            suggestions: previewSuggestions,
+            selectedIndex: -1))
+    }
 
-        @MainActor
-        private static var previewViewModel: AutocompleteViewModel {
-            let vm = AutocompleteViewModel(
-                provider: PreviewAutocompleteProvider(),
-                resolver: JsonPathResolver(),
-                methodInputType: ".preview.PreviewMessage")
-            vm.suggestions = [
-                AutocompleteSuggestion(name: "(fill defaults)", typeHint: "all fields", kind: .fillDefaults),
-                AutocompleteSuggestion(name: "firstName", typeHint: "string", kind: .string),
-                AutocompleteSuggestion(name: "lastName", typeHint: "string", kind: .string),
-                AutocompleteSuggestion(name: "age", typeHint: "int32", kind: .number),
-                AutocompleteSuggestion(name: "active", typeHint: "bool", kind: .bool),
-                AutocompleteSuggestion(name: "address", typeHint: "Address", kind: .message),
-                AutocompleteSuggestion(name: "tags", typeHint: "string", kind: .repeated),
-                AutocompleteSuggestion(name: "status", typeHint: "Status", kind: .enum),
-            ]
-            vm.selectedIndex = 1
-            vm.isVisible = true
-            return vm
-        }
+    #Preview("Selected", traits: .fixedLayout(width: 320, height: 240)) {
+        AutocompletePopoverView(viewModel: previewAutocompleteViewModel(
+            suggestions: previewSuggestions,
+            selectedIndex: 2))
+    }
+
+    #Preview("One Of", traits: .fixedLayout(width: 320, height: 240)) {
+        AutocompletePopoverView(viewModel: previewAutocompleteViewModel(
+            suggestions: [
+                AutocompleteSuggestion(
+                    name: "email",
+                    typeHint: "string",
+                    kind: .string,
+                    oneOfGroup: "contact"),
+                AutocompleteSuggestion(
+                    name: "phone",
+                    typeHint: "string",
+                    kind: .string,
+                    oneOfGroup: "contact"),
+            ],
+            selectedIndex: 0))
+    }
+
+    #Preview("Empty", traits: .fixedLayout(width: 320, height: 80)) {
+        AutocompletePopoverView(viewModel: previewAutocompleteViewModel(suggestions: []))
+    }
+
+    #Preview("Dark", traits: .fixedLayout(width: 320, height: 240)) {
+        AutocompletePopoverView(viewModel: previewAutocompleteViewModel(
+            suggestions: previewSuggestions,
+            selectedIndex: 1))
+            .preferredColorScheme(.dark)
+    }
+
+    private let previewSuggestions: [AutocompleteSuggestion] = [
+        AutocompleteSuggestion(name: "(fill defaults)", typeHint: "all fields", kind: .fillDefaults),
+        AutocompleteSuggestion(name: "firstName", typeHint: "string", kind: .string),
+        AutocompleteSuggestion(name: "lastName", typeHint: "string", kind: .string),
+        AutocompleteSuggestion(name: "age", typeHint: "int32", kind: .number),
+        AutocompleteSuggestion(name: "active", typeHint: "bool", kind: .bool),
+        AutocompleteSuggestion(name: "address", typeHint: "Address", kind: .message),
+        AutocompleteSuggestion(name: "tags", typeHint: "string", kind: .repeated),
+        AutocompleteSuggestion(name: "status", typeHint: "Status", kind: .enumField),
+        AutocompleteSuggestion(name: "ACTIVE", typeHint: "Status", kind: .enum),
+        AutocompleteSuggestion(name: "createdAt", typeHint: "Timestamp", kind: .wktString),
+        AutocompleteSuggestion(name: "insert default value", typeHint: "Timestamp", kind: .wktDefault),
+    ]
+
+    @MainActor
+    private func previewAutocompleteViewModel(
+        suggestions: [AutocompleteSuggestion],
+        selectedIndex: Int = 0)
+        -> AutocompleteViewModel
+    {
+        let viewModel = AutocompleteViewModel(
+            provider: PreviewAutocompleteProvider(),
+            resolver: JsonPathResolver(),
+            methodInputType: ".preview.PreviewMessage")
+        viewModel.suggestions = suggestions
+        viewModel.selectedIndex = selectedIndex
+        viewModel.isVisible = !suggestions.isEmpty
+        return viewModel
     }
 
     private struct PreviewAutocompleteProvider: AutocompleteProviderProtocol {

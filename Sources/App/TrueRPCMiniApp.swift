@@ -414,14 +414,29 @@ struct TrueRPCMiniApp: App {
     // MARK: - Subviews
 
     private var placeholderView: some View {
-        VStack(spacing: 16) {
-            Image(systemName: "doc.text")
-                .font(.system(size: 60))
-                .foregroundColor(.secondary)
-            Text("Select a method to start")
-                .font(.title2)
-                .foregroundColor(.secondary)
+        NoMethodSelectedView()
+    }
+}
+
+/// Detail column shown when no editor tab is open.
+private struct NoMethodSelectedView: View {
+    var body: some View {
+        ContentUnavailableView {
+            Label("No Method Selected", systemImage: "doc.text")
+        } description: {
+            Text("Select a method in the sidebar to edit and run a request.")
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
+
+#if DEBUG
+    #Preview("Nothing Selected", traits: .fixedLayout(width: 780, height: 700)) {
+        NoMethodSelectedView()
+    }
+
+    #Preview("Dark", traits: .fixedLayout(width: 780, height: 700)) {
+        NoMethodSelectedView()
+            .preferredColorScheme(.dark)
+    }
+#endif

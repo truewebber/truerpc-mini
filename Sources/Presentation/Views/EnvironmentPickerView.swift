@@ -1,7 +1,6 @@
 import SwiftUI
-import UniformTypeIdentifiers
 
-/// View for managing saved server environments (named gRPC endpoint configurations)
+/// View for managing saved server environments (named gRPC endpoint configurations).
 public struct EnvironmentPickerView: View {
     @ObservedObject var viewModel: GlobalEnvironmentViewModel
     @State private var isAddSheetPresented = false
@@ -39,8 +38,6 @@ public struct EnvironmentPickerView: View {
         }
     }
 
-    // MARK: - Subviews
-
     private var headerView: some View {
         HStack {
             Text("Environments")
@@ -56,28 +53,24 @@ public struct EnvironmentPickerView: View {
         .padding()
     }
 
+    @ViewBuilder
     private var contentView: some View {
-        Group {
-            if viewModel.environments.isEmpty {
-                emptyStateView
-            } else {
-                environmentsList
-            }
+        if viewModel.environments.isEmpty {
+            emptyStateView
+        } else {
+            environmentsList
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private var emptyStateView: some View {
-        VStack(spacing: 12) {
-            Image(systemName: "server.rack")
-                .font(.system(size: 40))
-                .foregroundColor(.secondary)
-            Text("No environments")
-                .font(.headline)
-            Text("Add a named endpoint to quickly switch between servers")
-                .font(.caption)
-                .foregroundColor(.secondary)
-                .multilineTextAlignment(.center)
+        ContentUnavailableView {
+            Label("No Environments", systemImage: "server.rack")
+        } description: {
+            Text("Add a named endpoint to quickly switch between servers.")
+        } actions: {
+            Button("Add…") {
+                isAddSheetPresented = true
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -95,8 +88,6 @@ public struct EnvironmentPickerView: View {
     }
 }
 
-// MARK: - EnvironmentRow
-
 private struct EnvironmentRow: View {
     let environment: ServerEnvironment
     let isSelected: Bool
@@ -109,228 +100,56 @@ private struct EnvironmentRow: View {
             Button(action: onSelect) {
                 HStack(spacing: 10) {
                     Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                        .foregroundColor(isSelected ? .accentColor : .secondary)
+                        .foregroundStyle(isSelected ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(.secondary))
                         .frame(width: 20)
                     VStack(alignment: .leading, spacing: 2) {
                         Text(environment.name)
                             .font(.body)
                         Text(environment.url)
-                            .font(.system(.caption, design: .monospaced))
-                            .foregroundColor(.secondary)
+                            .font(.caption.monospaced())
+                            .foregroundStyle(.secondary)
                     }
                 }
             }
             .buttonStyle(.plain)
             Spacer()
             Button(action: onEdit) {
-                Image(systemName: "pencil")
+                Label("Edit", systemImage: "pencil")
+                    .labelStyle(.iconOnly)
             }
             .buttonStyle(.borderless)
+            .help("Edit")
             Button(role: .destructive, action: onDelete) {
-                Image(systemName: "trash")
+                Label("Delete", systemImage: "trash")
+                    .labelStyle(.iconOnly)
             }
             .buttonStyle(.borderless)
+            .help("Delete")
         }
         .padding(.vertical, 2)
     }
 }
 
-// MARK: - EnvironmentFormView
-
-/// Sheet for creating or editing a ServerEnvironment
-struct EnvironmentFormView: View {
-    @State private var name: String
-    @State private var host: String
-    @State private var portText: String
-    @State private var tlsConfig: TLSConfiguration
-
-    private let existingId: UUID?
-    let onSave: (ServerEnvironment) -> Void
-    let onCancel: () -> Void
-
-    init(
-        environment: ServerEnvironment? = nil,
-        onSave: @escaping (ServerEnvironment) -> Void,
-        onCancel: @escaping () -> Void)
-    {
-        self.existingId = environment?.id
-        _name = State(initialValue: environment?.name ?? "")
-        _host = State(initialValue: environment?.host ?? "")
-        _portText = State(initialValue: environment.map { String($0.port) } ?? "")
-        _tlsConfig = State(initialValue: environment?.tlsConfiguration ?? .defaults)
-        self.onSave = onSave
-        self.onCancel = onCancel
-    }
-
-    private var port: Int? {
-        Int(portText)
-    }
-
-    private var isValid: Bool {
-        !name.trimmingCharacters(in: .whitespaces).isEmpty
-            && !host.trimmingCharacters(in: .whitespaces).isEmpty
-            && port != nil
-    }
-
-    private var tlsModeBinding: Binding<TLSMode> {
-        Binding(
-            get: { tlsConfig.isTLSEnabled ? .tls : .plaintext },
-            set: { tlsConfig.isTLSEnabled = $0 == .tls })
-    }
-
-    private var certificateContentTypes: [UTType] {
-        [
-            UTType(filenameExtension: "pem"),
-            UTType(filenameExtension: "crt"),
-            UTType(filenameExtension: "cer"),
-            UTType(filenameExtension: "key"),
-            .data,
-        ].compactMap(\.self)
-    }
-
-    var body: some View {
-        VStack(spacing: 0) {
-            HStack {
-                Text(existingId == nil ? "New Environment" : "Edit Environment")
-                    .font(.headline)
-                Spacer()
-            }
-            .padding()
-            Divider()
-            Form {
-                Section("Connection") {
-                    TextField("Name", text: $name)
-                        .textFieldStyle(.roundedBorder)
-                    TextField("Host", text: $host)
-                        .textFieldStyle(.roundedBorder)
-                    TextField("Port", text: $portText)
-                        .textFieldStyle(.roundedBorder)
-                }
-                Section("Security") {
-                    Picker("Mode", selection: tlsModeBinding) {
-                        Text("Plaintext").tag(TLSMode.plaintext)
-                        Text("TLS").tag(TLSMode.tls)
-                    }
-                    .pickerStyle(.segmented)
-                }
-
-                if tlsConfig.isTLSEnabled {
-                    Section("Server Authentication") {
-                        Toggle("Allow Insecure (Skip Verify)", isOn: $tlsConfig.allowInsecure)
-                        SecurityScopedFilePickerButton(
-                            label: "Custom CA Certificate",
-                            placeholder: "None",
-                            url: $tlsConfig.customCAURL,
-                            contentTypes: certificateContentTypes)
-                    }
-
-                    Section("Client Authentication (mTLS)") {
-                        SecurityScopedFilePickerButton(
-                            label: "Client Certificate",
-                            placeholder: "None",
-                            url: $tlsConfig.clientCertURL,
-                            contentTypes: certificateContentTypes)
-                        SecurityScopedFilePickerButton(
-                            label: "Private Key",
-                            placeholder: "None",
-                            url: $tlsConfig.clientKeyURL,
-                            contentTypes: certificateContentTypes)
-                    }
-
-                    Section("Advanced") {
-                        HStack {
-                            Text("SNI Host Override")
-                            Spacer()
-                            TextField("Optional", text: sniBinding)
-                                .textFieldStyle(.roundedBorder)
-                                .frame(width: 160)
-                        }
-                    }
-                }
-            }
-            .formStyle(.grouped)
-            Divider()
-            HStack {
-                Spacer()
-                Button("Cancel", action: onCancel)
-                    .keyboardShortcut(.cancelAction)
-                Button("Save") {
-                    guard let port else { return }
-
-                    let env = ServerEnvironment(
-                        id: existingId ?? UUID(),
-                        name: name.trimmingCharacters(in: .whitespaces),
-                        host: host.trimmingCharacters(in: .whitespaces),
-                        port: port,
-                        tlsConfiguration: tlsConfig)
-                    onSave(env)
-                }
-                .keyboardShortcut(.defaultAction)
-                .disabled(!isValid)
-            }
-            .padding()
-        }
-        .frame(minWidth: 400, minHeight: 300)
-    }
-
-    private var sniBinding: Binding<String> {
-        Binding(
-            get: { tlsConfig.sniOverride ?? "" },
-            set: { tlsConfig.sniOverride = $0.isEmpty ? nil : $0 })
-    }
-}
-
-// MARK: - TLSMode
-
-private enum TLSMode: Hashable {
-    case plaintext
-    case tls
-}
-
 #if DEBUG
-    struct EnvironmentPickerView_Previews: PreviewProvider {
-        static var previews: some View {
-            EnvironmentPickerView(viewModel: PreviewGlobalEnvironmentViewModel())
-                .frame(width: 450, height: 400)
-        }
+    #Preview("Empty", traits: .fixedLayout(width: 450, height: 480)) {
+        EnvironmentPickerView(viewModel: PreviewGlobalEnvironments.viewModel(environments: []))
     }
 
-    @MainActor
-    private final class PreviewGlobalEnvironmentViewModel: GlobalEnvironmentViewModel {
-        init() {
-            super.init(
-                loadEnvironmentsUseCase: PreviewLoadUseCase(),
-                saveEnvironmentUseCase: PreviewSaveUseCase(),
-                deleteEnvironmentUseCase: PreviewDeleteUseCase(),
-                selectEnvironmentUseCase: PreviewSelectUseCase(),
-                getSelectedEnvironmentUseCase: PreviewGetSelectedUseCase())
-        }
+    #Preview("List", traits: .fixedLayout(width: 450, height: 480)) {
+        EnvironmentPickerView(
+            viewModel: PreviewGlobalEnvironments.viewModel(selected: .previewLocal))
     }
 
-    private final class PreviewLoadUseCase: LoadEnvironmentsUseCaseProtocol {
-        func execute() -> [ServerEnvironment] {
-            [
-                ServerEnvironment(name: "Local", host: "localhost", port: 50051),
-                ServerEnvironment(name: "Staging", host: "staging.example.com", port: 443),
-            ]
-        }
+    #Preview("Long Content", traits: .fixedLayout(width: 450, height: 480)) {
+        EnvironmentPickerView(
+            viewModel: PreviewGlobalEnvironments.viewModel(
+                environments: [.previewLocal, .previewLongName],
+                selected: .previewLongName))
     }
 
-    private final class PreviewSaveUseCase: SaveEnvironmentUseCaseProtocol {
-        func execute(_: ServerEnvironment) {}
-    }
-
-    private final class PreviewDeleteUseCase: DeleteEnvironmentUseCaseProtocol {
-        func execute(id _: UUID) {}
-    }
-
-    private final class PreviewSelectUseCase: SelectEnvironmentUseCaseProtocol {
-        func execute(_: ServerEnvironment?) {}
-    }
-
-    private final class PreviewGetSelectedUseCase: GetSelectedEnvironmentUseCaseProtocol {
-        func execute() -> ServerEnvironment? {
-            nil
-        }
+    #Preview("Dark", traits: .fixedLayout(width: 450, height: 480)) {
+        EnvironmentPickerView(
+            viewModel: PreviewGlobalEnvironments.viewModel(selected: .previewLocal))
+            .preferredColorScheme(.dark)
     }
 #endif

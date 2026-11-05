@@ -72,12 +72,18 @@ final class StubProtoRepository: ProtoRepositoryProtocol, Sendable {
         let trimmed = typeName.hasPrefix(".") ? String(typeName.dropFirst()) : typeName
         let found: EnumDescriptor? = storage.withLock { state in
             // 1. Explicit top-level enum map
-            if let hit = state.enumDescriptors[typeName] { return hit }
-            if let hit = state.enumDescriptors[trimmed] { return hit }
+            if let hit = state.enumDescriptors[typeName] {
+                return hit
+            }
+            if let hit = state.enumDescriptors[trimmed] {
+                return hit
+            }
             // 2. Nested enums inside registered message descriptors
             for (_, messageDesc) in state.descriptors {
                 for (_, enumDesc) in messageDesc.nestedEnums {
-                    if enumDesc.fullName == typeName || enumDesc.fullName == trimmed { return enumDesc }
+                    if enumDesc.fullName == typeName || enumDesc.fullName == trimmed {
+                        return enumDesc
+                    }
                 }
             }
             return nil
