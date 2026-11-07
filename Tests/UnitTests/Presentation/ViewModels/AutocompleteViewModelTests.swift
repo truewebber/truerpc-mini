@@ -212,6 +212,21 @@ final class AutocompleteViewModelTests: XCTestCase {
         XCTAssertEqual(vm.suggestions.map(\.name), ["name"])
     }
 
+    func test_textDidChange_whenValueIsAlreadyPresent_hidesTypeName() async {
+        let hint = JsonValueTypeHint(name: "Timestamp", kind: .wktString)
+        let vm = makeSUT(suggestions: [], valueTypeHint: hint)
+        mockResolver.stubResolve(AutocompleteContext(
+            resolvedPath: ["names"],
+            mode: .enumValue,
+            currentFieldKey: "birthday"))
+        let text = "{\n  \"birthday\": \"2026-11-07T13:47:26Z\"\n  \"id\": \"\"\n}"
+        let cursor = (text as NSString).range(of: "\"id\"").location
+
+        await vm.textDidChange(text, cursorOffset: cursor, protoFile: testProtoFile)
+
+        XCTAssertNil(vm.valueTypeHint)
+    }
+
     func test_textDidChange_textWithoutOpeningBrace_doesNotShowSuggestions() async {
         let vm = makeSUT(suggestions: [makeSuggestion()])
 
@@ -335,6 +350,27 @@ final class AutocompleteViewModelTests: XCTestCase {
     }
 
     // MARK: - dismiss
+
+    func test_dismiss_keepsTheValueTypeHint() async {
+        let hint = JsonValueTypeHint(name: "bool", kind: .bool)
+        let vm = makeSUT(
+            suggestions: [makeSuggestion(name: "true", kind: .boolLiteral)],
+            valueTypeHint: hint)
+        mockResolver.stubResolve(AutocompleteContext(
+            resolvedPath: [],
+            mode: .enumValue,
+            currentFieldKey: "flags"))
+        let text = "{\n  \"flags\": "
+        await vm.textDidChange(text, cursorOffset: (text as NSString).length, protoFile: testProtoFile)
+        XCTAssertEqual(vm.valueTypeHint, hint)
+        XCTAssertTrue(vm.isVisible)
+
+        vm.dismiss()
+
+        XCTAssertFalse(vm.isVisible)
+        XCTAssertTrue(vm.suggestions.isEmpty)
+        XCTAssertEqual(vm.valueTypeHint, hint)
+    }
 
     func test_dismiss_clearsStateAndHidesPopover() async {
         let vm = makeSUT(suggestions: [makeSuggestion(name: "a")])
@@ -734,13 +770,265 @@ final class AutocompleteViewModelTests: XCTestCase {
 
     // MARK: - wktDefault survives partialKey filtering
 
+    func test_textDidChange_outsideRoot_clearsTypeName() async {
+        let hint = JsonValueTypeHint(name: "string", kind: .string)
+        let vm = makeSUT(suggestions: [], valueTypeHint: hint)
+        mockResolver.stubResolve(AutocompleteContext(
+            resolvedPath: [],
+            mode: .enumValue,
+            currentFieldKey: "name"))
+        let text = "{\"name\": \"\"}"
+        let cursor = (text as NSString).range(of: "\"\"").location + 1
+        await vm.textDidChange(text, cursorOffset: cursor, protoFile: testProtoFile)
+        XCTAssertEqual(vm.valueTypeHint, hint)
+
+        mockResolver.stubResolve(AutocompleteContext(
+            resolvedPath: [],
+            mode: .key,
+            isOutsideRootObject: true))
+        await vm.textDidChange("{\"name\": \"a\"}", cursorOffset: 13, protoFile: testProtoFile)
+
+        XCTAssertNil(vm.valueTypeHint)
+        XCTAssertFalse(vm.isVisible)
+    }
+
+    func test_textDidChange_arrayRoot_clearsTypeName() async {
+        let hint = JsonValueTypeHint(name: "string", kind: .string)
+        let vm = makeSUT(suggestions: [], valueTypeHint: hint)
+        mockResolver.stubResolve(AutocompleteContext(resolvedPath: [], mode: .arrayElement))
+
+        await vm.textDidChange("[\"\"]", cursorOffset: 2, protoFile: testProtoFile)
+
+        XCTAssertNil(vm.valueTypeHint)
+        XCTAssertFalse(vm.isVisible)
+    }
+
+    func test_textDidChange_leadingWhitespace_publishesTypeName() async {
+        let hint = JsonValueTypeHint(name: "string", kind: .string)
+        let vm = makeSUT(suggestions: [], valueTypeHint: hint)
+        mockResolver.stubResolve(AutocompleteContext(
+            resolvedPath: [],
+            mode: .enumValue,
+            currentFieldKey: "name"))
+        let text = "  {\"name\": \"\"}"
+        let cursor = (text as NSString).range(of: "\"\"").location + 1
+
+        await vm.textDidChange(text, cursorOffset: cursor, protoFile: testProtoFile)
+
+        XCTAssertEqual(vm.valueTypeHint, hint)
+        XCTAssertFalse(vm.isVisible)
+    }
+
+    func test_textDidChange_bytesSlot_publishesTypeNameWithoutSuggestions() async {
+        let hint = JsonValueTypeHint(name: "bytes", kind: .string)
+        let vm = makeSUT(suggestions: [], valueTypeHint: hint)
+        mockResolver.stubResolve(AutocompleteContext(
+            resolvedPath: [],
+            mode: .enumValue,
+            currentFieldKey: "data"))
+        let text = "{\n  \"data\": \"\""
+        let cursor = (text as NSString).range(of: "\"\"").location + 1
+
+        await vm.textDidChange(text, cursorOffset: cursor, protoFile: testProtoFile)
+
+        XCTAssertEqual(vm.valueTypeHint, hint)
+        XCTAssertFalse(vm.isVisible)
+    }
+
+    func test_textDidChange_boolSlot_publishesTypeNameAndLiterals() async {
+        let hint = JsonValueTypeHint(name: "bool", kind: .bool)
+        let vm = makeSUT(
+            suggestions: [
+                makeSuggestion(name: "true", kind: .boolLiteral),
+                makeSuggestion(name: "false", kind: .boolLiteral),
+            ],
+            valueTypeHint: hint)
+        mockResolver.stubResolve(AutocompleteContext(
+            resolvedPath: [],
+            mode: .enumValue,
+            currentFieldKey: "flags"))
+        let text = "{\n  \"flags\": "
+
+        await vm.textDidChange(text, cursorOffset: (text as NSString).length, protoFile: testProtoFile)
+
+        XCTAssertEqual(vm.valueTypeHint, hint)
+        XCTAssertEqual(vm.suggestions.map(\.name), ["true", "false"])
+        XCTAssertTrue(vm.isVisible)
+    }
+
+    func test_textDidChange_enumSlot_publishesTypeNameAndConstants() async {
+        let hint = JsonValueTypeHint(name: "Status", kind: .enumField)
+        let vm = makeSUT(
+            suggestions: [
+                makeSuggestion(name: "ACTIVE", kind: .enum),
+                makeSuggestion(name: "INACTIVE", kind: .enum),
+            ],
+            valueTypeHint: hint)
+        mockResolver.stubResolve(AutocompleteContext(
+            resolvedPath: [],
+            mode: .enumValue,
+            currentFieldKey: "status"))
+        let text = "{\n  \"status\": \"\""
+        let cursor = (text as NSString).range(of: "\"\"").location + 1
+
+        await vm.textDidChange(text, cursorOffset: cursor, protoFile: testProtoFile)
+
+        XCTAssertEqual(vm.valueTypeHint, hint)
+        XCTAssertEqual(vm.suggestions.map(\.name), ["ACTIVE", "INACTIVE"])
+        XCTAssertTrue(vm.isVisible)
+    }
+
+    func test_textDidChange_timestampSlot_publishesTypeNameAndPreset() async {
+        let hint = JsonValueTypeHint(name: "Timestamp", kind: .wktString)
+        let preset = AutocompleteSuggestion(
+            name: "now",
+            typeHint: "Timestamp RFC 3339",
+            kind: .wktDefault,
+            insertValue: "2026-11-07T13:47:26Z")
+        let vm = makeSUT(suggestions: [preset], valueTypeHint: hint)
+        mockResolver.stubResolve(AutocompleteContext(
+            resolvedPath: [],
+            mode: .enumValue,
+            currentFieldKey: "created_at"))
+        let text = "{\n  \"created_at\": \"\""
+        let cursor = (text as NSString).range(of: "\"\"").location + 1
+
+        await vm.textDidChange(text, cursorOffset: cursor, protoFile: testProtoFile)
+
+        XCTAssertEqual(vm.valueTypeHint, hint)
+        XCTAssertEqual(vm.suggestions.map(\.name), ["now"])
+        XCTAssertTrue(vm.isVisible)
+    }
+
+    func test_textDidChange_durationSlot_publishesTypeNameAndPresets() async {
+        let hint = JsonValueTypeHint(name: "Duration", kind: .wktString)
+        let vm = makeSUT(
+            suggestions: [makeSuggestion(name: "1s", kind: .wktDefault)],
+            valueTypeHint: hint)
+        mockResolver.stubResolve(AutocompleteContext(
+            resolvedPath: [],
+            mode: .enumValue,
+            currentFieldKey: "ttl"))
+        let text = "{\n  \"ttl\": "
+
+        await vm.textDidChange(text, cursorOffset: (text as NSString).length, protoFile: testProtoFile)
+
+        XCTAssertEqual(vm.valueTypeHint, hint)
+        XCTAssertEqual(vm.suggestions.map(\.kind), [.wktDefault])
+        XCTAssertTrue(vm.isVisible)
+    }
+
+    func test_textDidChange_partialLiteral_hidesTypeNameAndFiltersTheList() async {
+        let hint = JsonValueTypeHint(name: "bool", kind: .bool)
+        let vm = makeSUT(
+            suggestions: [
+                makeSuggestion(name: "true", kind: .boolLiteral),
+                makeSuggestion(name: "false", kind: .boolLiteral),
+            ],
+            valueTypeHint: hint)
+        mockResolver.stubResolve(AutocompleteContext(
+            resolvedPath: [],
+            mode: .enumValue,
+            partialKey: "t",
+            currentFieldKey: "flags"))
+        let text = "{\n  \"flags\": t"
+
+        await vm.textDidChange(text, cursorOffset: (text as NSString).length, protoFile: testProtoFile)
+
+        XCTAssertNil(vm.valueTypeHint)
+        XCTAssertEqual(vm.suggestions.map(\.name), ["true"])
+        XCTAssertTrue(vm.isVisible)
+    }
+
+    func test_textDidChange_deletingBackToAnEmptySlot_restoresTheTypeName() async {
+        let hint = JsonValueTypeHint(name: "bool", kind: .bool)
+        let literals = [
+            makeSuggestion(name: "true", kind: .boolLiteral),
+            makeSuggestion(name: "false", kind: .boolLiteral),
+        ]
+        let vm = makeSUT(suggestions: literals, valueTypeHint: hint)
+        mockResolver.stubResolve(AutocompleteContext(
+            resolvedPath: [],
+            mode: .enumValue,
+            partialKey: "t",
+            currentFieldKey: "flags"))
+        await vm.textDidChange("{\n  \"flags\": t", cursorOffset: 13, protoFile: testProtoFile)
+        XCTAssertNil(vm.valueTypeHint)
+
+        mockResolver.stubResolve(AutocompleteContext(
+            resolvedPath: [],
+            mode: .enumValue,
+            currentFieldKey: "flags"))
+        let text = "{\n  \"flags\": "
+        await vm.textDidChange(text, cursorOffset: (text as NSString).length, protoFile: testProtoFile)
+
+        XCTAssertEqual(vm.valueTypeHint, hint)
+        XCTAssertEqual(vm.suggestions.map(\.name), ["true", "false"])
+    }
+
+    func test_textDidChange_unknownField_publishesNoTypeName() async {
+        let vm = makeSUT(suggestions: [], valueTypeHint: nil)
+        mockResolver.stubResolve(AutocompleteContext(
+            resolvedPath: [],
+            mode: .enumValue,
+            currentFieldKey: "missing"))
+        let text = "{\n  \"missing\": "
+
+        await vm.textDidChange(text, cursorOffset: (text as NSString).length, protoFile: testProtoFile)
+
+        XCTAssertNil(vm.valueTypeHint)
+        XCTAssertFalse(vm.isVisible)
+    }
+
+    func test_refreshValueTypeHint_whenCaretMovesToAKey_clearsTypeNameWithoutChangingSuggestions() async {
+        let hint = JsonValueTypeHint(name: "string", kind: .string)
+        let vm = makeSUT(suggestions: [makeSuggestion(name: "name")], valueTypeHint: hint)
+        mockResolver.stubResolve(AutocompleteContext(resolvedPath: [], mode: .key))
+        await vm.textDidChange("{", cursorOffset: 1, protoFile: testProtoFile)
+        XCTAssertEqual(vm.suggestions.map(\.name), ["name"])
+        XCTAssertTrue(vm.isVisible)
+
+        mockResolver.stubResolve(AutocompleteContext(
+            resolvedPath: [],
+            mode: .enumValue,
+            currentFieldKey: "name"))
+        let text = "{\n  \"name\": \"\""
+        let cursor = (text as NSString).range(of: "\"\"").location + 1
+        await vm.refreshValueTypeHint(text, cursorOffset: cursor, protoFile: testProtoFile)
+
+        XCTAssertEqual(vm.valueTypeHint, hint)
+        XCTAssertEqual(vm.suggestions.map(\.name), ["name"])
+        XCTAssertTrue(vm.isVisible)
+
+        mockResolver.stubResolve(AutocompleteContext(resolvedPath: [], mode: .key))
+        await vm.refreshValueTypeHint("{", cursorOffset: 1, protoFile: testProtoFile)
+
+        XCTAssertNil(vm.valueTypeHint)
+        XCTAssertEqual(vm.suggestions.map(\.name), ["name"])
+        XCTAssertTrue(vm.isVisible)
+    }
+
+    func test_refreshValueTypeHint_outsideRoot_clearsTypeName() async {
+        let hint = JsonValueTypeHint(name: "string", kind: .string)
+        let vm = makeSUT(suggestions: [], valueTypeHint: hint)
+        mockResolver.stubResolve(AutocompleteContext(
+            resolvedPath: [],
+            mode: .key,
+            isOutsideRootObject: true))
+
+        await vm.refreshValueTypeHint("{\"a\": 1}", cursorOffset: 8, protoFile: testProtoFile)
+
+        XCTAssertNil(vm.valueTypeHint)
+    }
+
     func test_textDidChange_wktDefaultSuggestion_keptWhenPartialKeyIsTyped() async {
+        let hint = JsonValueTypeHint(name: "Timestamp", kind: .wktString)
         let wktSuggestion = AutocompleteSuggestion(
             name: "now",
             typeHint: "Timestamp RFC 3339",
             kind: .wktDefault,
             insertValue: "2026-04-09T17:44:56Z")
-        let vm = makeSUT(suggestions: [wktSuggestion])
+        let vm = makeSUT(suggestions: [wktSuggestion], valueTypeHint: hint)
         mockResolver.stubResolve(AutocompleteContext(
             resolvedPath: [],
             mode: .enumValue,
@@ -749,6 +1037,7 @@ final class AutocompleteViewModelTests: XCTestCase {
 
         await vm.textDidChange("{\"created_at\": \"2026", cursorOffset: 19, protoFile: testProtoFile)
 
+        XCTAssertNil(vm.valueTypeHint)
         XCTAssertTrue(vm.isVisible, "wktDefault suggestion must survive partialKey filter")
         XCTAssertEqual(vm.suggestions.first?.kind, .wktDefault)
     }

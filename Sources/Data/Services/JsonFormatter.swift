@@ -1,6 +1,7 @@
 import Foundation
 
-/// Formats a JSON string to 2-space pretty-printed form.
+/// Formats a JSON string to 2-space pretty-printed form and sorts object keys.
+/// This is the explicit Format action. Typing uses `JsonInlineDocument`, which keeps key order.
 /// Normalises Unicode smart quotes to `"` before parsing.
 final class JsonFormatter: JsonFormatterProtocol, Sendable {
     func format(_ json: String) throws -> String {

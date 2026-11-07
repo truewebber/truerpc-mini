@@ -14,8 +14,6 @@ public struct AutocompletePopoverView: View {
     /// Wired by `JSONTextEditor.Coordinator` to dismiss and close the popover.
     var onEscape: (() -> Void)?
 
-    private let maxHeight: CGFloat = 240
-
     public init(
         viewModel: AutocompleteViewModel,
         onRowTapped: ((AutocompleteSuggestion) -> Void)? = nil,
@@ -26,44 +24,110 @@ public struct AutocompletePopoverView: View {
         self.onEscape = onEscape
     }
 
-    private static let rowHeight: CGFloat = 28
+    public var body: some View {
+        FittedPopover(
+            selection: viewModel.selectedIndex,
+            minWidth: AutocompletePopoverSize.minWidth,
+            maxWidth: AutocompletePopoverSize.maxWidth,
+            maxHeight: AutocompletePopoverSize.maxHeight)
+        {
+            VStack(spacing: AutocompletePopoverSize.rowSpacing) {
+                ForEach(Array(viewModel.suggestions.enumerated()), id: \.element.id) { index, suggestion in
+                    SuggestionRow(
+                        suggestion: suggestion,
+                        isSelected: index == viewModel.selectedIndex,
+                        index: index)
+                        .id(index)
+                        .onTapGesture {
+                            onRowTapped?(suggestion)
+                        }
+                }
+            }
+            .padding(AutocompletePopoverSize.outerInset)
+        }
+        .accessibilityIdentifier("autocomplete_popover")
+    }
+}
 
-    private var contentHeight: CGFloat {
-        guard !viewModel.suggestions.isEmpty else { return Self.rowHeight }
+/// Limits for the suggestion panel. Height follows the row count up to `maxHeight`; width hugs the text.
+enum AutocompletePopoverSize {
+    static let minWidth: CGFloat = 240
+    static let maxWidth: CGFloat = 380
+    static let maxHeight: CGFloat = 320
+    static let outerInset: CGFloat = 6
+    static let rowSpacing: CGFloat = 2
 
-        return min(CGFloat(viewModel.suggestions.count) * Self.rowHeight, maxHeight)
+    static func fitted(
+        _ content: CGSize,
+        minWidth: CGFloat = Self.minWidth,
+        maxWidth: CGFloat = Self.maxWidth,
+        maxHeight: CGFloat = Self.maxHeight)
+        -> CGSize
+    {
+        CGSize(
+            width: min(max(content.width, minWidth), maxWidth),
+            height: min(max(content.height, 0), maxHeight))
+    }
+}
+
+/// Sizes a popover to its rows, then scrolls once the list is taller than `maxHeight`.
+private struct FittedPopover<Content: View>: View {
+    var selection: Int
+    var minWidth: CGFloat
+    var maxWidth: CGFloat
+    var maxHeight: CGFloat
+    @ViewBuilder var content: () -> Content
+
+    var body: some View {
+        FittedPopoverLayout(minWidth: minWidth, maxWidth: maxWidth, maxHeight: maxHeight) {
+            ScrollView(.vertical) {
+                ScrollViewReader { proxy in
+                    content()
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .onChange(of: selection) { _, newValue in
+                            withAnimation(.easeInOut(duration: 0.1)) {
+                                proxy.scrollTo(newValue, anchor: .center)
+                            }
+                        }
+                }
+            }
+            .scrollBounceBehavior(.basedOnSize)
+
+            content()
+                .fixedSize(horizontal: true, vertical: true)
+                .hidden()
+                .accessibilityHidden(true)
+        }
+    }
+}
+
+private struct FittedPopoverLayout: Layout {
+    var minWidth: CGFloat
+    var maxWidth: CGFloat
+    var maxHeight: CGFloat
+
+    func sizeThatFits(proposal _: ProposedViewSize, subviews: Subviews, cache _: inout ()) -> CGSize {
+        guard subviews.count > 1 else { return .zero }
+
+        let natural = subviews[1].sizeThatFits(.unspecified)
+        return AutocompletePopoverSize.fitted(
+            natural,
+            minWidth: minWidth,
+            maxWidth: maxWidth,
+            maxHeight: maxHeight)
     }
 
-    public var body: some View {
-        ScrollViewReader { proxy in
-            ScrollView(.vertical, showsIndicators: false) {
-                VStack(spacing: 0) {
-                    ForEach(Array(viewModel.suggestions.enumerated()), id: \.element.id) { index, suggestion in
-                        SuggestionRow(
-                            suggestion: suggestion,
-                            isSelected: index == viewModel.selectedIndex,
-                            index: index)
-                            .id(index)
-                            .onTapGesture {
-                                onRowTapped?(suggestion)
-                            }
-                    }
-                }
-            }
-            .frame(height: contentHeight)
-            .onChange(of: viewModel.selectedIndex) { _, newIndex in
-                withAnimation(.easeInOut(duration: 0.1)) {
-                    proxy.scrollTo(newIndex, anchor: .center)
-                }
-            }
+    func placeSubviews(in bounds: CGRect, proposal _: ProposedViewSize, subviews: Subviews, cache _: inout ()) {
+        guard let scrollView = subviews.first else { return }
+
+        scrollView.place(
+            at: bounds.origin,
+            proposal: ProposedViewSize(width: bounds.width, height: bounds.height))
+        if subviews.count > 1 {
+            subviews[1].place(
+                at: bounds.origin,
+                proposal: ProposedViewSize(width: 0, height: 0))
         }
-        .background(.thickMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: 8))
-        .overlay(
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(.separator, lineWidth: 1))
-        .frame(width: 320)
-        .accessibilityIdentifier("autocomplete_popover")
     }
 }
 
@@ -73,16 +137,19 @@ private struct SuggestionRow: View {
     let index: Int
 
     var body: some View {
-        HStack(spacing: 8) {
+        HStack(alignment: .center) {
             kindIcon
+                .foregroundStyle(isSelected ? rowTextStyle : kindColor)
                 .frame(width: 16, height: 16)
 
             Text(suggestion.name)
                 .font(.body.monospaced())
                 .lineLimit(1)
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .layoutPriority(1)
                 .foregroundStyle(rowTextStyle)
                 .accessibilityIdentifier("suggestion_name_\(index)")
+
+            Spacer(minLength: 12)
 
             Text(suggestion.typeHint)
                 .font(.caption)
@@ -91,8 +158,14 @@ private struct SuggestionRow: View {
                 .accessibilityIdentifier("suggestion_type_\(index)")
         }
         .padding(.horizontal, 10)
-        .frame(height: 28)
-        .background(isSelected ? Color(nsColor: .selectedContentBackgroundColor) : Color.clear)
+        .padding(.vertical, 6)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background {
+            if isSelected {
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .fill(Color(nsColor: .selectedContentBackgroundColor))
+            }
+        }
         .opacity(suggestion.oneOfGroup != nil ? 0.7 : 1.0)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("suggestion_row_\(index)")
@@ -104,70 +177,69 @@ private struct SuggestionRow: View {
             : AnyShapeStyle(.primary)
     }
 
-    @ViewBuilder
-    private var kindIcon: some View {
+    private var kindColor: AnyShapeStyle {
+        switch suggestion.kind {
+        case .message, .fillDefaults:
+            AnyShapeStyle(.blue)
+        case .string:
+            AnyShapeStyle(.brown)
+        case .number:
+            AnyShapeStyle(.teal)
+        case .bool, .boolLiteral:
+            AnyShapeStyle(.purple)
+        case .repeated, .enumField, .enum, .wktString, .wktDefault:
+            AnyShapeStyle(.secondary)
+        }
+    }
+
+    private var kindIcon: Image {
         switch suggestion.kind {
         case .message:
             Image(systemName: "curlybraces")
-                .foregroundStyle(.purple)
-
         case .repeated:
             Image(systemName: "square.stack")
-                .foregroundStyle(.orange)
-
         case .string:
             Image(systemName: "text.quote")
-                .foregroundStyle(.green)
-
         case .number:
             Image(systemName: "number.circle")
-                .foregroundStyle(.blue)
-
-        case .bool:
+        case .bool, .boolLiteral:
             Image(systemName: "checkmark.circle")
-                .foregroundStyle(.teal)
-
         case .enumField:
             Image(systemName: "list.bullet")
-                .foregroundStyle(.yellow)
-
         case .enum:
             Image(systemName: "checklist")
-                .foregroundStyle(.yellow)
-
         case .wktString:
             Image(systemName: "clock")
-                .foregroundStyle(.cyan)
-
         case .wktDefault:
             Image(systemName: "clock.badge.checkmark")
-                .foregroundStyle(.cyan)
-
         case .fillDefaults:
             Image(systemName: "sparkles")
-                .foregroundStyle(
-                    LinearGradient(
-                        colors: [.blue, .purple, .pink],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing))
         }
     }
 }
 
 #if DEBUG
-    #Preview("Suggestions", traits: .fixedLayout(width: 320, height: 240)) {
+    #Preview("Single", traits: .sizeThatFitsLayout) {
+        AutocompletePopoverView(viewModel: previewAutocompleteViewModel(
+            suggestions: [
+                AutocompleteSuggestion(name: "now", typeHint: "Timestamp RFC 3339", kind: .wktDefault),
+            ],
+            selectedIndex: 0))
+    }
+
+    #Preview("Suggestions", traits: .sizeThatFitsLayout) {
         AutocompletePopoverView(viewModel: previewAutocompleteViewModel(
             suggestions: previewSuggestions,
             selectedIndex: -1))
     }
 
-    #Preview("Selected", traits: .fixedLayout(width: 320, height: 240)) {
+    #Preview("Selected", traits: .sizeThatFitsLayout) {
         AutocompletePopoverView(viewModel: previewAutocompleteViewModel(
             suggestions: previewSuggestions,
             selectedIndex: 2))
     }
 
-    #Preview("One Of", traits: .fixedLayout(width: 320, height: 240)) {
+    #Preview("One Of", traits: .sizeThatFitsLayout) {
         AutocompletePopoverView(viewModel: previewAutocompleteViewModel(
             suggestions: [
                 AutocompleteSuggestion(
@@ -184,11 +256,11 @@ private struct SuggestionRow: View {
             selectedIndex: 0))
     }
 
-    #Preview("Empty", traits: .fixedLayout(width: 320, height: 80)) {
+    #Preview("Empty", traits: .sizeThatFitsLayout) {
         AutocompletePopoverView(viewModel: previewAutocompleteViewModel(suggestions: []))
     }
 
-    #Preview("Dark", traits: .fixedLayout(width: 320, height: 240)) {
+    #Preview("Dark", traits: .sizeThatFitsLayout) {
         AutocompletePopoverView(viewModel: previewAutocompleteViewModel(
             suggestions: previewSuggestions,
             selectedIndex: 1))

@@ -106,6 +106,10 @@ public final class ProtoSchemaAutocompleteProvider: AutocompleteProviderProtocol
         else { return [] }
         guard let field = parent.field(named: fieldName) else { return [] }
 
+        if field.type == .bool {
+            return boolLiteralSuggestions()
+        }
+
         // WKT fields whose JSON representation is a string (Timestamp → RFC 3339, Duration → "1.5s").
         if field.type == .message, let typeName = field.typeName, isWellKnownStringType(typeName) {
             return wktDefaultSuggestions(for: typeName)
@@ -154,12 +158,22 @@ public final class ProtoSchemaAutocompleteProvider: AutocompleteProviderProtocol
 
             return enumValueSuggestions(from: enumDescriptor, typeName: typeName)
 
+        case .bool:
+            return boolLiteralSuggestions()
+
         default:
             return []
         }
     }
 
     // MARK: - Suggestion builders
+
+    private func boolLiteralSuggestions() -> [AutocompleteSuggestion] {
+        [
+            AutocompleteSuggestion(name: "true", typeHint: "bool", kind: .boolLiteral),
+            AutocompleteSuggestion(name: "false", typeHint: "bool", kind: .boolLiteral),
+        ]
+    }
 
     private func fieldSuggestions(for descriptor: MessageDescriptor) -> [AutocompleteSuggestion] {
         var result: [AutocompleteSuggestion] = [
@@ -308,6 +322,9 @@ public final class ProtoSchemaAutocompleteProvider: AutocompleteProviderProtocol
     // MARK: - Type helpers
 
     private func kind(for field: FieldDescriptor) -> SuggestionKind {
+        if field.isMap {
+            return .message
+        }
         if field.isRepeated {
             return .repeated
         }
@@ -366,6 +383,9 @@ public final class ProtoSchemaAutocompleteProvider: AutocompleteProviderProtocol
     }
 
     private func typeHint(for field: FieldDescriptor) -> String {
+        if field.isMap {
+            return "map"
+        }
         let base = scalarTypeHint(for: field)
         return field.isRepeated && !field.isMap ? base + "[]" : base
     }

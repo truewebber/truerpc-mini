@@ -177,3 +177,33 @@ final class JsonSyntaxHighlighterTests: XCTestCase {
         }
     }
 }
+
+final class JsonHighlightThemeTests: XCTestCase {
+    func test_placeholderColor_usesTheJsonTokenHueAtReducedAlpha() {
+        assertPlaceholder(.number, matches: JsonHighlightTheme.appKitColor(for: .number))
+        assertPlaceholder(.string, matches: JsonHighlightTheme.appKitColor(for: .string))
+        assertPlaceholder(.bool, matches: JsonHighlightTheme.appKitColor(for: .literal))
+        assertPlaceholder(.boolLiteral, matches: JsonHighlightTheme.appKitColor(for: .literal))
+        assertPlaceholder(.message, matches: .secondaryLabelColor)
+        assertPlaceholder(.repeated, matches: .secondaryLabelColor)
+        assertPlaceholder(.enumField, matches: .secondaryLabelColor)
+        assertPlaceholder(.enum, matches: .secondaryLabelColor)
+        assertPlaceholder(.wktString, matches: .secondaryLabelColor)
+        assertPlaceholder(.wktDefault, matches: .secondaryLabelColor)
+        assertPlaceholder(.fillDefaults, matches: .secondaryLabelColor)
+    }
+
+    private func assertPlaceholder(_ kind: SuggestionKind, matches base: NSColor, line: UInt = #line) {
+        let actual = components(JsonHighlightTheme.placeholderColor(for: kind))
+        let expected = components(base.withAlphaComponent(0.55))
+        XCTAssertEqual(actual.red, expected.red, accuracy: 0.02, line: line)
+        XCTAssertEqual(actual.green, expected.green, accuracy: 0.02, line: line)
+        XCTAssertEqual(actual.blue, expected.blue, accuracy: 0.02, line: line)
+        XCTAssertEqual(actual.alpha, 0.55, accuracy: 0.02, line: line)
+    }
+
+    private func components(_ color: NSColor) -> (red: CGFloat, green: CGFloat, blue: CGFloat, alpha: CGFloat) {
+        let resolved = color.usingColorSpace(.sRGB) ?? color
+        return (resolved.redComponent, resolved.greenComponent, resolved.blueComponent, resolved.alphaComponent)
+    }
+}

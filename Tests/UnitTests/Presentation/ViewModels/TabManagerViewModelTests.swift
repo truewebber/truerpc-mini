@@ -66,6 +66,8 @@ final class TabManagerViewModelTests: XCTestCase {
             formatter: mockJsonFormatter,
             autocompleteProvider: MockAutocompleteProvider(),
             resolver: JsonPathResolver(),
+            smartInsert: SmartInsertService(),
+            clipboard: MockClipboard(),
             logger: mockLogger)
     }
 

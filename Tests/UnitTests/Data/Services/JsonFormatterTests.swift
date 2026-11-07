@@ -9,6 +9,12 @@ final class JsonFormatterTests: XCTestCase {
         XCTAssertEqual(result, "{\n  \"name\" : \"John\"\n}")
     }
 
+    func test_format_sortsObjectKeys() throws {
+        let result = try sut.format("{\"name\":\"Ada\",\"count\":1}")
+
+        XCTAssertEqual(result, "{\n  \"count\" : 1,\n  \"name\" : \"Ada\"\n}")
+    }
+
     func test_format_alreadyFormatted_isIdempotent() throws {
         let input = "{\"name\":\"John\"}"
         let first = try sut.format(input)

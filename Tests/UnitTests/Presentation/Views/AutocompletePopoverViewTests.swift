@@ -122,3 +122,25 @@ final class AutocompletePopoverViewTests: XCTestCase {
         XCTAssertEqual(nonFillNames, ["msg", "str", "num", "boo", "enm", "rep"])
     }
 }
+
+final class AutocompletePopoverSizeTests: XCTestCase {
+    func test_fitted_contentWithinLimits_keepsTheMeasuredSize() {
+        let fitted = AutocompletePopoverSize.fitted(CGSize(width: 280, height: 72))
+
+        XCTAssertEqual(fitted, CGSize(width: 280, height: 72))
+    }
+
+    func test_fitted_narrowContent_usesTheMinimumWidth() {
+        let fitted = AutocompletePopoverSize.fitted(CGSize(width: 80, height: 36))
+
+        XCTAssertEqual(fitted.width, AutocompletePopoverSize.minWidth)
+        XCTAssertEqual(fitted.height, 36)
+    }
+
+    func test_fitted_wideOrTallContent_capsBothAxes() {
+        let fitted = AutocompletePopoverSize.fitted(CGSize(width: 900, height: 2000))
+
+        XCTAssertEqual(fitted.width, AutocompletePopoverSize.maxWidth)
+        XCTAssertEqual(fitted.height, AutocompletePopoverSize.maxHeight)
+    }
+}

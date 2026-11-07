@@ -22,19 +22,134 @@ final class JSONTextEditorIntegrationTests: XCTestCase {
 
     private func makeCoordinator(
         provider: AutocompleteProviderProtocol = MockAutocompleteProvider(),
-        protoFile: ProtoFile? = nil)
+        protoFile: ProtoFile? = nil,
+        includeProtoFile: Bool = true,
+        formatInlineJSON: ((String) -> String?)? = nil)
         -> (JSONTextEditor.Coordinator, AutocompleteViewModel)
     {
         let resolver = JsonPathResolver()
         let vm = AutocompleteViewModel(provider: provider, resolver: resolver, methodInputType: ".test.GetUserRequest")
-        let resolvedProtoFile = protoFile ?? makeProtoFile()
+        let resolvedProtoFile: ProtoFile? = includeProtoFile ? (protoFile ?? makeProtoFile()) : nil
         var text = ""
         let binding = Binding(get: { text }, set: { text = $0 })
         let editor = JSONTextEditor(
             text: binding,
             autocompleteViewModel: vm,
-            protoFile: resolvedProtoFile)
+            protoFile: resolvedProtoFile,
+            smartInsert: SmartInsertService(),
+            formatInlineJSON: formatInlineJSON)
         return (editor.makeCoordinator(), vm)
+    }
+
+    private func makeMetadataCoordinator() -> JSONTextEditor.Coordinator {
+        var text = ""
+        let binding = Binding(get: { text }, set: { text = $0 })
+        let editor = JSONTextEditor(
+            text: binding,
+            smartInsert: SmartInsertService(),
+            formatInlineJSON: { json in
+                JsonInlineDocument.pretty(json) { try JsonFormatter().format($0) }
+            })
+        return editor.makeCoordinator()
+    }
+
+    private func publishEdit(
+        _ coordinator: JSONTextEditor.Coordinator,
+        in textView: NSTextView)
+        async throws
+    {
+        coordinator.textDidChange(Notification(name: NSText.didChangeNotification, object: textView))
+        try await Task.sleep(for: .milliseconds(300))
+    }
+
+    private func laidOutTextView(_ text: String, width: CGFloat) throws -> (NSTextView, NSWindow) {
+        let textView = NSTextView(frame: NSRect(x: 0, y: 0, width: width, height: 220))
+        textView.string = text
+        textView.font = JsonEditorMetrics.font
+        textView.isHorizontallyResizable = false
+        textView.textContainer?.widthTracksTextView = true
+        textView.textContainer?.containerSize = NSSize(width: width, height: .greatestFiniteMagnitude)
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: width, height: 220),
+            styleMask: [.titled],
+            backing: .buffered,
+            defer: false)
+        window.contentView = textView
+        window.orderFrontRegardless()
+        textView.layoutSubtreeIfNeeded()
+        try textView.layoutManager?.ensureLayout(for: XCTUnwrap(textView.textContainer))
+        return (textView, window)
+    }
+
+    private func visibleTypeLabel(in textView: NSTextView) -> NSTextField? {
+        textView.subviews.compactMap { $0 as? NSTextField }.first { !$0.isHidden && !$0.stringValue.isEmpty }
+    }
+
+    private func scrollingTextView(_ text: String, height: CGFloat) throws -> (NSTextView, NSWindow) {
+        let scrollView = NSTextView.scrollableTextView()
+        scrollView.frame = NSRect(x: 0, y: 0, width: 420, height: height)
+        let textView = try XCTUnwrap(scrollView.documentView as? NSTextView)
+        textView.string = text
+        textView.font = JsonEditorMetrics.font
+        textView.isVerticallyResizable = true
+        textView.isHorizontallyResizable = false
+        textView.textContainer?.widthTracksTextView = true
+        textView.textContainer?.heightTracksTextView = false
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 420, height: height),
+            styleMask: [.titled],
+            backing: .buffered,
+            defer: false)
+        window.contentView = scrollView
+        window.orderFrontRegardless()
+        textView.layoutSubtreeIfNeeded()
+        try textView.layoutManager?.ensureLayout(for: XCTUnwrap(textView.textContainer))
+        return (textView, window)
+    }
+
+    private func lineFragment(in textView: NSTextView, utf16: Int) -> NSRect? {
+        guard let layoutManager = textView.layoutManager,
+              let textContainer = textView.textContainer
+        else { return nil }
+
+        let length = (textView.string as NSString).length
+        let index = min(max(0, utf16), max(length - 1, 0))
+        guard length > 0 else { return nil }
+
+        layoutManager.ensureLayout(for: textContainer)
+        let glyph = layoutManager.glyphIndexForCharacter(at: index)
+        var rect = layoutManager.lineFragmentRect(forGlyphAt: glyph, effectiveRange: nil)
+        rect.origin.x += textView.textContainerOrigin.x
+        rect.origin.y += textView.textContainerOrigin.y
+        return rect
+    }
+
+    private func caretAnchorX(in textView: NSTextView) -> Double {
+        let location = textView.selectedRange().location
+        let length = (textView.string as NSString).length
+        let index = min(location, max(length - 1, 0))
+        let glyph = glyphRect(in: textView, utf16: index)
+        let x = location >= length ? (glyph?.maxX ?? 0) : (glyph?.minX ?? 0)
+        return Double(x)
+    }
+
+    private func popoverWindowFrame(_ coordinator: JSONTextEditor.Coordinator) -> NSRect? {
+        coordinator.autocompletePopover.contentViewController?.view.window?.frame
+    }
+
+    private func glyphRect(in textView: NSTextView, utf16: Int) -> NSRect? {
+        guard let layoutManager = textView.layoutManager,
+              let textContainer = textView.textContainer,
+              utf16 >= 0,
+              utf16 < (textView.string as NSString).length
+        else { return nil }
+
+        layoutManager.ensureLayout(for: textContainer)
+        let glyph = layoutManager.glyphIndexForCharacter(at: utf16)
+        var rect = layoutManager.boundingRect(forGlyphRange: NSRange(location: glyph, length: 1), in: textContainer)
+        rect.origin.x += textView.textContainerOrigin.x
+        rect.origin.y += textView.textContainerOrigin.y
+        return rect
     }
 
     private func makeTextView(text: String = "") -> NSTextView {
@@ -75,6 +190,140 @@ final class JSONTextEditorIntegrationTests: XCTestCase {
 
         XCTAssertTrue(consumed)
         XCTAssertFalse(vm.isVisible)
+    }
+
+    func test_popover_caretOnTheFirstLine_opensBelowThatLine() throws {
+        let (coordinator, vm) = makeCoordinator()
+        vm.suggestions = [
+            AutocompleteSuggestion(name: "fillDefaults", typeHint: "all fields", kind: .fillDefaults),
+            AutocompleteSuggestion(name: "names", typeHint: "User[]", kind: .repeated),
+        ]
+        let (textView, window) = try laidOutTextView("{\n  \"names\": []\n}", width: 420)
+        textView.isVerticallyResizable = false
+        textView.setFrameSize(NSSize(width: 420, height: 220))
+        XCTAssertNotNil(window.contentView)
+        textView.setSelectedRange(NSRange(location: 1, length: 0))
+
+        let placement = coordinator.autocompletePopoverPlacement(in: textView)
+        let line = try XCTUnwrap(lineFragment(in: textView, utf16: 0))
+
+        XCTAssertEqual(placement?.side, .below)
+        let frame = try XCTUnwrap(placement?.frame)
+        XCTAssertEqual(frame.minY, Double(line.maxY) + PlaceAutocompletePopover.gap, accuracy: 1)
+        XCTAssertLessThan(frame.minY, Double(textView.bounds.midY))
+        let caretX = caretAnchorX(in: textView)
+        XCTAssertGreaterThanOrEqual(caretX, frame.minX)
+        XCTAssertLessThanOrEqual(caretX, frame.maxX)
+
+        coordinator.showAutocompletePopover(in: textView)
+        let popoverFrame = try XCTUnwrap(popoverWindowFrame(coordinator))
+        let caretScreen = textView.firstRect(forCharacterRange: NSRange(location: 0, length: 1), actualRange: nil)
+        XCTAssertEqual(popoverFrame.maxY, caretScreen.minY, accuracy: 12)
+        XCTAssertFalse(popoverFrame.intersects(caretScreen))
+    }
+
+    func test_popover_caretAtTheBottomOfTheVisibleEditor_opensAboveTheLine() throws {
+        let (coordinator, vm) = makeCoordinator()
+        vm.suggestions = (0 ..< 12).map {
+            AutocompleteSuggestion(name: "field\($0)", typeHint: "string", kind: .string)
+        }
+        let lines = (0 ..< 40).map { "\"field\($0)\": \"\"" }.joined(separator: ",\n")
+        let (textView, window) = try scrollingTextView("{\n\(lines)\n}", height: 180)
+        XCTAssertNotNil(window.contentView)
+        let end = (textView.string as NSString).length - 1
+        textView.setSelectedRange(NSRange(location: end, length: 0))
+        let documentHeight = textView.bounds.height
+        textView.scroll(NSPoint(x: 0, y: max(0, documentHeight - textView.visibleRect.height)))
+        textView.layoutSubtreeIfNeeded()
+
+        let placement = coordinator.autocompletePopoverPlacement(in: textView)
+        let line = try XCTUnwrap(lineFragment(in: textView, utf16: end))
+
+        XCTAssertEqual(placement?.side, .above)
+        let frame = try XCTUnwrap(placement?.frame)
+        XCTAssertEqual(frame.maxY, Double(line.minY) - PlaceAutocompletePopover.gap, accuracy: 1)
+        XCTAssertLessThanOrEqual(frame.maxY, Double(textView.bounds.maxY))
+    }
+
+    func test_popover_tallListOnTheFirstLine_shrinksToTheFreeRoom() throws {
+        let (coordinator, vm) = makeCoordinator()
+        vm.suggestions = [
+            AutocompleteSuggestion(name: "id", typeHint: "string", kind: .string),
+        ]
+        let (textView, window) = try laidOutTextView("{\n}", width: 420)
+        textView.isVerticallyResizable = false
+        textView.setFrameSize(NSSize(width: 420, height: 220))
+        XCTAssertNotNil(window.contentView)
+        textView.setSelectedRange(NSRange(location: 1, length: 0))
+        let oneRow = try XCTUnwrap(coordinator.autocompletePopoverPlacement(in: textView))
+
+        vm.suggestions = (0 ..< 30).map {
+            AutocompleteSuggestion(name: "field\($0)", typeHint: "string", kind: .string)
+        }
+        let manyRows = try XCTUnwrap(coordinator.autocompletePopoverPlacement(in: textView))
+
+        XCTAssertEqual(manyRows.side, .below)
+        XCTAssertEqual(manyRows.frame.y, oneRow.frame.y, accuracy: 1)
+        XCTAssertGreaterThan(manyRows.frame.height, oneRow.frame.height)
+        XCTAssertLessThan(manyRows.frame.height, Double(AutocompletePopoverSize.maxHeight))
+        XCTAssertLessThanOrEqual(manyRows.frame.maxY, Double(textView.bounds.maxY) + 1)
+    }
+
+    func test_popover_caretScrolledOutOfView_staysClosed() throws {
+        let (coordinator, vm) = makeCoordinator()
+        vm.suggestions = [
+            AutocompleteSuggestion(name: "name", typeHint: "string", kind: .string),
+        ]
+        let lines = (0 ..< 80).map { "\"field\($0)\": \"\"" }.joined(separator: ",\n")
+        let (textView, window) = try scrollingTextView("{\n\(lines)\n}", height: 160)
+        XCTAssertNotNil(window.contentView)
+        let end = (textView.string as NSString).length - 1
+        textView.setSelectedRange(NSRange(location: end, length: 0))
+        textView.scroll(NSPoint.zero)
+        textView.layoutSubtreeIfNeeded()
+
+        XCTAssertNil(coordinator.autocompletePopoverPlacement(in: textView))
+        coordinator.showAutocompletePopover(in: textView)
+        XCTAssertFalse(coordinator.autocompletePopover.isShown)
+    }
+
+    func test_popover_wrappedCaret_anchorsToTheCaretNotTheLineStart() throws {
+        let (coordinator, vm) = makeCoordinator()
+        vm.suggestions = [
+            AutocompleteSuggestion(name: "value", typeHint: "string", kind: .string),
+        ]
+        let (textView, window) = try laidOutTextView(String(repeating: "abcdef", count: 20), width: 80)
+        XCTAssertNotNil(window.contentView)
+        let end = (textView.string as NSString).length
+        textView.setSelectedRange(NSRange(location: end, length: 0))
+
+        let placement = try XCTUnwrap(coordinator.autocompletePopoverPlacement(in: textView))
+        let caretX = caretAnchorX(in: textView)
+        let lineStart = try Double(XCTUnwrap(lineFragment(in: textView, utf16: 0)).minX) + 1
+        XCTAssertGreaterThanOrEqual(caretX, placement.frame.minX)
+        XCTAssertLessThanOrEqual(caretX, placement.frame.maxX)
+        XCTAssertGreaterThan(abs(caretX - lineStart), 20)
+    }
+
+    func test_popover_caretMovesToTheNextLine_followsThatLine() throws {
+        let (coordinator, vm) = makeCoordinator()
+        vm.suggestions = [
+            AutocompleteSuggestion(name: "names", typeHint: "User[]", kind: .repeated),
+        ]
+        let (textView, window) = try laidOutTextView("{\n  \"names\": []\n}", width: 420)
+        textView.isVerticallyResizable = false
+        textView.setFrameSize(NSSize(width: 420, height: 220))
+        XCTAssertNotNil(window.contentView)
+        textView.setSelectedRange(NSRange(location: 1, length: 0))
+        let first = try XCTUnwrap(coordinator.autocompletePopoverPlacement(in: textView))
+
+        let nextLine = (textView.string as NSString).range(of: "\"names\"").location
+        textView.setSelectedRange(NSRange(location: nextLine, length: 0))
+        let second = try XCTUnwrap(coordinator.autocompletePopoverPlacement(in: textView))
+
+        XCTAssertEqual(first.side, .below)
+        XCTAssertEqual(second.side, .below)
+        XCTAssertGreaterThan(second.frame.y, first.frame.y + 8)
     }
 
     func test_escapeKey_whenPopoverNotVisible_isNotConsumed() {
@@ -231,7 +480,7 @@ final class JSONTextEditorIntegrationTests: XCTestCase {
     func test_enterKey_withNoAutocompleteViewModel_appliesSmartNewlineWithoutCrash() {
         var text = ""
         let binding = Binding(get: { text }, set: { text = $0 })
-        let editor = JSONTextEditor(text: binding)
+        let editor = JSONTextEditor(text: binding, smartInsert: SmartInsertService())
         let coordinator = editor.makeCoordinator()
 
         let textView = NSTextView()
@@ -519,6 +768,188 @@ final class JSONTextEditorIntegrationTests: XCTestCase {
         XCTAssertFalse(textView.string.contains("int32"))
         if let label {
             XCTAssertNil(label.hitTest(NSPoint(x: label.bounds.midX, y: label.bounds.midY)))
+        }
+    }
+
+    func test_filledTimestamp_hidesTypeNameBeforeTheNextField() async throws {
+        let hint = JsonValueTypeHint(name: "Timestamp", kind: .wktString)
+        let provider = MockAutocompleteProvider(stubSuggestions: [], stubValueTypeHint: hint)
+        let (coordinator, vm) = makeCoordinator(provider: provider)
+        let text = "{\n  \"birthday\": \"2026-11-07T13:47:26Z\"\n  \"id\": \"\"\n}"
+        let (textView, window) = try laidOutTextView(text, width: 420)
+        XCTAssertNotNil(window.contentView)
+        let cursor = (text as NSString).range(of: "\"id\"").location
+        textView.setSelectedRange(NSRange(location: cursor, length: 0))
+
+        coordinator.textDidChange(Notification(name: NSText.didChangeNotification, object: textView))
+        try await Task.sleep(for: .milliseconds(150))
+
+        XCTAssertNil(vm.valueTypeHint)
+        XCTAssertNil(visibleTypeLabel(in: textView))
+    }
+
+    func test_prettyPrintedEmptyValue_showsTypeNameWithoutCoveringTheNextField() async throws {
+        let hint = JsonValueTypeHint(name: "string", kind: .string)
+        let provider = MockAutocompleteProvider(stubSuggestions: [], stubValueTypeHint: hint)
+        let (coordinator, _) = makeCoordinator(provider: provider)
+        let text = "{\n  \"id\": \"\"\n  \"name\": \"\"\n}"
+        let (textView, window) = try laidOutTextView(text, width: 420)
+        XCTAssertNotNil(window.contentView)
+        let cursor = (text as NSString).range(of: "\"\"").location + 1
+        textView.setSelectedRange(NSRange(location: cursor, length: 0))
+
+        coordinator.textDidChange(Notification(name: NSText.didChangeNotification, object: textView))
+        try await Task.sleep(for: .milliseconds(150))
+
+        let label = try XCTUnwrap(visibleTypeLabel(in: textView))
+        let quote = (text as NSString).range(of: "\"\"").location + 1
+        let quoteRect = try XCTUnwrap(glyphRect(in: textView, utf16: quote))
+        let nameRect = try XCTUnwrap(glyphRect(in: textView, utf16: (text as NSString).range(of: "\"name\"").location))
+        XCTAssertGreaterThanOrEqual(label.frame.minX, quoteRect.maxX - 0.5)
+        XCTAssertFalse(label.frame.intersects(quoteRect))
+        XCTAssertFalse(label.frame.intersects(nameRect))
+    }
+
+    func test_textChange_inlineJSON_expandsToPrettyPrintAndKeepsTheCaretInTheValue() {
+        let compact = "{\"id\":\"\",\"name\":\"\"}"
+        let cursor = (compact as NSString).range(of: "\"\"").location + 1
+        let (coordinator, _) = makeCoordinator(formatInlineJSON: { json in
+            JsonInlineDocument.pretty(json) { try JsonFormatter().format($0) }
+        })
+        let textView = NSTextView()
+        textView.string = compact
+        textView.setSelectedRange(NSRange(location: cursor, length: 0))
+
+        coordinator.textDidChange(Notification(name: NSText.didChangeNotification, object: textView))
+
+        XCTAssertFalse(JsonInlineDocument.isInline(textView.string))
+        let caret = textView.selectedRange().location
+        let ns = textView.string as NSString
+        XCTAssertGreaterThan(caret, 0)
+        XCTAssertLessThan(caret, ns.length)
+        XCTAssertEqual(ns.character(at: caret - 1), JsonScanUTF16.quote)
+        XCTAssertEqual(ns.character(at: caret), JsonScanUTF16.quote)
+    }
+
+    func test_syncDisplayedText_inlineJSON_expandsAndWritesThePrettyFormBack() {
+        var text = "{\"id\":1}"
+        let binding = Binding(get: { text }, set: { text = $0 })
+        let editor = JSONTextEditor(
+            text: binding,
+            smartInsert: SmartInsertService(),
+            formatInlineJSON: { json in
+                JsonInlineDocument.pretty(json) { try JsonFormatter().format($0) }
+            })
+        let coordinator = editor.makeCoordinator()
+        let textView = NSTextView()
+        textView.string = text
+
+        coordinator.syncDisplayedText(text, to: textView)
+
+        XCTAssertEqual(textView.string, "{\n  \"id\" : 1\n}")
+        XCTAssertEqual(text, "{\n  \"id\" : 1\n}")
+    }
+
+    func test_textChange_insidePrettyDocument_keepsTheOtherField() {
+        let pretty = "{\n  \"id\" : \"\",\n  \"name\" : \"kept\"\n}"
+        let (coordinator, _) = makeCoordinator(formatInlineJSON: { json in
+            JsonInlineDocument.pretty(json) { try JsonFormatter().format($0) }
+        })
+        let textView = NSTextView()
+        textView.string = pretty
+        let cursor = (pretty as NSString).range(of: "\"\"").location + 1
+        textView.setSelectedRange(NSRange(location: cursor, length: 0))
+        textView.insertText("x", replacementRange: NSRange(location: cursor, length: 0))
+        coordinator.textDidChange(Notification(name: NSText.didChangeNotification, object: textView))
+
+        XCTAssertTrue(textView.string.contains("\"name\" : \"kept\""), textView.string)
+        XCTAssertTrue(textView.string.contains("\"id\" : \"x\""), textView.string)
+    }
+
+    func test_undo_afterInlineExpansion_restoresTheTextBeforeTheKeystroke() {
+        let original = "{\"id\":1"
+        let (coordinator, _) = makeCoordinator(formatInlineJSON: { json in
+            JsonInlineDocument.pretty(json) { try JsonFormatter().format($0) }
+        })
+        let textView = NSTextView(frame: NSRect(x: 0, y: 0, width: 320, height: 200))
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 320, height: 200),
+            styleMask: [.titled],
+            backing: .buffered,
+            defer: false)
+        window.contentView = textView
+        textView.delegate = coordinator
+        textView.allowsUndo = true
+        textView.string = original
+        textView.setSelectedRange(NSRange(location: (original as NSString).length, length: 0))
+
+        textView.insertText("}", replacementRange: textView.selectedRange())
+
+        XCTAssertFalse(JsonInlineDocument.isInline(textView.string), textView.string)
+        XCTAssertNotNil(window.contentView)
+        textView.undoManager?.undo()
+        XCTAssertEqual(textView.string, original)
+    }
+
+    func test_commitSelection_boolLiteral_replacesEmptyQuotes() {
+        let suggestion = AutocompleteSuggestion(name: "true", typeHint: "bool", kind: .boolLiteral)
+        let (coordinator, _) = makeCoordinator()
+        let text = "{\n  \"enabled\": \"\"\n}"
+        let textView = makeTextView(text: text)
+        let cursor = (text as NSString).range(of: "\"\"").location + 1
+        textView.setSelectedRange(NSRange(location: cursor, length: 0))
+
+        coordinator.applySmartInsert(suggestion: suggestion, to: textView)
+
+        XCTAssertTrue(textView.string.contains("\"enabled\": true"), textView.string)
+        XCTAssertFalse(textView.string.contains("\"true\""), textView.string)
+    }
+
+    func test_oneLineDocument_typeNameDoesNotCoverTheNextField() async throws {
+        let hint = JsonValueTypeHint(name: "string", kind: .string)
+        let provider = MockAutocompleteProvider(stubSuggestions: [], stubValueTypeHint: hint)
+        let (coordinator, _) = makeCoordinator(provider: provider)
+        let text = "{\"id\": \"\", \"name\": \"\"}"
+        let (textView, window) = try laidOutTextView(text, width: 420)
+        XCTAssertNotNil(window.contentView)
+        let cursor = (text as NSString).range(of: "\"\"").location + 1
+        textView.setSelectedRange(NSRange(location: cursor, length: 0))
+
+        coordinator.textDidChange(Notification(name: NSText.didChangeNotification, object: textView))
+        try await Task.sleep(for: .milliseconds(150))
+
+        let nameRect = try XCTUnwrap(glyphRect(in: textView, utf16: (text as NSString).range(of: "\"name\"").location))
+        if let label = visibleTypeLabel(in: textView) {
+            XCTAssertFalse(
+                label.frame.intersects(nameRect),
+                "placeholder \(label.frame) covers the next field \(nameRect)")
+        }
+    }
+
+    func test_wrappedLine_typeNameDoesNotCoverTheNextField() async throws {
+        let hint = JsonValueTypeHint(name: "Timestamp", kind: .wktString)
+        let provider = MockAutocompleteProvider(stubSuggestions: [], stubValueTypeHint: hint)
+        let (coordinator, _) = makeCoordinator(provider: provider)
+        let text = "{\"birthday\": \"\", \"identification\": \"\"}"
+        let (textView, window) = try laidOutTextView(text, width: 140)
+        XCTAssertNotNil(window.contentView)
+        let cursor = (text as NSString).range(of: "\"\"").location + 1
+        textView.setSelectedRange(NSRange(location: cursor, length: 0))
+        let birthdayRect = try XCTUnwrap(glyphRect(
+            in: textView,
+            utf16: (text as NSString).range(of: "birthday").location))
+        let nextRect = try XCTUnwrap(glyphRect(
+            in: textView,
+            utf16: (text as NSString).range(of: "identification").location))
+        XCTAssertGreaterThan(nextRect.minY, birthdayRect.maxY - 1, "fixture must wrap onto the next visual line")
+
+        coordinator.textDidChange(Notification(name: NSText.didChangeNotification, object: textView))
+        try await Task.sleep(for: .milliseconds(150))
+
+        if let label = visibleTypeLabel(in: textView) {
+            XCTAssertFalse(
+                label.frame.intersects(nextRect),
+                "placeholder \(label.frame) covers the wrapped field \(nextRect)")
         }
     }
 
@@ -996,5 +1427,711 @@ final class JSONTextEditorIntegrationTests: XCTestCase {
         XCTAssertFalse(
             result.contains("\"2026-04-09T17:44:56Z\"\""),
             "No duplicate closing quote; got: \(result)")
+    }
+
+    // MARK: - Value type placeholder
+
+    func test_valueTypeHint_namesItselfForVoiceOverAndUsesTheTokenColor() async throws {
+        let (coordinator, _) = makeCoordinator(provider: ValueTypeHintScenarioProvider())
+        let text = "{\n  \"name\": \"\"\n}"
+        let (textView, window) = try laidOutTextView(text, width: 420)
+        XCTAssertNotNil(window.contentView)
+        textView.setSelectedRange(NSRange(location: quoteCaret(in: text), length: 0))
+
+        try await publishEdit(coordinator, in: textView)
+
+        let label = try XCTUnwrap(visibleTypeLabel(in: textView))
+        XCTAssertEqual(label.stringValue, "string")
+        XCTAssertEqual(label.accessibilityLabel(), "string, value type")
+        XCTAssertEqual(label.accessibilityRole(), .staticText)
+        XCTAssertTrue(label.isAccessibilityElement())
+        XCTAssertNil(label.hitTest(NSPoint(x: label.bounds.midX, y: label.bounds.midY)))
+        assertSameColor(label.textColor, JsonHighlightTheme.placeholderColor(for: .string))
+        XCTAssertFalse(textView.string.contains("string"))
+    }
+
+    func test_valueTypeHint_numberStaysAtTheCaretAndBoolOpensBesideTheList() async throws {
+        let (coordinator, vm) = makeCoordinator(provider: ValueTypeHintScenarioProvider())
+        let text = "{\n  \"count\": \n}"
+        let (textView, window) = try laidOutTextView(text, width: 420)
+        XCTAssertNotNil(window.contentView)
+        textView.setSelectedRange(NSRange(location: afterColon(text), length: 0))
+
+        try await publishEdit(coordinator, in: textView)
+
+        let label = try XCTUnwrap(visibleTypeLabel(in: textView))
+        XCTAssertEqual(label.stringValue, "int32")
+        XCTAssertFalse(vm.isVisible)
+        XCTAssertFalse(coordinator.autocompletePopover.isShown)
+        XCTAssertFalse(textView.string.contains("int32"))
+    }
+
+    func test_valueTypeHint_boolSlot_showsTheLabelAndTheLiteralList() async throws {
+        let (coordinator, vm) = makeCoordinator(provider: ValueTypeHintScenarioProvider())
+        let text = "{\n  \"flags\": \n}"
+        let (textView, window) = try laidOutTextView(text, width: 420)
+        XCTAssertNotNil(window.contentView)
+        textView.setSelectedRange(NSRange(location: afterColon(text), length: 0))
+
+        try await publishEdit(coordinator, in: textView)
+
+        XCTAssertEqual(visibleTypeLabel(in: textView)?.stringValue, "bool")
+        XCTAssertEqual(vm.suggestions.map(\.name), ["true", "false"])
+        XCTAssertTrue(vm.isVisible)
+        XCTAssertTrue(coordinator.autocompletePopover.isShown)
+    }
+
+    func test_valueTypeHint_enumAndTimestampAndDuration_showTheNameBesideTheList() async throws {
+        let provider = ValueTypeHintScenarioProvider()
+        let cases: [(String, String, [String])] = [
+            ("{\n  \"status\": \"\"\n}", "Status", ["ACTIVE", "INACTIVE"]),
+            ("{\n  \"created_at\": \"\"\n}", "Timestamp", ["now"]),
+            ("{\n  \"ttl\": \"\"\n}", "Duration", ["0s", "1s"]),
+        ]
+        for (text, name, suggestions) in cases {
+            let (coordinator, vm) = makeCoordinator(provider: provider)
+            let (textView, window) = try laidOutTextView(text, width: 420)
+            XCTAssertNotNil(window.contentView)
+            textView.setSelectedRange(NSRange(location: quoteCaret(in: text), length: 0))
+
+            try await publishEdit(coordinator, in: textView)
+
+            XCTAssertEqual(visibleTypeLabel(in: textView)?.stringValue, name, text)
+            XCTAssertEqual(vm.suggestions.map(\.name), suggestions, text)
+            XCTAssertTrue(coordinator.autocompletePopover.isShown, text)
+        }
+    }
+
+    func test_valueTypeHint_escapeClosesTheListAndKeepsTheLabel() async throws {
+        let (coordinator, vm) = makeCoordinator(provider: ValueTypeHintScenarioProvider())
+        let text = "{\n  \"flags\": \n}"
+        let (textView, window) = try laidOutTextView(text, width: 420)
+        XCTAssertNotNil(window.contentView)
+        textView.setSelectedRange(NSRange(location: afterColon(text), length: 0))
+        try await publishEdit(coordinator, in: textView)
+        XCTAssertTrue(coordinator.autocompletePopover.isShown)
+
+        let consumed = coordinator.textView(textView, doCommandBy: #selector(NSResponder.cancelOperation(_:)))
+
+        XCTAssertTrue(consumed)
+        XCTAssertFalse(vm.isVisible)
+        XCTAssertFalse(coordinator.autocompletePopover.isShown)
+        XCTAssertEqual(vm.valueTypeHint, JsonValueTypeHint(name: "bool", kind: .bool))
+        XCTAssertEqual(visibleTypeLabel(in: textView)?.stringValue, "bool")
+    }
+
+    func test_valueTypeHint_typingALetterHidesTheLabelAndFiltersTheList() async throws {
+        let (coordinator, vm) = makeCoordinator(provider: ValueTypeHintScenarioProvider())
+        let text = "{\n  \"status\": \"\"\n}"
+        let (textView, window) = try laidOutTextView(text, width: 420)
+        XCTAssertNotNil(window.contentView)
+        textView.delegate = coordinator
+        textView.setSelectedRange(NSRange(location: quoteCaret(in: text), length: 0))
+        try await publishEdit(coordinator, in: textView)
+        XCTAssertEqual(visibleTypeLabel(in: textView)?.stringValue, "Status")
+
+        textView.insertText("A", replacementRange: textView.selectedRange())
+        try await Task.sleep(for: .milliseconds(150))
+
+        XCTAssertNil(visibleTypeLabel(in: textView))
+        XCTAssertNil(vm.valueTypeHint)
+        XCTAssertEqual(vm.suggestions.map(\.name), ["ACTIVE"])
+        XCTAssertTrue(textView.string.contains("\"A\""))
+    }
+
+    func test_valueTypeHint_deletingBackToEmptyQuotes_restoresTheLabel() async throws {
+        let (coordinator, vm) = makeCoordinator(provider: ValueTypeHintScenarioProvider())
+        let text = "{\n  \"name\": \"a\"\n}"
+        let (textView, window) = try laidOutTextView(text, width: 420)
+        XCTAssertNotNil(window.contentView)
+        textView.delegate = coordinator
+        textView.allowsUndo = true
+        let value = (text as NSString).range(of: "\"a\"")
+        textView.setSelectedRange(NSRange(location: value.location + 2, length: 0))
+        try await publishEdit(coordinator, in: textView)
+        XCTAssertNil(visibleTypeLabel(in: textView))
+
+        window.makeFirstResponder(textView)
+        textView.setSelectedRange(NSRange(location: value.location + 2, length: 0))
+        textView.deleteBackward(nil)
+        try await Task.sleep(for: .milliseconds(300))
+
+        XCTAssertEqual(visibleTypeLabel(in: textView)?.stringValue, "string")
+        XCTAssertEqual(vm.valueTypeHint?.name, "string")
+        XCTAssertFalse(textView.string.contains("\"a\""))
+    }
+
+    func test_valueTypeHint_spaceInsideQuotesHidesTheLabel() async throws {
+        let (coordinator, _) = makeCoordinator(provider: ValueTypeHintScenarioProvider())
+        let text = "{\n  \"name\": \"\"\n}"
+        let (textView, window) = try laidOutTextView(text, width: 420)
+        XCTAssertNotNil(window.contentView)
+        textView.delegate = coordinator
+        textView.setSelectedRange(NSRange(location: quoteCaret(in: text), length: 0))
+        try await publishEdit(coordinator, in: textView)
+
+        textView.insertText(" ", replacementRange: textView.selectedRange())
+        try await Task.sleep(for: .milliseconds(150))
+
+        XCTAssertNil(visibleTypeLabel(in: textView))
+        XCTAssertTrue(textView.string.contains("\" \""))
+    }
+
+    func test_valueTypeHint_selectionHidesTheLabelUntilTheCaretReturns() async throws {
+        let (coordinator, _) = makeCoordinator(provider: ValueTypeHintScenarioProvider())
+        let text = "{\n  \"name\": \"\"\n}"
+        let (textView, window) = try laidOutTextView(text, width: 420)
+        XCTAssertNotNil(window.contentView)
+        textView.delegate = coordinator
+        let cursor = quoteCaret(in: text)
+        textView.setSelectedRange(NSRange(location: cursor, length: 0))
+        try await publishEdit(coordinator, in: textView)
+        XCTAssertNotNil(visibleTypeLabel(in: textView))
+
+        textView.setSelectedRange(NSRange(location: cursor, length: 2))
+        try await Task.sleep(for: .milliseconds(150))
+
+        XCTAssertNil(visibleTypeLabel(in: textView))
+
+        textView.setSelectedRange(NSRange(location: cursor, length: 0))
+        try await Task.sleep(for: .milliseconds(150))
+
+        let label = try XCTUnwrap(visibleTypeLabel(in: textView))
+        XCTAssertEqual(label.stringValue, "string")
+        XCTAssertTrue(label.isAccessibilityElement())
+    }
+
+    func test_valueTypeHint_caretMove_followsTheEmptySlotAndChangesTheName() async throws {
+        let (coordinator, vm) = makeCoordinator(provider: ValueTypeHintScenarioProvider())
+        let text = "{\n  \"name\": \"\",\n  \"count\": \n}"
+        let (textView, window) = try laidOutTextView(text, width: 420)
+        XCTAssertNotNil(window.contentView)
+        textView.delegate = coordinator
+        textView.setSelectedRange(NSRange(location: quoteCaret(in: text), length: 0))
+        try await publishEdit(coordinator, in: textView)
+        let stringLabel = try XCTUnwrap(visibleTypeLabel(in: textView))
+        XCTAssertEqual(stringLabel.stringValue, "string")
+        let stringFrame = stringLabel.frame
+        let count = (text as NSString).range(of: "\"count\": ")
+        textView.setSelectedRange(NSRange(location: count.location + count.length, length: 0))
+        try await Task.sleep(for: .milliseconds(150))
+
+        let numberLabel = try XCTUnwrap(visibleTypeLabel(in: textView))
+        XCTAssertEqual(numberLabel.stringValue, "int32")
+        XCTAssertFalse(numberLabel.frame.equalTo(stringFrame))
+        XCTAssertFalse(vm.isVisible)
+    }
+
+    func test_commitSelection_boolField_opensTrueAndFalseBesideTheTypeName() async throws {
+        let (coordinator, vm) = makeCoordinator(provider: ValueTypeHintScenarioProvider())
+        vm.suggestions = [AutocompleteSuggestion(name: "flags", typeHint: "bool", kind: .bool)]
+        vm.isVisible = true
+        let (textView, window) = try laidOutTextView("{\n  ", width: 420)
+        XCTAssertNotNil(window.contentView)
+        textView.setSelectedRange(NSRange(location: (textView.string as NSString).length, length: 0))
+
+        _ = coordinator.textView(textView, doCommandBy: #selector(NSTextView.insertTab(_:)))
+        try await Task.sleep(for: .milliseconds(400))
+
+        XCTAssertTrue(textView.string.contains("\"flags\": "), textView.string)
+        XCTAssertEqual(visibleTypeLabel(in: textView)?.stringValue, "bool")
+        XCTAssertEqual(vm.suggestions.map(\.name), ["true", "false"])
+        XCTAssertTrue(coordinator.autocompletePopover.isShown)
+        XCTAssertFalse(textView.string.contains("bool"))
+    }
+
+    func test_commitSelection_boolLiteral_hidesTheTypeName() async throws {
+        let (coordinator, vm) = makeCoordinator(provider: ValueTypeHintScenarioProvider())
+        let text = "{\n  \"flags\": \"\"\n}"
+        let (textView, window) = try laidOutTextView(text, width: 420)
+        XCTAssertNotNil(window.contentView)
+        textView.setSelectedRange(NSRange(location: quoteCaret(in: text), length: 0))
+        vm.suggestions = [AutocompleteSuggestion(name: "true", typeHint: "bool", kind: .boolLiteral)]
+        vm.selectedIndex = 0
+        vm.isVisible = true
+
+        _ = coordinator.textView(textView, doCommandBy: #selector(NSTextView.insertTab(_:)))
+        try await Task.sleep(for: .milliseconds(150))
+
+        XCTAssertTrue(textView.string.contains("\"flags\": true"), textView.string)
+        XCTAssertFalse(textView.string.contains("\"true\""), textView.string)
+        XCTAssertNil(vm.valueTypeHint)
+        XCTAssertNil(visibleTypeLabel(in: textView))
+        XCTAssertFalse(coordinator.autocompletePopover.isShown)
+    }
+
+    func test_commitSelection_enumValue_hidesTheTypeName() async throws {
+        let (coordinator, vm) = makeCoordinator(provider: ValueTypeHintScenarioProvider())
+        let text = "{\n  \"status\": \"\"\n}"
+        let (textView, window) = try laidOutTextView(text, width: 420)
+        XCTAssertNotNil(window.contentView)
+        textView.setSelectedRange(NSRange(location: quoteCaret(in: text), length: 0))
+        vm.suggestions = [AutocompleteSuggestion(name: "ACTIVE", typeHint: "Status", kind: .enum)]
+        vm.selectedIndex = 0
+        vm.isVisible = true
+
+        _ = coordinator.textView(textView, doCommandBy: #selector(NSTextView.insertTab(_:)))
+        try await Task.sleep(for: .milliseconds(150))
+
+        XCTAssertTrue(textView.string.contains("\"ACTIVE\""), textView.string)
+        XCTAssertNil(vm.valueTypeHint)
+        XCTAssertNil(visibleTypeLabel(in: textView))
+    }
+
+    func test_commitSelection_timestampPreset_hidesTheTypeName() async throws {
+        let (coordinator, vm) = makeCoordinator(provider: ValueTypeHintScenarioProvider())
+        let text = "{\n  \"created_at\": \"\"\n}"
+        let (textView, window) = try laidOutTextView(text, width: 420)
+        XCTAssertNotNil(window.contentView)
+        textView.setSelectedRange(NSRange(location: quoteCaret(in: text), length: 0))
+        vm.suggestions = [
+            AutocompleteSuggestion(
+                name: "now",
+                typeHint: "Timestamp RFC 3339",
+                kind: .wktDefault,
+                insertValue: "2026-11-07T13:47:26Z"),
+        ]
+        vm.selectedIndex = 0
+        vm.isVisible = true
+
+        _ = coordinator.textView(textView, doCommandBy: #selector(NSTextView.insertTab(_:)))
+        try await Task.sleep(for: .milliseconds(150))
+
+        XCTAssertTrue(textView.string.contains("\"2026-11-07T13:47:26Z\""), textView.string)
+        XCTAssertNil(vm.valueTypeHint)
+        XCTAssertNil(visibleTypeLabel(in: textView))
+    }
+
+    func test_commitSelection_message_hidesTheTypeNameAndOpensNestedFields() async throws {
+        let (coordinator, vm) = makeCoordinator(provider: ValueTypeHintScenarioProvider())
+        vm.suggestions = [AutocompleteSuggestion(name: "settings", typeHint: "Settings", kind: .message)]
+        vm.isVisible = true
+        let (textView, window) = try laidOutTextView("{\n  ", width: 420)
+        XCTAssertNotNil(window.contentView)
+        textView.setSelectedRange(NSRange(location: (textView.string as NSString).length, length: 0))
+
+        _ = coordinator.textView(textView, doCommandBy: #selector(NSTextView.insertTab(_:)))
+        try await Task.sleep(for: .milliseconds(150))
+
+        XCTAssertTrue(textView.string.contains("\"settings\": {"), textView.string)
+        XCTAssertNil(vm.valueTypeHint)
+        XCTAssertNil(visibleTypeLabel(in: textView))
+        XCTAssertEqual(vm.suggestions.map(\.name), ["enabled"])
+        XCTAssertTrue(coordinator.autocompletePopover.isShown)
+    }
+
+    func test_commitSelection_repeatedField_replacesTheArrayNameWithTheElementName() async throws {
+        let (coordinator, vm) = makeCoordinator(provider: ValueTypeHintScenarioProvider())
+        vm.suggestions = [AutocompleteSuggestion(name: "labels", typeHint: "string[]", kind: .repeated)]
+        vm.isVisible = true
+        let (textView, window) = try laidOutTextView("{\n  ", width: 420)
+        XCTAssertNotNil(window.contentView)
+        textView.setSelectedRange(NSRange(location: (textView.string as NSString).length, length: 0))
+
+        _ = coordinator.textView(textView, doCommandBy: #selector(NSTextView.insertTab(_:)))
+        try await Task.sleep(for: .milliseconds(150))
+
+        XCTAssertTrue(textView.string.contains("\"labels\": []"), textView.string)
+        let label = try XCTUnwrap(visibleTypeLabel(in: textView))
+        XCTAssertEqual(label.stringValue, "string")
+        XCTAssertFalse(vm.isVisible)
+        let bracket = (textView.string as NSString).range(of: "]").location
+        let bracketRect = try XCTUnwrap(glyphRect(in: textView, utf16: bracket))
+        XCTAssertGreaterThanOrEqual(label.frame.minX, bracketRect.maxX - 0.5)
+        XCTAssertFalse(label.frame.intersects(bracketRect))
+    }
+
+    func test_valueTypeHint_repeatedFieldBeforeBrackets_showsTheArrayName() async throws {
+        let (coordinator, _) = makeCoordinator(provider: ValueTypeHintScenarioProvider())
+        let text = "{\n  \"labels\": \n}"
+        let (textView, window) = try laidOutTextView(text, width: 420)
+        XCTAssertNotNil(window.contentView)
+        textView.setSelectedRange(NSRange(location: afterColon(text), length: 0))
+
+        try await publishEdit(coordinator, in: textView)
+
+        XCTAssertEqual(visibleTypeLabel(in: textView)?.stringValue, "string[]")
+        XCTAssertFalse(textView.string.contains("string[]"))
+    }
+
+    func test_valueTypeHint_mapShowsMapUntilTheCaretEntersTheObject() async throws {
+        let (coordinator, vm) = makeCoordinator(provider: ValueTypeHintScenarioProvider())
+        let before = "{\n  \"attrs\": \n}"
+        let (textView, window) = try laidOutTextView(before, width: 420)
+        XCTAssertNotNil(window.contentView)
+        textView.setSelectedRange(NSRange(location: afterColon(before), length: 0))
+        try await publishEdit(coordinator, in: textView)
+        XCTAssertEqual(visibleTypeLabel(in: textView)?.stringValue, "map")
+
+        let inside = "{\n  \"attrs\": {\n  \n}\n}"
+        textView.string = inside
+        let cursor = (inside as NSString).range(of: "{\n  \n}").location + 1
+        textView.setSelectedRange(NSRange(location: cursor, length: 0))
+        try await publishEdit(coordinator, in: textView)
+
+        XCTAssertNil(vm.valueTypeHint)
+        XCTAssertNil(visibleTypeLabel(in: textView))
+        XCTAssertEqual(vm.suggestions.map(\.name), ["key"])
+        XCTAssertTrue(coordinator.autocompletePopover.isShown)
+    }
+
+    func test_valueTypeHint_insideEmptyObject_hidesTheLabel() async throws {
+        let (coordinator, vm) = makeCoordinator(provider: ValueTypeHintScenarioProvider())
+        let text = "{\n  \"settings\": {}\n}"
+        let (textView, window) = try laidOutTextView(text, width: 420)
+        XCTAssertNotNil(window.contentView)
+        textView.setSelectedRange(NSRange(location: (text as NSString).range(of: "{}").location + 1, length: 0))
+
+        try await publishEdit(coordinator, in: textView)
+
+        XCTAssertNil(vm.valueTypeHint)
+        XCTAssertNil(visibleTypeLabel(in: textView))
+        XCTAssertEqual(vm.suggestions.map(\.name), ["enabled"])
+    }
+
+    func test_valueTypeHint_withoutAWindow_publishesTheNameButDrawsNothing() async throws {
+        let (coordinator, vm) = makeCoordinator(provider: ValueTypeHintScenarioProvider())
+        let textView = NSTextView()
+        let text = "{\n  \"name\": \"\"\n}"
+        textView.string = text
+        textView.setSelectedRange(NSRange(location: quoteCaret(in: text), length: 0))
+
+        try await publishEdit(coordinator, in: textView)
+
+        XCTAssertEqual(vm.valueTypeHint, JsonValueTypeHint(name: "string", kind: .string))
+        XCTAssertNil(visibleTypeLabel(in: textView))
+        XCTAssertFalse(coordinator.autocompletePopover.isShown)
+    }
+
+    func test_valueTypeHint_outsideTheRootAndWithoutASchema_drawsNothing() async throws {
+        let provider = ValueTypeHintScenarioProvider()
+        let outside = "{\"name\": \"a\"}"
+        let (coordinator, vm) = makeCoordinator(provider: provider)
+        let (textView, window) = try laidOutTextView(outside, width: 420)
+        XCTAssertNotNil(window.contentView)
+        textView.setSelectedRange(NSRange(location: (outside as NSString).length, length: 0))
+        try await publishEdit(coordinator, in: textView)
+        XCTAssertNil(vm.valueTypeHint)
+        XCTAssertNil(visibleTypeLabel(in: textView))
+
+        let (noProto, noProtoModel) = makeCoordinator(provider: provider, includeProtoFile: false)
+        let empty = "{\n  \"name\": \"\"\n}"
+        let (protoView, protoWindow) = try laidOutTextView(empty, width: 420)
+        XCTAssertNotNil(protoWindow.contentView)
+        protoView.setSelectedRange(NSRange(location: quoteCaret(in: empty), length: 0))
+        try await publishEdit(noProto, in: protoView)
+        XCTAssertNil(noProtoModel.valueTypeHint)
+        XCTAssertNil(visibleTypeLabel(in: protoView))
+
+        let metadata = makeMetadataCoordinator()
+        let (metadataView, metadataWindow) = try laidOutTextView(empty, width: 420)
+        XCTAssertNotNil(metadataWindow.contentView)
+        metadataView.setSelectedRange(NSRange(location: quoteCaret(in: empty), length: 0))
+        try await publishEdit(metadata, in: metadataView)
+        XCTAssertNil(visibleTypeLabel(in: metadataView))
+    }
+
+    func test_valueTypeHint_arrayRoot_drawsNothing() async throws {
+        let (coordinator, vm) = makeCoordinator(provider: ValueTypeHintScenarioProvider())
+        let text = "[\"\"]"
+        let (textView, window) = try laidOutTextView(text, width: 420)
+        XCTAssertNotNil(window.contentView)
+        textView.setSelectedRange(NSRange(location: 2, length: 0))
+
+        try await publishEdit(coordinator, in: textView)
+
+        XCTAssertNil(vm.valueTypeHint)
+        XCTAssertNil(visibleTypeLabel(in: textView))
+    }
+
+    func test_valueTypeHint_incompleteJSON_staysInlineAndDrawsAtTheCaret() async throws {
+        let text = "{\n  \"count\": "
+        let (coordinator, _) = makeCoordinator(
+            provider: ValueTypeHintScenarioProvider(),
+            formatInlineJSON: { json in
+                JsonInlineDocument.pretty(json) { try JsonFormatter().format($0) }
+            })
+        let (textView, window) = try laidOutTextView(text, width: 420)
+        XCTAssertNotNil(window.contentView)
+        textView.setSelectedRange(NSRange(location: (text as NSString).length, length: 0))
+
+        try await publishEdit(coordinator, in: textView)
+
+        XCTAssertEqual(textView.string, text)
+        XCTAssertEqual(visibleTypeLabel(in: textView)?.stringValue, "int32")
+    }
+
+    func test_valueTypeHint_completingInlineJSON_drawsAfterTheCommaOfTheEmptyValue() async throws {
+        let compact = "{\"name\":\"\",\"count\":1}"
+        let cursor = (compact as NSString).range(of: "\"\"").location + 1
+        let (coordinator, _) = makeCoordinator(
+            provider: ValueTypeHintScenarioProvider(),
+            formatInlineJSON: { json in
+                JsonInlineDocument.pretty(json) { try JsonFormatter().format($0) }
+            })
+        let (textView, window) = try laidOutTextView(compact, width: 420)
+        XCTAssertNotNil(window.contentView)
+        textView.setSelectedRange(NSRange(location: cursor, length: 0))
+
+        try await publishEdit(coordinator, in: textView)
+
+        XCTAssertFalse(JsonInlineDocument.isInline(textView.string))
+        let name = try XCTUnwrap(textView.string.range(of: "name"))
+        let count = try XCTUnwrap(textView.string.range(of: "count"))
+        XCTAssertLessThan(name.lowerBound, count.lowerBound)
+        let label = try XCTUnwrap(visibleTypeLabel(in: textView))
+        XCTAssertEqual(label.stringValue, "string")
+        let comma = (textView.string as NSString).range(of: ",").location
+        let commaRect = try XCTUnwrap(glyphRect(in: textView, utf16: comma))
+        XCTAssertGreaterThanOrEqual(label.frame.minX, commaRect.maxX - 0.5)
+        XCTAssertFalse(textView.string.contains("string"))
+    }
+
+    func test_valueTypeHint_alreadyPrettyText_keepsTheLabelWhereItIs() async throws {
+        let text = "{\n  \"name\": \"\",\n  \"count\": 1\n}"
+        let (coordinator, _) = makeCoordinator(
+            provider: ValueTypeHintScenarioProvider(),
+            formatInlineJSON: { json in
+                JsonInlineDocument.pretty(json) { try JsonFormatter().format($0) }
+            })
+        let (textView, window) = try laidOutTextView(text, width: 420)
+        XCTAssertNotNil(window.contentView)
+        textView.setSelectedRange(NSRange(location: quoteCaret(in: text), length: 0))
+        try await publishEdit(coordinator, in: textView)
+        let before = try XCTUnwrap(visibleTypeLabel(in: textView)).frame
+        let beforeText = textView.string
+
+        try await publishEdit(coordinator, in: textView)
+
+        XCTAssertEqual(textView.string, beforeText)
+        let after = try XCTUnwrap(visibleTypeLabel(in: textView)).frame
+        XCTAssertEqual(after.minX, before.minX, accuracy: 0.5)
+        XCTAssertEqual(after.minY, before.minY, accuracy: 0.5)
+    }
+
+    func test_externalDocumentReplace_recomputesTheTypeNameAtTheNewCaret() async throws {
+        let sorted = try JsonFormatter().format("{\"name\":\"\",\"count\":1}")
+        let count = try XCTUnwrap(sorted.range(of: "\"count\""))
+        let name = try XCTUnwrap(sorted.range(of: "\"name\""))
+        XCTAssertLessThan(count.lowerBound, name.lowerBound)
+        let compact = "{\"name\":\"\",\"count\":1}"
+        let (coordinator, vm) = makeCoordinator(
+            provider: ValueTypeHintScenarioProvider(),
+            formatInlineJSON: { json in
+                JsonInlineDocument.pretty(json) { try JsonFormatter().format($0) }
+            })
+        let (textView, window) = try laidOutTextView(compact, width: 420)
+        XCTAssertNotNil(window.contentView)
+        textView.setSelectedRange(NSRange(location: quoteCaret(in: compact), length: 0))
+
+        coordinator.syncDisplayedText(compact, to: textView)
+        try await Task.sleep(for: .milliseconds(150))
+
+        XCTAssertFalse(JsonInlineDocument.isInline(textView.string))
+        XCTAssertLessThan(
+            try XCTUnwrap(textView.string.range(of: "name")).lowerBound,
+            try XCTUnwrap(textView.string.range(of: "count")).lowerBound)
+        XCTAssertEqual(visibleTypeLabel(in: textView)?.stringValue, "string")
+        XCTAssertEqual(vm.valueTypeHint?.name, "string")
+        XCTAssertFalse(textView.string.contains("string"))
+
+        let filled = "{\n  \"name\": \"Ada\"\n}"
+        textView.setSelectedRange(NSRange(location: 0, length: 0))
+        coordinator.syncDisplayedText(filled, to: textView)
+        try await Task.sleep(for: .milliseconds(150))
+
+        XCTAssertEqual(textView.string, filled)
+        XCTAssertNil(vm.valueTypeHint)
+        XCTAssertNil(visibleTypeLabel(in: textView))
+    }
+
+    func test_valueTypeHint_narrowLine_hidesInsteadOfWideningTheDocument() async throws {
+        let (coordinator, _) = makeCoordinator(provider: ValueTypeHintScenarioProvider())
+        let text = "{\n  \"name\": \"\"\n}"
+        let (textView, window) = try laidOutTextView(text, width: 420)
+        XCTAssertNotNil(window.contentView)
+        let quote = quoteCaret(in: text)
+        let quoteRect = try XCTUnwrap(glyphRect(in: textView, utf16: quote))
+        let tightWidth = quoteRect.maxX + 8
+        textView.frame.size.width = tightWidth
+        textView.textContainer?.containerSize = NSSize(width: tightWidth, height: .greatestFiniteMagnitude)
+        textView.layoutSubtreeIfNeeded()
+        try textView.layoutManager?.ensureLayout(for: XCTUnwrap(textView.textContainer))
+        textView.setSelectedRange(NSRange(location: quote, length: 0))
+
+        try await publishEdit(coordinator, in: textView)
+
+        XCTAssertNil(visibleTypeLabel(in: textView))
+        XCTAssertEqual(textView.frame.width, tightWidth, accuracy: 0.5)
+        XCTAssertFalse(textView.isHorizontallyResizable)
+        XCTAssertFalse(textView.string.contains("string"))
+    }
+
+    func test_undoAndRedo_redrawTheTypeNameForTheRestoredCaret() async throws {
+        let (coordinator, _) = makeCoordinator(provider: ValueTypeHintScenarioProvider())
+        let text = "{\n  \"name\": \"\"\n}"
+        let (textView, window) = try laidOutTextView(text, width: 420)
+        XCTAssertNotNil(window.contentView)
+        textView.delegate = coordinator
+        textView.allowsUndo = true
+        textView.setSelectedRange(NSRange(location: quoteCaret(in: text), length: 0))
+        try await publishEdit(coordinator, in: textView)
+        XCTAssertEqual(visibleTypeLabel(in: textView)?.stringValue, "string")
+        let undoBeforeTyping = textView.undoManager
+        undoBeforeTyping?.undo()
+        XCTAssertEqual(textView.string, text)
+
+        textView.insertText("a", replacementRange: textView.selectedRange())
+        try await Task.sleep(for: .milliseconds(150))
+        XCTAssertNil(visibleTypeLabel(in: textView))
+        XCTAssertFalse(textView.string.contains("string"))
+
+        textView.undoManager?.undo()
+        try await Task.sleep(for: .milliseconds(150))
+
+        XCTAssertFalse(textView.string.contains("\"a\""), textView.string)
+        XCTAssertEqual(visibleTypeLabel(in: textView)?.stringValue, "string")
+        XCTAssertFalse(textView.string.contains("string"))
+
+        textView.undoManager?.redo()
+        try await Task.sleep(for: .milliseconds(150))
+
+        XCTAssertTrue(textView.string.contains("\"a\""), textView.string)
+        XCTAssertNil(visibleTypeLabel(in: textView))
+    }
+
+    private func quoteCaret(in text: String) -> Int {
+        (text as NSString).range(of: "\"\"").location + 1
+    }
+
+    private func afterColon(_ text: String) -> Int {
+        let colon = (text as NSString).range(of: ": ")
+        return colon.location + colon.length
+    }
+
+    private func assertSameColor(_ actual: NSColor?, _ expected: NSColor, line: UInt = #line) {
+        let left = (actual ?? .clear).usingColorSpace(.sRGB) ?? .clear
+        let right = expected.usingColorSpace(.sRGB) ?? expected
+        XCTAssertEqual(left.redComponent, right.redComponent, accuracy: 0.02, line: line)
+        XCTAssertEqual(left.greenComponent, right.greenComponent, accuracy: 0.02, line: line)
+        XCTAssertEqual(left.blueComponent, right.blueComponent, accuracy: 0.02, line: line)
+        XCTAssertEqual(left.alphaComponent, right.alphaComponent, accuracy: 0.02, line: line)
+    }
+}
+
+/// Schema stand-in for the request-body type name. Names follow the proto placeholder rules.
+private struct ValueTypeHintScenarioProvider: AutocompleteProviderProtocol {
+    func suggestions(
+        for context: AutocompleteContext,
+        rootMessageType _: String,
+        in _: ProtoFile)
+        -> [AutocompleteSuggestion]
+    {
+        switch context.mode {
+        case .key:
+            if context.resolvedPath == ["settings"] {
+                return [AutocompleteSuggestion(name: "enabled", typeHint: "bool", kind: .bool)]
+            }
+            if context.resolvedPath == ["attrs"] {
+                return [AutocompleteSuggestion(name: "key", typeHint: "string", kind: .string)]
+            }
+            return [
+                AutocompleteSuggestion(name: "name", typeHint: "string", kind: .string),
+                AutocompleteSuggestion(name: "count", typeHint: "int32", kind: .number),
+                AutocompleteSuggestion(name: "settings", typeHint: "Settings", kind: .message),
+                AutocompleteSuggestion(name: "status", typeHint: "Status", kind: .enumField),
+                AutocompleteSuggestion(name: "labels", typeHint: "string[]", kind: .repeated),
+                AutocompleteSuggestion(name: "created_at", typeHint: "Timestamp", kind: .wktString),
+                AutocompleteSuggestion(name: "ttl", typeHint: "Duration", kind: .wktString),
+                AutocompleteSuggestion(name: "flags", typeHint: "bool", kind: .bool),
+                AutocompleteSuggestion(name: "attrs", typeHint: "map", kind: .message),
+            ]
+
+        case .enumValue:
+            switch context.currentFieldKey {
+            case "status":
+                return [
+                    AutocompleteSuggestion(name: "ACTIVE", typeHint: "Status", kind: .enum),
+                    AutocompleteSuggestion(name: "INACTIVE", typeHint: "Status", kind: .enum),
+                ]
+
+            case "created_at":
+                return [
+                    AutocompleteSuggestion(
+                        name: "now",
+                        typeHint: "Timestamp RFC 3339",
+                        kind: .wktDefault,
+                        insertValue: "2026-11-07T13:47:26Z"),
+                ]
+
+            case "ttl":
+                return [
+                    AutocompleteSuggestion(name: "0s", typeHint: "Duration", kind: .wktDefault, insertValue: "0s"),
+                    AutocompleteSuggestion(name: "1s", typeHint: "Duration", kind: .wktDefault, insertValue: "1s"),
+                ]
+
+            case "flags":
+                return [
+                    AutocompleteSuggestion(name: "true", typeHint: "bool", kind: .boolLiteral),
+                    AutocompleteSuggestion(name: "false", typeHint: "bool", kind: .boolLiteral),
+                ]
+
+            default:
+                return []
+            }
+
+        case .arrayElement:
+            guard context.resolvedPath == ["flags"] else { return [] }
+
+            return [
+                AutocompleteSuggestion(name: "true", typeHint: "bool", kind: .boolLiteral),
+                AutocompleteSuggestion(name: "false", typeHint: "bool", kind: .boolLiteral),
+            ]
+        }
+    }
+
+    func valueTypeHint(
+        for context: AutocompleteContext,
+        rootMessageType _: String,
+        in _: ProtoFile)
+        -> JsonValueTypeHint?
+    {
+        switch context.mode {
+        case .key:
+            return nil
+
+        case .enumValue:
+            switch context.currentFieldKey {
+            case "name":
+                return JsonValueTypeHint(name: "string", kind: .string)
+            case "count":
+                return JsonValueTypeHint(name: "int32", kind: .number)
+            case "settings":
+                return JsonValueTypeHint(name: "Settings", kind: .message)
+            case "status":
+                return JsonValueTypeHint(name: "Status", kind: .enumField)
+            case "labels":
+                return JsonValueTypeHint(name: "string[]", kind: .repeated)
+            case "created_at":
+                return JsonValueTypeHint(name: "Timestamp", kind: .wktString)
+            case "ttl":
+                return JsonValueTypeHint(name: "Duration", kind: .wktString)
+            case "flags":
+                return JsonValueTypeHint(name: "bool", kind: .bool)
+            case "attrs":
+                return JsonValueTypeHint(name: "map", kind: .message)
+            default:
+                return nil
+            }
+
+        case .arrayElement:
+            if context.resolvedPath == ["labels"] {
+                return JsonValueTypeHint(name: "string", kind: .string)
+            }
+            if context.resolvedPath == ["flags"] {
+                return JsonValueTypeHint(name: "bool", kind: .bool)
+            }
+            return nil
+        }
     }
 }

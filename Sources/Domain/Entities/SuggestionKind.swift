@@ -4,6 +4,8 @@ public enum SuggestionKind: Equatable, Sendable {
     case string
     case number
     case bool
+    /// `true` or `false` inserted as a JSON literal, not as a field name.
+    case boolLiteral
     /// A field whose type is an enum (key-mode insertion). Inserts `"fieldName": ` and
     /// re-triggers autocomplete so that enum-value suggestions appear immediately.
     case enumField

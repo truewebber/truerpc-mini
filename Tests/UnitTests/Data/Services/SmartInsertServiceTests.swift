@@ -109,6 +109,15 @@ final class SmartInsertServiceTests: XCTestCase {
 
     // MARK: - unclosedBraceCount
 
+    func test_smartInsertComponents_boolLiteral_insertsTheBareLiteral() {
+        let suggestion = AutocompleteSuggestion(name: "true", typeHint: "bool", kind: .boolLiteral)
+
+        let result = sut.smartInsertComponents(for: suggestion)
+
+        XCTAssertEqual(result.text, "true")
+        XCTAssertEqual(result.cursorBack, 0)
+    }
+
     func test_unclosedBraceCount_balanced_returnsZero() {
         XCTAssertEqual(sut.unclosedBraceCount(in: "{\"a\": 1}"), 0)
     }

@@ -430,6 +430,15 @@ final class ProtoSchemaAutocompleteProviderTests: XCTestCase {
         XCTAssertTrue(suggestions.isEmpty)
     }
 
+    func test_enumValueMode_boolField_returnsTrueAndFalse() async {
+        let context = AutocompleteContext(resolvedPath: ["settings", "enabled"], mode: .enumValue)
+
+        let suggestions = await sut.suggestions(for: context, rootMessageType: "test.TestRequest", in: protoFile)
+
+        XCTAssertEqual(suggestions.map(\.name), ["true", "false"])
+        XCTAssertTrue(suggestions.allSatisfy { $0.kind == .boolLiteral })
+    }
+
     func test_enumValueMode_messageField_returnsEmpty() async {
         let context = AutocompleteContext(resolvedPath: ["settings"], mode: .enumValue)
 
@@ -846,6 +855,225 @@ final class ProtoSchemaAutocompleteProviderTests: XCTestCase {
         let hint = await valueTypeHint(mode: .enumValue, path: [], currentFieldKey: "missing")
 
         XCTAssertNil(hint)
+    }
+
+    func test_valueTypeHint_unknownRootType_returnsNil() async {
+        let context = AutocompleteContext(resolvedPath: [], mode: .enumValue, currentFieldKey: "name")
+
+        let hint = await sut.valueTypeHint(for: context, rootMessageType: "missing.Type", in: protoFile)
+
+        XCTAssertNil(hint)
+    }
+
+    func test_valueTypeHint_doubleField_returnsDouble() async {
+        let hint = await valueTypeHint(mode: .enumValue, path: [], currentFieldKey: "score")
+
+        XCTAssertEqual(hint, JsonValueTypeHint(name: "double", kind: .number))
+    }
+
+    func test_valueTypeHint_int64Field_returnsInt64() async {
+        let hint = await valueTypeHint(mode: .enumValue, path: ["settings", "detail"], currentFieldKey: "value")
+
+        XCTAssertEqual(hint, JsonValueTypeHint(name: "int64", kind: .number))
+    }
+
+    func test_valueTypeHint_repeatedMessageField_returnsNameAndBrackets() async {
+        let hint = await valueTypeHint(mode: .enumValue, path: [], currentFieldKey: "items")
+
+        XCTAssertEqual(hint, JsonValueTypeHint(name: "Settings[]", kind: .repeated))
+    }
+
+    func test_valueTypeHint_repeatedEnumField_returnsNameAndBrackets() async {
+        let hint = await valueTypeHint(mode: .enumValue, path: [], currentFieldKey: "tags")
+
+        XCTAssertEqual(hint, JsonValueTypeHint(name: "Status[]", kind: .repeated))
+    }
+
+    func test_valueTypeHint_repeatedTimestampField_returnsTimestampArray() async {
+        let hint = await valueTypeHint(mode: .enumValue, path: [], currentFieldKey: "timestamps")
+
+        XCTAssertEqual(hint, JsonValueTypeHint(name: "Timestamp[]", kind: .repeated))
+    }
+
+    func test_valueTypeHint_repeatedTimestampElement_returnsTimestamp() async {
+        let hint = await valueTypeHint(mode: .arrayElement, path: ["timestamps"])
+
+        XCTAssertEqual(hint, JsonValueTypeHint(name: "Timestamp", kind: .wktString))
+    }
+
+    func test_valueTypeHint_numericWireTypes_useJsonNames() async {
+        let file = FileDescriptor(name: "n.proto", package: "n")
+        var msg = MessageDescriptor(name: "Numbers", parent: file)
+        let fields: [(String, FieldType, String)] = [
+            ("f_double", .double, "double"),
+            ("f_float", .float, "float"),
+            ("f_int32", .int32, "int32"),
+            ("f_int64", .int64, "int64"),
+            ("f_uint32", .uint32, "uint32"),
+            ("f_uint64", .uint64, "uint64"),
+            ("f_sint32", .sint32, "int32"),
+            ("f_sint64", .sint64, "int64"),
+            ("f_fixed32", .fixed32, "uint32"),
+            ("f_fixed64", .fixed64, "uint64"),
+            ("f_sfixed32", .sfixed32, "int32"),
+            ("f_sfixed64", .sfixed64, "int64"),
+        ]
+        for (index, field) in fields.enumerated() {
+            msg.addField(FieldDescriptor(name: field.0, number: index + 1, type: field.1))
+        }
+        let provider = ProtoSchemaAutocompleteProvider(
+            protoRepository: StubProtoRepository(descriptors: ["n.Numbers": msg]))
+        let proto = ProtoFile(name: "n.proto", path: URL(fileURLWithPath: "/n.proto"), services: [])
+
+        for field in fields {
+            let hint = await provider.valueTypeHint(
+                for: AutocompleteContext(resolvedPath: [], mode: .enumValue, currentFieldKey: field.0),
+                rootMessageType: "n.Numbers",
+                in: proto)
+            XCTAssertEqual(hint, JsonValueTypeHint(name: field.2, kind: .number), field.0)
+        }
+    }
+
+    func test_valueTypeHint_repeatedBool_returnsArrayAndElementNames() async {
+        let file = FileDescriptor(name: "b.proto", package: "b")
+        var msg = MessageDescriptor(name: "Flags", parent: file)
+        msg.addField(FieldDescriptor(name: "flags", number: 1, type: .bool, isRepeated: true))
+        let provider = ProtoSchemaAutocompleteProvider(
+            protoRepository: StubProtoRepository(descriptors: ["b.Flags": msg]))
+        let proto = ProtoFile(name: "b.proto", path: URL(fileURLWithPath: "/b.proto"), services: [])
+
+        let field = await provider.valueTypeHint(
+            for: AutocompleteContext(resolvedPath: [], mode: .enumValue, currentFieldKey: "flags"),
+            rootMessageType: "b.Flags",
+            in: proto)
+        let element = await provider.valueTypeHint(
+            for: AutocompleteContext(resolvedPath: ["flags"], mode: .arrayElement),
+            rootMessageType: "b.Flags",
+            in: proto)
+        let suggestions = await provider.suggestions(
+            for: AutocompleteContext(resolvedPath: ["flags"], mode: .arrayElement),
+            rootMessageType: "b.Flags",
+            in: proto)
+
+        XCTAssertEqual(field, JsonValueTypeHint(name: "bool[]", kind: .repeated))
+        XCTAssertEqual(element, JsonValueTypeHint(name: "bool", kind: .bool))
+        XCTAssertEqual(suggestions.map(\.name), ["true", "false"])
+        XCTAssertTrue(suggestions.allSatisfy { $0.kind == .boolLiteral })
+    }
+
+    func test_valueTypeHint_mapAndWellKnownMessages_usePlaceholderNames() async {
+        let mapEntry = MapEntryInfo(
+            keyFieldInfo: KeyFieldInfo(name: "key", number: 1, type: .string),
+            valueFieldInfo: ValueFieldInfo(name: "value", number: 2, type: .string))
+        let file = FileDescriptor(name: "map.proto", package: "test")
+        var root = MessageDescriptor(name: "MapRequest", parent: file)
+        root.addField(FieldDescriptor(
+            name: "labels",
+            number: 1,
+            type: .message,
+            typeName: "test.MapRequest.LabelsEntry",
+            isRepeated: true,
+            isMap: true,
+            mapEntryInfo: mapEntry))
+        root.addField(FieldDescriptor(
+            name: "payload",
+            number: 2,
+            type: .message,
+            typeName: "google.protobuf.Any"))
+        root.addField(FieldDescriptor(
+            name: "fields",
+            number: 3,
+            type: .message,
+            typeName: "google.protobuf.Struct"))
+        root.addField(FieldDescriptor(
+            name: "mask",
+            number: 4,
+            type: .message,
+            typeName: "google.protobuf.FieldMask"))
+        let provider = ProtoSchemaAutocompleteProvider(
+            protoRepository: StubProtoRepository(descriptors: ["test.MapRequest": root]))
+        let proto = ProtoFile(
+            name: "map.proto",
+            path: URL(fileURLWithPath: "/map.proto"),
+            services: [])
+
+        let labels = await provider.valueTypeHint(
+            for: AutocompleteContext(resolvedPath: [], mode: .enumValue, currentFieldKey: "labels"),
+            rootMessageType: "test.MapRequest",
+            in: proto)
+        let payload = await provider.valueTypeHint(
+            for: AutocompleteContext(resolvedPath: [], mode: .enumValue, currentFieldKey: "payload"),
+            rootMessageType: "test.MapRequest",
+            in: proto)
+        let fields = await provider.valueTypeHint(
+            for: AutocompleteContext(resolvedPath: [], mode: .enumValue, currentFieldKey: "fields"),
+            rootMessageType: "test.MapRequest",
+            in: proto)
+        let mask = await provider.valueTypeHint(
+            for: AutocompleteContext(resolvedPath: [], mode: .enumValue, currentFieldKey: "mask"),
+            rootMessageType: "test.MapRequest",
+            in: proto)
+
+        XCTAssertEqual(labels, JsonValueTypeHint(name: "map", kind: .message))
+        XCTAssertEqual(payload, JsonValueTypeHint(name: "Any", kind: .message))
+        XCTAssertEqual(fields, JsonValueTypeHint(name: "Struct", kind: .message))
+        XCTAssertEqual(mask, JsonValueTypeHint(name: "FieldMask", kind: .message))
+    }
+
+    func test_keyMode_mapAndWellKnownMessages_areObjects() async {
+        let mapEntry = MapEntryInfo(
+            keyFieldInfo: KeyFieldInfo(name: "key", number: 1, type: .string),
+            valueFieldInfo: ValueFieldInfo(name: "value", number: 2, type: .string))
+        let file = FileDescriptor(name: "map.proto", package: "test")
+        var root = MessageDescriptor(name: "MapRequest", parent: file)
+        root.addField(FieldDescriptor(
+            name: "labels",
+            number: 1,
+            type: .message,
+            typeName: "test.MapRequest.LabelsEntry",
+            isRepeated: true,
+            isMap: true,
+            mapEntryInfo: mapEntry))
+        root.addField(FieldDescriptor(
+            name: "payload",
+            number: 2,
+            type: .message,
+            typeName: "google.protobuf.Any"))
+        root.addField(FieldDescriptor(
+            name: "fields",
+            number: 3,
+            type: .message,
+            typeName: "google.protobuf.Struct"))
+        root.addField(FieldDescriptor(
+            name: "mask",
+            number: 4,
+            type: .message,
+            typeName: "google.protobuf.FieldMask"))
+        let provider = ProtoSchemaAutocompleteProvider(
+            protoRepository: StubProtoRepository(descriptors: ["test.MapRequest": root]))
+        let method = Method(
+            name: "Send",
+            serviceName: "MapService",
+            inputType: "test.MapRequest",
+            outputType: "test.MapRequest")
+        let service = Service(name: "MapService", methods: [method])
+        let fileModel = ProtoFile(
+            name: "map.proto",
+            path: URL(fileURLWithPath: "/map.proto"),
+            services: [service])
+        let context = AutocompleteContext(resolvedPath: [], mode: .key)
+
+        let suggestions = await provider.suggestions(for: context, rootMessageType: "test.MapRequest", in: fileModel)
+        let byName = Dictionary(uniqueKeysWithValues: suggestions.map { ($0.name, $0) })
+
+        XCTAssertEqual(byName["labels"]?.kind, .message)
+        XCTAssertEqual(byName["labels"]?.typeHint, "map")
+        XCTAssertEqual(byName["payload"]?.kind, .message)
+        XCTAssertEqual(byName["payload"]?.typeHint, "Any")
+        XCTAssertEqual(byName["fields"]?.kind, .message)
+        XCTAssertEqual(byName["fields"]?.typeHint, "Struct")
+        XCTAssertEqual(byName["mask"]?.kind, .message)
+        XCTAssertEqual(byName["mask"]?.typeHint, "FieldMask")
     }
 
     private func valueTypeHint(

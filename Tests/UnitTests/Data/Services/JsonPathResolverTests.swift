@@ -558,6 +558,51 @@ final class JsonPathResolverTests: XCTestCase {
         XCTAssertEqual(context.currentFieldKey, "status")
     }
 
+    func test_resolve_cursorBetweenEmptyValueQuotes_isAnEmptyValue() {
+        let json = "{\"name\": \"\"}"
+        let cursor = (json as NSString).range(of: "\"\"").location + 1
+
+        let context = sut.resolve(json: json, cursorOffset: cursor)
+
+        XCTAssertEqual(context.mode, .enumValue)
+        XCTAssertEqual(context.partialKey, "")
+        XCTAssertEqual(context.currentFieldKey, "name")
+        XCTAssertFalse(context.isOutsideRootObject)
+    }
+
+    func test_resolve_cursorInsideEmptyNestedObject_isKeyMode() {
+        let json = "{\"settings\": {}}"
+        let cursor = (json as NSString).range(of: "{}").location + 1
+
+        let context = sut.resolve(json: json, cursorOffset: cursor)
+
+        XCTAssertEqual(context.mode, .key)
+        XCTAssertEqual(context.resolvedPath, ["settings"])
+        XCTAssertEqual(context.partialKey, "")
+    }
+
+    func test_resolve_cursorInsideEmptyArray_isArrayElementMode() {
+        let json = "{\"labels\": []}"
+        let cursor = (json as NSString).range(of: "[]").location + 1
+
+        let context = sut.resolve(json: json, cursorOffset: cursor)
+
+        XCTAssertEqual(context.mode, .arrayElement)
+        XCTAssertEqual(context.resolvedPath, ["labels"])
+        XCTAssertEqual(context.partialKey, "")
+    }
+
+    func test_resolve_cursorAfterSpaceInsideValueQuotes_partialKeyStaysEmpty() {
+        let json = "{\"name\": \" \"}"
+        let cursor = (json as NSString).range(of: "\" \"").location + 2
+
+        let context = sut.resolve(json: json, cursorOffset: cursor)
+
+        XCTAssertEqual(context.mode, .enumValue)
+        XCTAssertEqual(context.partialKey, "")
+        XCTAssertEqual(context.currentFieldKey, "name")
+    }
+
     func test_resolve_cursorAfterColon_inNestedObject_currentFieldKeyIsCorrect() {
         let json = "{\"a\": {\"status\": "
         let context = sut.resolve(json: json, cursorOffset: json.count)

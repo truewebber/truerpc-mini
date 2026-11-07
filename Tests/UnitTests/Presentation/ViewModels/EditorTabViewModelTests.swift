@@ -9,6 +9,7 @@ final class EditorTabViewModelTests: XCTestCase {
     var mockExecuteRequestUseCase: MockExecuteUnaryRequestUseCase!
     var mockExportResponseUseCase: MockExportResponseUseCase!
     var mockJsonFormatter: MockJsonFormatter!
+    var mockClipboard: MockClipboard!
     var mockLogger: MockAppLogger!
     var testMethod: TrueRPCMini.Method!
     var testService: Service!
@@ -21,6 +22,7 @@ final class EditorTabViewModelTests: XCTestCase {
         mockExecuteRequestUseCase = MockExecuteUnaryRequestUseCase()
         mockExportResponseUseCase = MockExportResponseUseCase()
         mockJsonFormatter = MockJsonFormatter()
+        mockClipboard = MockClipboard()
         mockLogger = MockAppLogger()
 
         testMethod = TrueRPCMini.Method(
@@ -48,6 +50,8 @@ final class EditorTabViewModelTests: XCTestCase {
             formatter: mockJsonFormatter,
             autocompleteProvider: MockAutocompleteProvider(),
             resolver: JsonPathResolver(),
+            smartInsert: SmartInsertService(),
+            clipboard: mockClipboard,
             logger: mockLogger)
     }
 
@@ -56,6 +60,7 @@ final class EditorTabViewModelTests: XCTestCase {
         mockGenerateMockDataUseCase = nil
         mockExecuteRequestUseCase = nil
         mockJsonFormatter = nil
+        mockClipboard = nil
         mockLogger = nil
         testMethod = nil
         testService = nil
@@ -274,25 +279,27 @@ final class EditorTabViewModelTests: XCTestCase {
         // When
         sut.copyResponse()
 
-        // Then
-        let pasteboard = NSPasteboard.general
-        let copiedString = pasteboard.string(forType: .string)
-        XCTAssertEqual(copiedString, #"{"user": "John Doe"}"#)
+        XCTAssertEqual(mockClipboard.copied, "{\n  \"user\" : \"John Doe\"\n}")
     }
 
     func test_copyResponse_whenNoResponse_doesNothing() {
-        // Given
         sut.response = nil
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString("previous content", forType: .string)
 
-        // When
         sut.copyResponse()
 
-        // Then
-        let pasteboard = NSPasteboard.general
-        let content = pasteboard.string(forType: .string)
-        XCTAssertEqual(content, "previous content")
+        XCTAssertNil(mockClipboard.copied)
+    }
+
+    func test_copyResponse_whenJsonIsInvalid_copiesTheOriginalText() {
+        sut.response = GrpcResponse(
+            jsonBody: "{invalid",
+            responseTime: 0.1,
+            statusCode: 0,
+            statusMessage: "OK")
+
+        sut.copyResponse()
+
+        XCTAssertEqual(mockClipboard.copied, "{invalid")
     }
 
     // MARK: - Export Response Tests
@@ -314,6 +321,8 @@ final class EditorTabViewModelTests: XCTestCase {
             formatter: mockJsonFormatter,
             autocompleteProvider: MockAutocompleteProvider(),
             resolver: JsonPathResolver(),
+            smartInsert: SmartInsertService(),
+            clipboard: MockClipboard(),
             logger: mockLogger)
         sutWithExport.response = testResponse
 
@@ -340,6 +349,8 @@ final class EditorTabViewModelTests: XCTestCase {
             formatter: mockJsonFormatter,
             autocompleteProvider: MockAutocompleteProvider(),
             resolver: JsonPathResolver(),
+            smartInsert: SmartInsertService(),
+            clipboard: MockClipboard(),
             logger: mockLogger)
         sutWithExport.response = nil
 
@@ -544,6 +555,8 @@ extension EditorTabViewModelTests {
             formatter: mockJsonFormatter,
             autocompleteProvider: MockAutocompleteProvider(),
             resolver: JsonPathResolver(),
+            smartInsert: SmartInsertService(),
+            clipboard: MockClipboard(),
             logger: mockLogger)
 
         XCTAssertEqual(vm.url, "localhost:50051")
@@ -561,6 +574,8 @@ extension EditorTabViewModelTests {
             formatter: mockJsonFormatter,
             autocompleteProvider: MockAutocompleteProvider(),
             resolver: JsonPathResolver(),
+            smartInsert: SmartInsertService(),
+            clipboard: MockClipboard(),
             logger: mockLogger)
 
         XCTAssertEqual(vm.url, "")
@@ -579,6 +594,8 @@ extension EditorTabViewModelTests {
             formatter: mockJsonFormatter,
             autocompleteProvider: MockAutocompleteProvider(),
             resolver: JsonPathResolver(),
+            smartInsert: SmartInsertService(),
+            clipboard: MockClipboard(),
             logger: mockLogger)
 
         XCTAssertEqual(vm.url, "my-server:9090")
@@ -659,6 +676,8 @@ extension EditorTabViewModelTests {
             formatter: mockJsonFormatter,
             autocompleteProvider: MockAutocompleteProvider(),
             resolver: JsonPathResolver(),
+            smartInsert: SmartInsertService(),
+            clipboard: MockClipboard(),
             logger: mockLogger)
 
         XCTAssertEqual(vm.connectionSecurity.adHocConfig, adHocTLS)
@@ -718,6 +737,25 @@ extension EditorTabViewModelTests {
 // MARK: - Format Actions (OPE-246)
 
 extension EditorTabViewModelTests {
+    func test_prettyJSONIfInline_compactObject_returnsPrettyPrinted() {
+        mockJsonFormatter.formattedResult = "ignored"
+
+        XCTAssertEqual(sut.prettyJSONIfInline("{\"userId\":1}"), "{\n  \"userId\" : 1\n}")
+    }
+
+    func test_prettyJSONIfInline_alreadyPretty_returnsNil() {
+        let pretty = "{\n  \"userId\" : 1\n}"
+
+        XCTAssertNil(sut.prettyJSONIfInline(pretty))
+        XCTAssertEqual(mockJsonFormatter.formatCallCount, 0)
+    }
+
+    func test_prettyJSONIfInline_invalidJson_returnsNil() {
+        mockJsonFormatter.shouldThrow = true
+
+        XCTAssertNil(sut.prettyJSONIfInline("{invalid}"))
+    }
+
     func test_formatRequestJson_validJson_updatesRequestJson() {
         // Given
         sut.requestJson = "{\"userId\":1}"

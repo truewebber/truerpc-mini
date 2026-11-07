@@ -106,12 +106,13 @@ struct RequestEditorView: View {
                     await viewModel.executeRequest()
                 }
             } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: viewModel.isExecuting ? "stop.fill" : "play.fill")
-                    Text(viewModel.isExecuting ? "Executing" : "Execute")
+                if viewModel.isExecuting {
+                    ProgressView()
+                        .controlSize(.small)
+                    Text("Executing")
+                } else {
+                    Label("Execute", systemImage: "play.fill")
                 }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
             }
             .buttonStyle(.borderedProminent)
             .keyboardShortcut(hotkeys.keyboardShortcut(for: .executeRequest))
@@ -237,7 +238,9 @@ struct RequestEditorView: View {
                     get: { viewModel.requestJson },
                     set: { viewModel.updateJson($0) }),
                 autocompleteViewModel: viewModel.autocompleteViewModel,
-                protoFile: viewModel.editorTab.protoFile)
+                protoFile: viewModel.editorTab.protoFile,
+                smartInsert: viewModel.smartInsert,
+                formatInlineJSON: { viewModel.prettyJSONIfInline($0) })
                 .id("json-editor-\(viewModel.editorTab.id)")
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
@@ -254,7 +257,7 @@ struct RequestEditorView: View {
                 Spacer()
 
                 Text("JSON format: {\"key\": \"value\"}")
-                    .font(.caption2)
+                    .font(.caption)
                     .foregroundStyle(.secondary)
 
                 if let error = viewModel.metadataFormatError {
@@ -274,9 +277,12 @@ struct RequestEditorView: View {
                 .help("Format JSON")
             }
 
-            JSONTextEditor(text: Binding(
-                get: { viewModel.metadataJson },
-                set: { viewModel.updateMetadata($0) }))
+            JSONTextEditor(
+                text: Binding(
+                    get: { viewModel.metadataJson },
+                    set: { viewModel.updateMetadata($0) }),
+                smartInsert: viewModel.smartInsert,
+                formatInlineJSON: { viewModel.prettyJSONIfInline($0) })
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .padding()
@@ -392,6 +398,8 @@ struct RequestEditorView: View {
             formatter: JsonFormatter(),
             autocompleteProvider: RequestEditorView_PreviewStubAutocompleteProvider(),
             resolver: JsonPathResolver(),
+            smartInsert: SmartInsertService(),
+            clipboard: PasteboardClipboard(),
             logger: NullLogger())
         viewModel.url = url
         viewModel.requestJson = json

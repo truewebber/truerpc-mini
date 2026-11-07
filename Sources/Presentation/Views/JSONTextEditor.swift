@@ -9,15 +9,22 @@ struct JSONTextEditor: NSViewRepresentable {
     @Binding var text: String
     var autocompleteViewModel: AutocompleteViewModel?
     var protoFile: ProtoFile?
+    var smartInsert: any SmartInsertServiceProtocol
+    /// Turns a valid inline document into pretty JSON. `nil` leaves the text unchanged.
+    var formatInlineJSON: ((String) -> String?)?
 
     init(
         text: Binding<String>,
         autocompleteViewModel: AutocompleteViewModel? = nil,
-        protoFile: ProtoFile? = nil)
+        protoFile: ProtoFile? = nil,
+        smartInsert: any SmartInsertServiceProtocol,
+        formatInlineJSON: ((String) -> String?)? = nil)
     {
         _text = text
         self.autocompleteViewModel = autocompleteViewModel
         self.protoFile = protoFile
+        self.smartInsert = smartInsert
+        self.formatInlineJSON = formatInlineJSON
     }
 
     func makeNSView(context: Context) -> NSScrollView {
@@ -41,11 +48,12 @@ struct JSONTextEditor: NSViewRepresentable {
 
         textView.isHorizontallyResizable = false
         textView.textContainer?.widthTracksTextView = true
+        textView.allowsUndo = true
 
         textView.setAccessibilityIdentifier("json_editor")
         textView.delegate = context.coordinator
-        textView.string = text
         context.coordinator.textView = textView
+        context.coordinator.syncDisplayedText(text, to: textView)
         context.coordinator.applyStyle(to: textView)
 
         return scrollView
@@ -53,14 +61,8 @@ struct JSONTextEditor: NSViewRepresentable {
 
     func updateNSView(_ nsView: NSScrollView, context: Context) {
         let textView = nsView.documentView as! NSTextView
-        if textView.string != text {
-            let selection = textView.selectedRange()
-            textView.string = text
-            let length = textView.string.utf16.count
-            let location = min(selection.location, length)
-            let rangeLength = min(selection.length, max(0, length - location))
-            textView.setSelectedRange(NSRange(location: location, length: rangeLength))
-        }
+        context.coordinator.parent = self
+        context.coordinator.syncDisplayedText(text, to: textView)
         context.coordinator.applyStyle(to: textView)
     }
 
@@ -86,13 +88,19 @@ struct JSONTextEditor: NSViewRepresentable {
         /// Suppresses autocomplete re-trigger while smart-insert modifies the text view.
         private var suppressTextDidChange = false
 
+        /// Smart insert asks `shouldChangeText` itself. That call must not be rewritten as inline formatting.
+        private var isApplyingSmartInsert = false
+
         /// Stops font and color updates from being treated as another edit.
         private var isApplyingStyle = false
 
         /// A keystroke already refreshes the type name. The selection change from that keystroke is skipped.
         private var ignoreNextSelectionChange = false
 
-        private let smartInsert = SmartInsertService()
+        private var smartInsert: any SmartInsertServiceProtocol {
+            parent.smartInsert
+        }
+
         private let valueTypeHintLabel = ValueTypeHintLabel()
 
         func applyStyle(to textView: NSTextView) {
@@ -125,6 +133,7 @@ struct JSONTextEditor: NSViewRepresentable {
                             vm.dismiss()
                             self?.autocompletePopover.close()
                         }))
+                hostingController.sizingOptions = .preferredContentSize
                 hostingController.view.setAccessibilityIdentifier("autocomplete_popover")
                 popover.contentViewController = hostingController
             }
@@ -138,44 +147,107 @@ struct JSONTextEditor: NSViewRepresentable {
 
             MainActor.assumeIsolated {
                 guard !isApplyingStyle else { return }
-
-                let text = textView.string
-                let cursorOffset = textView.selectedRange().location
-                parent.text = text
-
-                guard !suppressTextDidChange else { return }
-
-                ignoreNextSelectionChange = true
-                DispatchQueue.main.async { @MainActor [weak self] in
-                    self?.ignoreNextSelectionChange = false
+                guard !suppressTextDidChange else {
+                    parent.text = textView.string
+                    return
                 }
 
-                if let vm = parent.autocompleteViewModel, let protoFile = parent.protoFile {
-                    pendingHintTask?.cancel()
-                    pendingUpdateTask?.cancel()
-                    pendingUpdateTask = Task { @MainActor [weak textView] in
-                        await vm.textDidChange(text, cursorOffset: cursorOffset, protoFile: protoFile)
-                        guard !Task.isCancelled else { return }
-                        guard let textView else { return }
-
-                        self.showValueTypeHint(vm.valueTypeHint, in: textView)
-                        if vm.isVisible {
-                            self.showPopoverIfNeeded(in: textView)
-                        } else {
-                            self.autocompletePopover.close()
-                        }
-                    }
-                } else {
-                    showValueTypeHint(nil, in: textView)
-                }
-
-                // Offscreen text views are not drawn, and painting them delays autocomplete.
-                guard textView.window != nil else { return }
-
-                isApplyingStyle = true
-                JsonTextStyler.applyColors(to: textView)
-                isApplyingStyle = false
+                publishEditedText(in: textView)
             }
+        }
+
+        /// Typing that completes a one-line document is replaced by the pretty form before AppKit records the key.
+        /// One undo then restores the text from before that keystroke.
+        nonisolated func textView(
+            _ textView: NSTextView,
+            shouldChangeTextIn affectedCharRange: NSRange,
+            replacementString: String?)
+            -> Bool
+        {
+            MainActor.assumeIsolated {
+                guard !isApplyingSmartInsert, !suppressTextDidChange, !isApplyingStyle else { return true }
+                guard let replacementString, parent.formatInlineJSON != nil else { return true }
+
+                let current = textView.string as NSString
+                guard affectedCharRange.location != NSNotFound,
+                      affectedCharRange.location <= current.length,
+                      NSMaxRange(affectedCharRange) <= current.length
+                else { return true }
+
+                let proposed = current.replacingCharacters(in: affectedCharRange, with: replacementString)
+                let formatted = expandedInline(proposed)
+                guard formatted != proposed else { return true }
+
+                let cursorInProposed = affectedCharRange.location + (replacementString as NSString).length
+                let caret = JsonInlineDocument.cursor(
+                    in: formatted,
+                    matching: proposed,
+                    cursorUTF16: cursorInProposed)
+                let original = String(current)
+                let selection = textView.selectedRange()
+                textView.undoManager?.registerUndo(withTarget: self) { coordinator in
+                    MainActor.assumeIsolated {
+                        coordinator.restoreUndoSnapshot(original, selection: selection, in: textView)
+                    }
+                }
+                writeDocument(formatted, caret: caret, in: textView)
+                publishEditedText(in: textView)
+                return false
+            }
+        }
+
+        private func publishEditedText(in textView: NSTextView) {
+            ignoreNextSelectionChange = true
+            DispatchQueue.main.async { @MainActor [weak self] in
+                self?.ignoreNextSelectionChange = false
+            }
+            applyInlineFormat(to: textView)
+
+            let text = textView.string
+            let cursorOffset = textView.selectedRange().location
+            parent.text = text
+
+            if let vm = parent.autocompleteViewModel, let protoFile = parent.protoFile {
+                pendingHintTask?.cancel()
+                pendingUpdateTask?.cancel()
+                pendingUpdateTask = Task { @MainActor [weak textView] in
+                    await vm.textDidChange(text, cursorOffset: cursorOffset, protoFile: protoFile)
+                    guard !Task.isCancelled else { return }
+                    guard let textView else { return }
+
+                    self.showValueTypeHint(vm.valueTypeHint, in: textView)
+                    if vm.isVisible {
+                        self.showPopoverIfNeeded(in: textView)
+                    } else {
+                        self.autocompletePopover.close()
+                    }
+                }
+            } else {
+                showValueTypeHint(nil, in: textView)
+            }
+
+            // Offscreen text views are not drawn, and painting them delays autocomplete.
+            guard textView.window != nil else { return }
+
+            isApplyingStyle = true
+            JsonTextStyler.applyColors(to: textView)
+            isApplyingStyle = false
+        }
+
+        /// Puts `text` back and registers the inverse so redo returns to the pretty form.
+        private func restoreUndoSnapshot(_ text: String, selection: NSRange, in textView: NSTextView) {
+            let current = textView.string
+            let currentSelection = textView.selectedRange()
+            textView.undoManager?.registerUndo(withTarget: self) { coordinator in
+                MainActor.assumeIsolated {
+                    coordinator.restoreUndoSnapshot(current, selection: currentSelection, in: textView)
+                }
+            }
+            writeDocument(text, caret: selection.location, in: textView)
+            let length = (textView.string as NSString).length
+            let location = min(max(0, selection.location), length)
+            let rangeLength = min(selection.length, max(0, length - location))
+            textView.setSelectedRange(NSRange(location: location, length: rangeLength))
         }
 
         nonisolated func textViewDidChangeSelection(_ notification: Notification) {
@@ -406,6 +478,7 @@ struct JSONTextEditor: NSViewRepresentable {
                 || suggestion.kind == .repeated
                 || suggestion.kind == .enumField
                 || suggestion.kind == .wktString
+                || suggestion.kind == .bool
 
             if continueAutocomplete, let protoFile = parent.protoFile {
                 let newText = textView.string
@@ -452,16 +525,17 @@ struct JSONTextEditor: NSViewRepresentable {
         }
 
         /// Draws `hint` at the caret. The label is not text, so it never enters the document or undo.
+        /// It stays on the caret's line and is hidden when it would cover the next field.
         private func showValueTypeHint(_ hint: JsonValueTypeHint?, in textView: NSTextView) {
             let selection = textView.selectedRange()
-            guard let hint, selection.length == 0, let window = textView.window else {
-                valueTypeHintLabel.isHidden = true
+            guard let hint, selection.length == 0, textView.window != nil else {
+                hideValueTypeHint()
                 return
             }
 
-            let rect = cursorViewRect(in: textView, range: selection, window: window)
-            guard rect.height > 0 else {
-                valueTypeHintLabel.isHidden = true
+            let origin = hintOrigin(in: textView, cursorUTF16: selection.location)
+            guard origin.height > 0 else {
+                hideValueTypeHint()
                 return
             }
 
@@ -474,39 +548,382 @@ struct JSONTextEditor: NSViewRepresentable {
             valueTypeHintLabel.textColor = JsonHighlightTheme.placeholderColor(for: hint.kind)
             valueTypeHintLabel.sizeToFit()
             let size = valueTypeHintLabel.frame.size
-            valueTypeHintLabel.frame = NSRect(
-                x: rect.minX,
-                y: rect.midY - size.height / 2,
-                width: max(size.width, 1),
-                height: max(size.height, 1))
+            let room = placeholderRoom(
+                in: textView,
+                caret: origin,
+                cursorUTF16: selection.location)
+            guard room >= size.width else {
+                hideValueTypeHint()
+                return
+            }
+
+            var frame = NSRect(
+                x: origin.minX,
+                y: origin.midY - size.height / 2,
+                width: size.width,
+                height: size.height)
+            if frame.height > origin.height {
+                frame.size.height = origin.height
+            }
+            if frame.minY < origin.minY {
+                frame.origin.y = origin.minY
+            }
+            if frame.maxY > origin.maxY {
+                frame.origin.y = origin.maxY - frame.height
+            }
+            valueTypeHintLabel.frame = frame
+            valueTypeHintLabel.setAccessibilityElement(true)
+            valueTypeHintLabel.setAccessibilityRole(.staticText)
+            valueTypeHintLabel.setAccessibilityLabel("\(hint.name), value type")
             valueTypeHintLabel.isHidden = false
+        }
+
+        private func hideValueTypeHint() {
+            valueTypeHintLabel.isHidden = true
+            valueTypeHintLabel.setAccessibilityElement(false)
+        }
+
+        /// Shows `text`, expanding valid inline JSON. Writes the pretty form back when it differs.
+        func syncDisplayedText(_ text: String, to textView: NSTextView) {
+            let display = expandedInline(text)
+            guard textView.string != display else {
+                writeBack(display, whenDifferentFrom: text)
+                return
+            }
+
+            let previous = textView.string
+            let selection = textView.selectedRange()
+            suppressTextDidChange = true
+            defer { suppressTextDidChange = false }
+            textView.string = display
+            let length = (display as NSString).length
+            let location = previous == text
+                ? JsonInlineDocument.cursor(in: display, matching: text, cursorUTF16: selection.location)
+                : selection.location
+            let clamped = min(max(0, location), length)
+            let rangeLength = min(selection.length, max(0, length - clamped))
+            textView.setSelectedRange(NSRange(location: clamped, length: rangeLength))
+            writeBack(display, whenDifferentFrom: text)
+            refreshValueTypeHintAfterDisplayChange(in: textView)
+        }
+
+        /// Format and fill-defaults replace the document from outside a keystroke.
+        /// The placeholder is computed again for the caret in that text.
+        private func refreshValueTypeHintAfterDisplayChange(in textView: NSTextView) {
+            guard let vm = parent.autocompleteViewModel else {
+                showValueTypeHint(nil, in: textView)
+                return
+            }
+
+            scheduleValueTypeHintRefresh(in: textView, vm: vm)
+        }
+
+        /// Expands a valid one-line document into pretty JSON without moving the caret out of its value.
+        private func applyInlineFormat(to textView: NSTextView) {
+            let original = textView.string
+            let formatted = expandedInline(original)
+            guard formatted != original else { return }
+
+            let cursor = textView.selectedRange().location
+            let newCursor = JsonInlineDocument.cursor(in: formatted, matching: original, cursorUTF16: cursor)
+            writeDocument(formatted, caret: newCursor, in: textView)
+        }
+
+        /// Replaces the whole document without recording a second undo action for the replacement itself.
+        private func writeDocument(_ text: String, caret: Int, in textView: NSTextView) {
+            let wasSuppressed = suppressTextDidChange
+            suppressTextDidChange = true
+            textView.undoManager?.disableUndoRegistration()
+            if let storage = textView.textStorage {
+                storage.beginEditing()
+                storage.replaceCharacters(in: NSRange(location: 0, length: storage.length), with: text)
+                storage.endEditing()
+            } else {
+                textView.string = text
+            }
+            let length = (text as NSString).length
+            textView.setSelectedRange(NSRange(location: min(max(0, caret), length), length: 0))
+            parent.text = text
+            textView.undoManager?.enableUndoRegistration()
+            suppressTextDidChange = wasSuppressed
+            isApplyingStyle = true
+            JsonTextStyler.apply(to: textView)
+            isApplyingStyle = false
+        }
+
+        private func expandedInline(_ text: String) -> String {
+            parent.formatInlineJSON?(text) ?? text
+        }
+
+        private func writeBack(_ display: String, whenDifferentFrom text: String) {
+            guard display != text, parent.text != display else { return }
+
+            parent.text = display
+        }
+
+        /// The label's top-left slot: after the closing quote or comma, or at the caret when the value has not started.
+        private func hintOrigin(in textView: NSTextView, cursorUTF16: Int) -> NSRect {
+            switch JsonValueTypeHintPlacement.anchor(in: textView.string, cursorUTF16: cursorUTF16) {
+            case .caret:
+                return caretRect(in: textView, characterIndex: cursorUTF16) ?? .zero
+
+            case let .afterCharacter(index):
+                guard let glyph = glyphRect(in: textView, characterIndex: index),
+                      let line = lineFragment(in: textView, characterIndex: index)
+                else { return .zero }
+
+                let gap = (" " as NSString).size(withAttributes: [.font: JsonEditorMetrics.font]).width
+                return NSRect(x: glyph.maxX + gap, y: line.minY, width: 1, height: line.height)
+            }
+        }
+
+        /// Horizontal room from the caret to the next field on the same visual line, and no farther
+        /// than the text container. A field on the following line does not steal that room.
+        private func placeholderRoom(
+            in textView: NSTextView,
+            caret: NSRect,
+            cursorUTF16: Int)
+            -> CGFloat
+        {
+            let rawWidth = textView.textContainer?.containerSize.width ?? textView.bounds.width
+            let containerWidth = rawWidth > 100_000 ? textView.bounds.width : rawWidth
+            let containerRight = textView.textContainerOrigin.x + containerWidth
+            let lineRoom = containerRight - caret.minX - 4
+            guard let blocking = JsonValueTypeHintPlacement.blockingCharacterUTF16(
+                in: textView.string,
+                cursorUTF16: cursorUTF16),
+                let blockRect = glyphRect(in: textView, characterIndex: blocking),
+                let blockLine = lineFragment(in: textView, characterIndex: blocking),
+                abs(blockLine.minY - caret.minY) < 0.5
+            else { return lineRoom }
+
+            return min(lineRoom, blockRect.minX - caret.minX - 2)
+        }
+
+        /// Caret rectangle in text-view coordinates.
+        /// At a soft wrap the glyph index points at the next visual line; the placeholder stays
+        /// at the end of the previous line so it does not land on the following field.
+        private func caretRect(in textView: NSTextView, characterIndex: Int) -> NSRect? {
+            guard let layoutManager = textView.layoutManager,
+                  let textContainer = textView.textContainer
+            else { return nil }
+
+            let ns = textView.string as NSString
+            let index = min(max(0, characterIndex), ns.length)
+            layoutManager.ensureLayout(for: textContainer)
+            let origin = textView.textContainerOrigin
+
+            if index == ns.length {
+                if ns.length == 0 || isLineBreak(ns.character(at: ns.length - 1)) {
+                    var extra = layoutManager.extraLineFragmentRect
+                    if extra.height == 0, ns.length > 0 {
+                        let glyph = layoutManager.glyphIndexForCharacter(at: ns.length - 1)
+                        extra = layoutManager.lineFragmentUsedRect(forGlyphAt: glyph, effectiveRange: nil)
+                        extra.origin.x = extra.maxX
+                    }
+                    extra.size.width = 1
+                    extra.origin.x += origin.x
+                    extra.origin.y += origin.y
+                    return extra
+                }
+                let glyph = layoutManager.glyphIndexForCharacter(at: ns.length - 1)
+                let glyphRect = layoutManager.boundingRect(
+                    forGlyphRange: NSRange(location: glyph, length: 1),
+                    in: textContainer)
+                let line = layoutManager.lineFragmentRect(forGlyphAt: glyph, effectiveRange: nil)
+                return NSRect(
+                    x: glyphRect.maxX + origin.x,
+                    y: line.minY + origin.y,
+                    width: 1,
+                    height: line.height)
+            }
+
+            let glyph = layoutManager.glyphIndexForCharacter(at: index)
+            if index > 0, !isLineBreak(ns.character(at: index - 1)) {
+                var lineRange = NSRange()
+                _ = layoutManager.lineFragmentRect(forGlyphAt: glyph, effectiveRange: &lineRange)
+                if glyph == lineRange.location, lineRange.location > 0 {
+                    let previousGlyph = lineRange.location - 1
+                    let used = layoutManager.lineFragmentUsedRect(forGlyphAt: previousGlyph, effectiveRange: nil)
+                    return NSRect(
+                        x: used.maxX + origin.x,
+                        y: used.minY + origin.y,
+                        width: 1,
+                        height: used.height)
+                }
+            }
+
+            let glyphRect = layoutManager.boundingRect(
+                forGlyphRange: NSRange(location: glyph, length: 1),
+                in: textContainer)
+            let line = layoutManager.lineFragmentRect(forGlyphAt: glyph, effectiveRange: nil)
+            return NSRect(
+                x: glyphRect.minX + origin.x,
+                y: line.minY + origin.y,
+                width: 1,
+                height: max(line.height, 1))
+        }
+
+        private func glyphRect(in textView: NSTextView, characterIndex: Int) -> NSRect? {
+            guard let layoutManager = textView.layoutManager,
+                  let textContainer = textView.textContainer
+            else { return nil }
+
+            let length = (textView.string as NSString).length
+            guard characterIndex >= 0, characterIndex < length else { return nil }
+
+            layoutManager.ensureLayout(for: textContainer)
+            let glyph = layoutManager.glyphIndexForCharacter(at: characterIndex)
+            var rect = layoutManager.boundingRect(
+                forGlyphRange: NSRange(location: glyph, length: 1),
+                in: textContainer)
+            rect.origin.x += textView.textContainerOrigin.x
+            rect.origin.y += textView.textContainerOrigin.y
+            return rect
+        }
+
+        private func lineFragment(in textView: NSTextView, characterIndex: Int) -> NSRect? {
+            guard let layoutManager = textView.layoutManager,
+                  let textContainer = textView.textContainer
+            else { return nil }
+
+            let length = (textView.string as NSString).length
+            guard characterIndex >= 0, characterIndex < length else { return nil }
+
+            layoutManager.ensureLayout(for: textContainer)
+            let glyph = layoutManager.glyphIndexForCharacter(at: characterIndex)
+            var rect = layoutManager.lineFragmentRect(forGlyphAt: glyph, effectiveRange: nil)
+            rect.origin.x += textView.textContainerOrigin.x
+            rect.origin.y += textView.textContainerOrigin.y
+            return rect
+        }
+
+        private func isLineBreak(_ character: UInt16) -> Bool {
+            character == JsonScanUTF16.lf || character == JsonScanUTF16.cr
         }
 
         // MARK: - Popover positioning
 
         private func showPopoverIfNeeded(in textView: NSTextView) {
-            guard let window = textView.window else { return }
+            guard textView.window != nil else { return }
 
-            let range = textView.selectedRange()
-            let rect = cursorViewRect(in: textView, range: range, window: window)
+            showAutocompletePopover(in: textView)
+            textView.window?.makeFirstResponder(textView)
+        }
 
+        /// Opens the suggestion panel on the caret, or closes it when the caret is outside the viewport.
+        func showAutocompletePopover(in textView: NSTextView) {
+            let contentSize = idealAutocompletePopoverContentSize()
+            guard let placement = autocompletePopoverPlacement(in: textView, contentSize: contentSize),
+                  let caret = caretAnchorRect(in: textView)
+            else {
+                autocompletePopover.close()
+                return
+            }
+
+            autocompletePopover.contentSize = NSSize(width: placement.frame.width, height: placement.frame.height)
             if autocompletePopover.isShown {
                 autocompletePopover.close()
             }
-            autocompletePopover.show(relativeTo: rect, of: textView, preferredEdge: .maxY)
-            window.makeFirstResponder(textView)
+            let edge: NSRectEdge = placement.side == .below ? .maxY : .minY
+            autocompletePopover.show(relativeTo: caret, of: textView, preferredEdge: edge)
         }
 
-        private func cursorViewRect(
+        /// The panel frame in the text view's top-left, y-down space. Nil when the caret is scrolled away.
+        func autocompletePopoverPlacement(in textView: NSTextView) -> AutocompletePopoverPlacement? {
+            autocompletePopoverPlacement(in: textView, contentSize: idealAutocompletePopoverContentSize())
+        }
+
+        private func autocompletePopoverPlacement(
             in textView: NSTextView,
-            range: NSRange,
-            window: NSWindow)
-            -> NSRect
+            contentSize: CGSize)
+            -> AutocompletePopoverPlacement?
         {
-            // Screen coords → window space → textView local space
-            let screenRect = textView.firstRect(forCharacterRange: range, actualRange: nil)
-            let windowRect = window.convertFromScreen(screenRect)
-            return textView.convert(windowRect, from: nil)
+            guard let caret = caretAnchorRect(in: textView) else { return nil }
+
+            return PlaceAutocompletePopover.place(
+                caret: caret.editorRect,
+                visibleEditor: textView.visibleRect.editorRect,
+                limits: popoverLimits(around: caret, in: textView).editorRect,
+                contentSize: EditorSize(width: Double(contentSize.width), height: Double(contentSize.height)))
+        }
+
+        /// Unclamped panel size for the current suggestions. The placement then shrinks it to the free room.
+        private func idealAutocompletePopoverContentSize() -> CGSize {
+            guard let host = autocompletePopover.contentViewController as? NSHostingController<AutocompletePopoverView>
+            else {
+                return CGSize(width: AutocompletePopoverSize.minWidth, height: PlaceAutocompletePopover.minimumHeight)
+            }
+
+            let previous = host.view.frame
+            host.view.frame = NSRect(x: 0, y: 0, width: AutocompletePopoverSize.maxWidth, height: 4000)
+            host.rootView = host.rootView
+            host.view.layoutSubtreeIfNeeded()
+            let proposed = host.sizeThatFits(in: CGSize(width: AutocompletePopoverSize.maxWidth, height: 10000))
+            host.view.frame = previous
+            return AutocompletePopoverSize.fitted(CGSize(
+                width: max(proposed.width, 1),
+                height: max(proposed.height, 1)))
+        }
+
+        /// The line fragment at the caret, one point wide, in text view coordinates.
+        private func caretAnchorRect(in textView: NSTextView) -> NSRect? {
+            guard let layoutManager = textView.layoutManager,
+                  let textContainer = textView.textContainer
+            else { return nil }
+
+            layoutManager.ensureLayout(for: textContainer)
+            let origin = textView.textContainerOrigin
+            let length = (textView.string as NSString).length
+            let location = min(max(0, textView.selectedRange().location), length)
+
+            if length == 0 {
+                let font = textView.font ?? JsonEditorMetrics.font
+                let lineHeight = layoutManager.defaultLineHeight(for: font)
+                return NSRect(x: origin.x, y: origin.y, width: 1, height: max(lineHeight, 1))
+            }
+
+            if location == length,
+               textView.string.hasSuffix("\n"),
+               layoutManager.extraLineFragmentRect.height > 0
+            {
+                var extra = layoutManager.extraLineFragmentRect
+                extra.origin.x += origin.x
+                extra.origin.y += origin.y
+                extra.size.width = 1
+                return extra
+            }
+
+            let index = min(location, length - 1)
+            let glyph = layoutManager.glyphIndexForCharacter(at: index)
+            var line = layoutManager.lineFragmentRect(forGlyphAt: glyph, effectiveRange: nil)
+            let glyphBounds = layoutManager.boundingRect(
+                forGlyphRange: NSRange(location: glyph, length: 1),
+                in: textContainer)
+            line.origin.x = (location >= length ? glyphBounds.maxX : glyphBounds.minX) + origin.x
+            line.origin.y += origin.y
+            line.size.width = 1
+            return line
+        }
+
+        /// The window area the panel may occupy, cropped to the visible screen when the caret stays inside it.
+        private func popoverLimits(around caret: NSRect, in textView: NSTextView) -> NSRect {
+            guard let window = textView.window, let content = window.contentView else {
+                return textView.visibleRect
+            }
+
+            var limits = textView.convert(content.visibleRect, from: content)
+            if let screen = window.screen?.visibleFrame {
+                let onScreen = textView.convert(window.convertFromScreen(screen), from: nil)
+                let cropped = limits.intersection(onScreen)
+                if cropped.width > 1, cropped.height > 1, cropped.intersects(caret) {
+                    limits = cropped
+                }
+            }
+            if limits.width < 1 || limits.height < 1 {
+                return textView.visibleRect
+            }
+            return limits
         }
 
         // MARK: - Smart insert
@@ -532,6 +949,8 @@ struct JSONTextEditor: NSViewRepresentable {
 
         /// Internal for `@testable` integration tests (keyboard path also calls this).
         func applySmartInsert(suggestion: AutocompleteSuggestion, to textView: NSTextView) {
+            isApplyingSmartInsert = true
+            defer { isApplyingSmartInsert = false }
             // Preserve the original cursor offset before any range adjustments so that
             // value-specific range logic always operates on the actual cursor position.
             let originalCursorOffset = textView.selectedRange().location
@@ -550,7 +969,9 @@ struct JSONTextEditor: NSViewRepresentable {
             // `"field": "partial█"`. `findPartialStringStart` may only capture the opening
             // `"` without the closing one, leaving a dangling `"` after insertion. We
             // override the range with a scan that covers the full `"..."` token instead.
-            let isValueSuggestion = suggestion.kind == .enum || suggestion.kind == .wktDefault
+            let isValueSuggestion = suggestion.kind == .enum
+                || suggestion.kind == .wktDefault
+                || suggestion.kind == .boolLiteral
             if isValueSuggestion {
                 range = smartInsert.valueStringRange(in: ns, cursorOffset: originalCursorOffset) ?? range
             }
@@ -640,8 +1061,15 @@ struct JSONTextEditor: NSViewRepresentable {
 
                 parent.text = textView.string
                 textView.setSelectedRange(NSRange(location: max(0, cursorPos), length: 0))
+                applyInlineFormat(to: textView)
             }
         }
+    }
+}
+
+private extension NSRect {
+    var editorRect: EditorRect {
+        EditorRect(x: Double(origin.x), y: Double(origin.y), width: Double(size.width), height: Double(size.height))
     }
 }
 
@@ -673,14 +1101,14 @@ private final class ValueTypeHintLabel: NSTextField {
 
 #if DEBUG
     #Preview("Empty", traits: .fixedLayout(width: 390, height: 280)) {
-        JSONTextEditor(text: .constant(""))
+        JSONTextEditor(text: .constant(""), smartInsert: SmartInsertService())
     }
 
     #Preview("Document", traits: .fixedLayout(width: 390, height: 280)) {
-        JSONTextEditor(text: .constant(PreviewJSON.shortObject))
+        JSONTextEditor(text: .constant(PreviewJSON.shortObject), smartInsert: SmartInsertService())
     }
 
     #Preview("Long Content", traits: .fixedLayout(width: 390, height: 280)) {
-        JSONTextEditor(text: .constant(PreviewJSON.longDocument))
+        JSONTextEditor(text: .constant(PreviewJSON.longDocument), smartInsert: SmartInsertService())
     }
 #endif

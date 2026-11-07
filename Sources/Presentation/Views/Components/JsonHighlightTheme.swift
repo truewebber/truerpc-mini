@@ -29,6 +29,7 @@ enum JsonHighlightTheme {
         case .number: .number
         case .string: .string
         case .bool: .literal
+        case .boolLiteral: .literal
         default: nil
         }
         return NSColor(name: nil, dynamicProvider: { _ in
@@ -100,11 +101,13 @@ extension JsonSyntaxHighlighter {
 /// or the text-change callback. The font is written into the storage only when it is missing,
 /// because doing that on every keystroke swallows the next edit.
 enum JsonTextStyler {
+    @MainActor
     static func apply(to textView: NSTextView) {
         ensureStorageAttributes(in: textView)
         applyColors(to: textView)
     }
 
+    @MainActor
     static func applyColors(to textView: NSTextView) {
         textView.typingAttributes = JsonEditorMetrics.storageAttributes
         guard let storage = textView.textStorage, let layoutManager = textView.layoutManager else { return }
@@ -128,6 +131,7 @@ enum JsonTextStyler {
         }
     }
 
+    @MainActor
     private static func ensureStorageAttributes(in textView: NSTextView) {
         textView.typingAttributes = JsonEditorMetrics.storageAttributes
         guard let storage = textView.textStorage, storage.length > 0 else { return }

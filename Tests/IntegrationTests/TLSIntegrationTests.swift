@@ -79,6 +79,8 @@ final class TLSIntegrationTests: XCTestCase {
             formatter: JsonFormatter(),
             autocompleteProvider: MockAutocompleteProvider(),
             resolver: JsonPathResolver(),
+            smartInsert: SmartInsertService(),
+            clipboard: PasteboardClipboard(),
             logger: mockLogger)
     }
 

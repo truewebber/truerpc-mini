@@ -41,6 +41,8 @@ final class AppViewModelTests: XCTestCase {
             formatter: mockJsonFormatter,
             autocompleteProvider: MockAutocompleteProvider(),
             resolver: JsonPathResolver(),
+            smartInsert: SmartInsertService(),
+            clipboard: MockClipboard(),
             telemetry: mockTelemetry,
             logger: mockLogger)
     }
@@ -251,6 +253,8 @@ final class AppViewModelTests: XCTestCase {
             formatter: mockJsonFormatter,
             autocompleteProvider: MockAutocompleteProvider(),
             resolver: JsonPathResolver(),
+            smartInsert: SmartInsertService(),
+            clipboard: MockClipboard(),
             telemetry: mockTelemetry,
             logger: mockLogger)
 
@@ -299,6 +303,8 @@ final class AppViewModelTests: XCTestCase {
             formatter: mockJsonFormatter,
             autocompleteProvider: MockAutocompleteProvider(),
             resolver: JsonPathResolver(),
+            smartInsert: SmartInsertService(),
+            clipboard: MockClipboard(),
             telemetry: mockTelemetry,
             logger: mockLogger)
 
@@ -348,6 +354,8 @@ final class AppViewModelTests: XCTestCase {
             formatter: mockJsonFormatter,
             autocompleteProvider: MockAutocompleteProvider(),
             resolver: JsonPathResolver(),
+            smartInsert: SmartInsertService(),
+            clipboard: MockClipboard(),
             telemetry: mockTelemetry,
             logger: mockLogger)
 
@@ -394,6 +402,8 @@ final class AppViewModelTests: XCTestCase {
             formatter: mockJsonFormatter,
             autocompleteProvider: MockAutocompleteProvider(),
             resolver: JsonPathResolver(),
+            smartInsert: SmartInsertService(),
+            clipboard: MockClipboard(),
             telemetry: mockTelemetry,
             logger: mockLogger)
 

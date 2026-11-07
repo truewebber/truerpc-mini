@@ -195,7 +195,7 @@ struct ResponseView: View {
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
 
-            Text(JsonSyntaxHighlighter().attributedText(response.jsonBody))
+            Text(JsonSyntaxHighlighter().attributedText(JsonInlineDocument.expanded(response.jsonBody)))
                 .font(JsonEditorMetrics.swiftUIFont)
                 .lineSpacing(JsonEditorMetrics.lineSpacing)
                 .textSelection(.enabled)

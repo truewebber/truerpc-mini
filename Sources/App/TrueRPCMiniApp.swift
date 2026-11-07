@@ -168,6 +168,14 @@ struct TrueRPCMiniApp: App {
             JsonFormatter()
         }
 
+        di.register(SmartInsertServiceProtocol.self) {
+            SmartInsertService()
+        }
+
+        di.register(ClipboardProtocol.self) {
+            PasteboardClipboard()
+        }
+
         di.register(GrpcClientProtocol.self) {
             GrpcSwiftDynamicClient(
                 protoRepository: di.resolve(ProtoRepositoryProtocol.self)!,
@@ -293,6 +301,8 @@ struct TrueRPCMiniApp: App {
             formatter: di.resolve(JsonFormatterProtocol.self)!,
             autocompleteProvider: di.resolve(AutocompleteProviderProtocol.self)!,
             resolver: di.resolve(JsonPathResolver.self)!,
+            smartInsert: di.resolve(SmartInsertServiceProtocol.self)!,
+            clipboard: di.resolve(ClipboardProtocol.self)!,
             telemetry: di.resolve(TelemetryServiceProtocol.self)!,
             logger: logger)
         appVM.onLaunched()

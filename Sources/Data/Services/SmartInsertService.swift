@@ -1,25 +1,10 @@
 import Foundation
 
-/// UTF-16 code-unit constants for JSON structural ASCII characters used by
-/// `SmartInsertService` and `JSONTextEditor.Coordinator`.
-enum JsonScanUTF16 {
-    static let quote: UInt16 = 0x22
-    static let backslash: UInt16 = 0x5C
-    static let bracketOpen: UInt16 = 0x5B
-    static let bracketClose: UInt16 = 0x5D
-    static let braceOpen: UInt16 = 0x7B
-    static let braceClose: UInt16 = 0x7D
-    static let space: UInt16 = 0x20
-    static let lf: UInt16 = 0x0A
-    static let cr: UInt16 = 0x0D
-    static let tab: UInt16 = 0x09
-    static let comma: UInt16 = 0x2C
-    static let colon: UInt16 = 0x3A
-}
-
 /// Pure-algorithm service for JSON text smart-insertion.
 /// All methods are stateless; the struct is trivially `Sendable`.
-struct SmartInsertService {
+public struct SmartInsertService: SmartInsertServiceProtocol {
+    public init() {}
+
     // MARK: - Snippet generation
 
     /// Returns the snippet text and the number of UTF-16 code units to step the cursor
@@ -27,7 +12,7 @@ struct SmartInsertService {
     ///
     /// For `.message` suggestions, `lineIndent` is used to produce a properly-indented
     /// opening block: inner content at `lineIndent + "  "`, closing brace at `lineIndent`.
-    func smartInsertComponents(
+    public func smartInsertComponents(
         for suggestion: AutocompleteSuggestion,
         lineIndent: String = "")
         -> (text: String, cursorBack: Int)
@@ -39,6 +24,9 @@ struct SmartInsertService {
 
         case .number, .bool, .enumField:
             return ("\"\(name)\": ", 0)
+
+        case .boolLiteral:
+            return (name, 0)
 
         case .message:
             let innerIndent = lineIndent + "  "
@@ -62,7 +50,7 @@ struct SmartInsertService {
     // MARK: - Brace / bracket balance
 
     /// Counts `{` minus `}` outside of JSON string literals.
-    func unclosedBraceCount(in text: String) -> Int {
+    public func unclosedBraceCount(in text: String) -> Int {
         var balance = 0
         var inString = false
         var escaped = false
@@ -93,7 +81,7 @@ struct SmartInsertService {
     }
 
     /// Counts `[` minus `]` outside of JSON string literals in `ns[0..<endUTF16]`.
-    func arrayBracketBalanceInPrefix(ns: NSString, endUTF16: Int) -> Int {
+    public func arrayBracketBalanceInPrefix(ns: NSString, endUTF16: Int) -> Int {
         var balance = 0
         var inString = false
         var escaped = false
@@ -131,7 +119,7 @@ struct SmartInsertService {
     }
 
     /// Counts `{` minus `}` in `[fromUTF16, toUTF16)` outside of string literals.
-    func netBraceCountInUTF16Range(ns: NSString, fromUTF16: Int, toUTF16: Int) -> Int {
+    public func netBraceCountInUTF16Range(ns: NSString, fromUTF16: Int, toUTF16: Int) -> Int {
         var balance = 0
         var inString = false
         var escaped = false
@@ -171,7 +159,7 @@ struct SmartInsertService {
     // MARK: - Index navigation
 
     /// First non-whitespace UTF-16 index at/after `fromUTF16`, or `nil` if EOF.
-    func nextSignificantUTF16IndexAndScalar(
+    public func nextSignificantUTF16IndexAndScalar(
         ns: NSString,
         fromUTF16: Int)
         -> (index: Int, scalar: UInt16)?
@@ -191,7 +179,7 @@ struct SmartInsertService {
     }
 
     /// The `]` that closes the innermost array still open at `fromUTF16` (skips strings).
-    func indexOfClosingBracketForContainingArray(ns: NSString, fromUTF16: Int) -> Int? {
+    public func indexOfClosingBracketForContainingArray(ns: NSString, fromUTF16: Int) -> Int? {
         var pending = arrayBracketBalanceInPrefix(ns: ns, endUTF16: fromUTF16)
         guard pending > 0 else { return nil }
 
@@ -234,7 +222,7 @@ struct SmartInsertService {
     }
 
     /// Matching `[` index for `]` at `closingBracketUTF16` (prefix `0..<closing`).
-    func indexOfMatchingOpenBracket(ns: NSString, closingBracketUTF16: Int) -> Int? {
+    public func indexOfMatchingOpenBracket(ns: NSString, closingBracketUTF16: Int) -> Int? {
         var stack: [Int] = []
         var inString = false
         var escaped = false
@@ -275,7 +263,7 @@ struct SmartInsertService {
     /// Scans backwards from `cursorOffset` to find the start of bare (unquoted) text
     /// the user has typed in key position (e.g. `{dfdf` → index of `d`).
     /// Returns `nil` when only whitespace or a structural character precedes the cursor.
-    func findBareTextStart(in ns: NSString, cursorOffset: Int) -> Int? {
+    public func findBareTextStart(in ns: NSString, cursorOffset: Int) -> Int? {
         var i = cursorOffset - 1
         var firstNonWhitespace = -1
         while i >= 0 {
@@ -300,7 +288,7 @@ struct SmartInsertService {
     /// Scans backwards from `cursorOffset` to find the UTF-16 offset of the opening `"`
     /// of an unclosed string literal the cursor is currently inside.
     /// Returns `nil` when the cursor is not inside a string.
-    func findPartialStringStart(in ns: NSString, cursorOffset: Int) -> Int? {
+    public func findPartialStringStart(in ns: NSString, cursorOffset: Int) -> Int? {
         var i = cursorOffset - 1
         while i >= 0 {
             let ch = ns.character(at: i)
@@ -342,7 +330,7 @@ struct SmartInsertService {
     ///
     /// Returns `nil` when the cursor is **not** inside a quoted value literal — e.g. when
     /// it is positioned after `: ` with no surrounding quotes, indicating a fresh insertion.
-    func valueStringRange(in ns: NSString, cursorOffset: Int) -> NSRange? {
+    public func valueStringRange(in ns: NSString, cursorOffset: Int) -> NSRange? {
         // Scan backward from the cursor to find the opening `"` of the value literal.
         // Stop early on any structural character that cannot appear inside a string value.
         var openQ: Int?
@@ -393,7 +381,7 @@ struct SmartInsertService {
 
     /// Returns `true` when `utf16Offset` falls inside an open string literal in `ns`.
     /// Scans from position 0 tracking escape sequences and quote pairs.
-    func isInsideStringLiteral(in ns: NSString, at utf16Offset: Int) -> Bool {
+    public func isInsideStringLiteral(in ns: NSString, at utf16Offset: Int) -> Bool {
         var inString = false
         var escaped = false
         let length = min(utf16Offset, ns.length)
@@ -425,7 +413,7 @@ struct SmartInsertService {
     /// Returns the leading whitespace (spaces and tabs) of the line that contains
     /// `utf16Offset`. Scans backwards to find the preceding LF (or start of text),
     /// then collects consecutive space/tab characters from the start of that line.
-    func lineIndentation(in ns: NSString, at utf16Offset: Int) -> String {
+    public func lineIndentation(in ns: NSString, at utf16Offset: Int) -> String {
         var lineStart = 0
         var i = utf16Offset - 1
         while i >= 0 {
@@ -457,7 +445,7 @@ struct SmartInsertService {
     /// Generates a suffix of `count` closing braces, each on its own line.
     /// Indentation decreases by 2 spaces per level starting from `baseIndent`.
     /// Returns an empty string when `count == 0`.
-    func indentedClosingSuffix(count: Int, baseIndent: String) -> String {
+    public func indentedClosingSuffix(count: Int, baseIndent: String) -> String {
         guard count > 0 else { return "" }
 
         var result = ""

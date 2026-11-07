@@ -22,6 +22,8 @@ public final class AppViewModel: ObservableObject {
     private let formatter: JsonFormatterProtocol
     private let autocompleteProvider: AutocompleteProviderProtocol
     private let resolver: any JsonPathResolverProtocol
+    private let smartInsert: any SmartInsertServiceProtocol
+    private let clipboard: any ClipboardProtocol
     private let telemetry: TelemetryServiceProtocol
     private let logger: AppLogger
 
@@ -36,6 +38,8 @@ public final class AppViewModel: ObservableObject {
         formatter: JsonFormatterProtocol,
         autocompleteProvider: AutocompleteProviderProtocol,
         resolver: any JsonPathResolverProtocol,
+        smartInsert: any SmartInsertServiceProtocol,
+        clipboard: any ClipboardProtocol,
         telemetry: TelemetryServiceProtocol,
         logger: AppLogger)
     {
@@ -47,6 +51,8 @@ public final class AppViewModel: ObservableObject {
         self.formatter = formatter
         self.autocompleteProvider = autocompleteProvider
         self.resolver = resolver
+        self.smartInsert = smartInsert
+        self.clipboard = clipboard
         self.telemetry = telemetry
         self.logger = logger
 
@@ -126,6 +132,8 @@ public final class AppViewModel: ObservableObject {
             formatter: formatter,
             autocompleteProvider: autocompleteProvider,
             resolver: resolver,
+            smartInsert: smartInsert,
+            clipboard: clipboard,
             logger: logger)
         tabManager.addTab(tabViewModel)
         Task {
@@ -170,6 +178,8 @@ public final class AppViewModel: ObservableObject {
                 formatter: formatter,
                 autocompleteProvider: autocompleteProvider,
                 resolver: resolver,
+                smartInsert: smartInsert,
+                clipboard: clipboard,
                 logger: logger)
             tabManager.addTab(tabViewModel)
         }

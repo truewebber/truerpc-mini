@@ -1,6 +1,5 @@
-import AppKit
+import Combine
 import Foundation
-import SwiftUI
 
 /// ViewModel for managing request editor tab state
 @MainActor
@@ -25,6 +24,7 @@ public final class EditorTabViewModel: ObservableObject {
     public let editorTab: EditorTab
     public let connectionSecurity: ConnectionSecurityViewModel
     public let autocompleteViewModel: AutocompleteViewModel
+    public let smartInsert: any SmartInsertServiceProtocol
 
     // MARK: - Dependencies
 
@@ -32,6 +32,7 @@ public final class EditorTabViewModel: ObservableObject {
     private let executeRequestUseCase: ExecuteUnaryRequestUseCaseProtocol
     public let exportResponseUseCase: ExportResponseUseCaseProtocol
     private let formatter: JsonFormatterProtocol
+    private let clipboard: any ClipboardProtocol
     private let logger: AppLogger
 
     // MARK: - Initialization
@@ -48,6 +49,8 @@ public final class EditorTabViewModel: ObservableObject {
         formatter: JsonFormatterProtocol,
         autocompleteProvider: AutocompleteProviderProtocol,
         resolver: any JsonPathResolverProtocol,
+        smartInsert: any SmartInsertServiceProtocol,
+        clipboard: any ClipboardProtocol,
         logger: AppLogger)
     {
         self.editorTab = editorTab
@@ -58,6 +61,8 @@ public final class EditorTabViewModel: ObservableObject {
         self.executeRequestUseCase = executeRequestUseCase
         self.exportResponseUseCase = exportResponseUseCase
         self.formatter = formatter
+        self.smartInsert = smartInsert
+        self.clipboard = clipboard
         let acVM = AutocompleteViewModel(
             provider: autocompleteProvider,
             resolver: resolver,
@@ -112,6 +117,12 @@ public final class EditorTabViewModel: ObservableObject {
         }
 
         isLoading = false
+    }
+
+    /// Formats inline JSON into the pretty-printed form and returns it.
+    /// Already pretty text, and text that is not valid JSON, is left unchanged (`nil`).
+    public func prettyJSONIfInline(_ json: String) -> String? {
+        JsonInlineDocument.pretty(json) { try formatter.format($0) }
     }
 
     /// Formats `requestJson` using the injected formatter.
@@ -243,13 +254,11 @@ public final class EditorTabViewModel: ObservableObject {
 
     // MARK: - Private Methods
 
-    /// Copy response to clipboard
+    /// Copies the response body, expanding inline JSON so the clipboard matches the editor.
     public func copyResponse() {
         guard let response else { return }
 
-        let pasteboard = NSPasteboard.general
-        pasteboard.clearContents()
-        pasteboard.setString(response.jsonBody, forType: .string)
+        clipboard.copyString(JsonInlineDocument.expanded(response.jsonBody))
     }
 
     /// Export response to file
