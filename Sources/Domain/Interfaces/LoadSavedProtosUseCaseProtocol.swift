@@ -6,6 +6,7 @@ public protocol LoadSavedProtosUseCaseProtocol: Sendable {
     /// - Parameters:
     ///   - urls: Array of file URLs to load
     ///   - importPaths: Array of directory paths for resolving proto dependencies
-    /// - Returns: Array of successfully loaded ProtoFile entities (failures are silently skipped)
-    func execute(urls: [URL], importPaths: [String]) async -> [ProtoFile]
+    /// - Returns: The files that parsed, plus a failure for every path that did not. A failure does not
+    ///   stop the remaining paths from loading.
+    func execute(urls: [URL], importPaths: [String]) async -> SavedProtosLoadResult
 }

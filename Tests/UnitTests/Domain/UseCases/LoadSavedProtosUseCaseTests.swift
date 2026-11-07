@@ -40,9 +40,8 @@ final class LoadSavedProtosUseCaseTests: XCTestCase {
         let result = await sut.execute(urls: urls, importPaths: [])
 
         // Then
-        XCTAssertEqual(result.count, 2)
-        XCTAssertEqual(result[0].name, "proto1.proto")
-        XCTAssertEqual(result[1].name, "proto2.proto")
+        XCTAssertEqual(result.loaded.map(\.name), ["proto1.proto", "proto2.proto"])
+        XCTAssertTrue(result.failures.isEmpty)
         XCTAssertEqual(mockImportUseCase.callCount, 2)
     }
 
@@ -58,7 +57,7 @@ final class LoadSavedProtosUseCaseTests: XCTestCase {
         let result = await sut.execute(urls: [url], importPaths: importPaths)
 
         // Then
-        XCTAssertEqual(result.count, 1)
+        XCTAssertEqual(result.loaded.map(\.name), ["proto.proto"])
         XCTAssertEqual(mockImportUseCase.lastImportPaths, importPaths)
     }
 
@@ -70,13 +69,14 @@ final class LoadSavedProtosUseCaseTests: XCTestCase {
         let result = await sut.execute(urls: urls, importPaths: [])
 
         // Then
-        XCTAssertEqual(result.count, 0)
+        XCTAssertTrue(result.loaded.isEmpty)
+        XCTAssertTrue(result.failures.isEmpty)
         XCTAssertEqual(mockImportUseCase.callCount, 0)
     }
 
-    // MARK: - Error Handling (Silent Skip)
+    // MARK: - Error Handling
 
-    func test_execute_whenOneFileFails_skipsItAndContinues() async {
+    func test_execute_whenOneFileFails_returnsTheFailureAndKeepsTheOthers() async {
         // Given
         let url1 = URL(fileURLWithPath: "/path/to/proto1.proto")
         let url2 = URL(fileURLWithPath: "/path/to/proto2.proto")
@@ -86,34 +86,37 @@ final class LoadSavedProtosUseCaseTests: XCTestCase {
         let proto1 = ProtoFile(name: "proto1.proto", path: url1, services: [])
         let proto3 = ProtoFile(name: "proto3.proto", path: url3, services: [])
 
+        let error = NSError(domain: "test", code: 404, userInfo: [NSLocalizedDescriptionKey: "missing import"])
         mockImportUseCase.mockResultsByURL[url1] = .success(proto1)
-        mockImportUseCase.mockResultsByURL[url2] = .failure(NSError(domain: "test", code: 404))
+        mockImportUseCase.mockResultsByURL[url2] = .failure(error)
         mockImportUseCase.mockResultsByURL[url3] = .success(proto3)
 
         // When
         let result = await sut.execute(urls: urls, importPaths: [])
 
         // Then
-        XCTAssertEqual(result.count, 2, "Should load 2 successful protos, skip 1 failed")
-        XCTAssertEqual(result[0].name, "proto1.proto")
-        XCTAssertEqual(result[1].name, "proto3.proto")
+        XCTAssertEqual(result.loaded.map(\.name), ["proto1.proto", "proto3.proto"])
+        XCTAssertEqual(result.failures, [FailedProtoImport(path: url2, message: error.localizedDescription)])
         XCTAssertEqual(mockImportUseCase.callCount, 3, "Should attempt all 3")
     }
 
-    func test_execute_whenAllFilesFail_returnsEmptyArray() async {
+    func test_execute_whenAllFilesFail_returnsAFailureForEach() async {
         // Given
         let url1 = URL(fileURLWithPath: "/path/to/proto1.proto")
         let url2 = URL(fileURLWithPath: "/path/to/proto2.proto")
         let urls = [url1, url2]
 
-        mockImportUseCase.mockResultsByURL[url1] = .failure(NSError(domain: "test", code: 404))
-        mockImportUseCase.mockResultsByURL[url2] = .failure(NSError(domain: "test", code: 500))
+        let first = NSError(domain: "test", code: 404, userInfo: [NSLocalizedDescriptionKey: "missing import"])
+        let second = NSError(domain: "test", code: 500, userInfo: [NSLocalizedDescriptionKey: "parse error"])
+        mockImportUseCase.mockResultsByURL[url1] = .failure(first)
+        mockImportUseCase.mockResultsByURL[url2] = .failure(second)
 
         // When
         let result = await sut.execute(urls: urls, importPaths: [])
 
         // Then
-        XCTAssertEqual(result.count, 0)
+        XCTAssertTrue(result.loaded.isEmpty)
+        XCTAssertEqual(result.failures.map(\.path), [url1, url2])
         XCTAssertEqual(mockImportUseCase.callCount, 2)
     }
 

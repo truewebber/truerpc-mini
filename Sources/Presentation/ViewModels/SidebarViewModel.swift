@@ -12,6 +12,10 @@ public final class SidebarViewModel: ObservableObject {
 
     @Published public var error: String?
     @Published public var isLoading: Bool = false
+    /// Proto files that were added but could not be parsed. Removing one drops it; retrying loads it.
+    @Published public internal(set) var failedImports: [FailedProtoImport] = []
+    /// Parse error for a contract that is still loaded, keyed by file path.
+    @Published public internal(set) var contractErrors: [URL: String] = [:]
     @Published public private(set) var importPathsCount: Int = 0
     /// Color slot of every loaded contract, keyed by proto file path.
     @Published public private(set) var contractColorSlots: [URL: Int] = [:]
@@ -94,13 +98,14 @@ public final class SidebarViewModel: ObservableObject {
 
         let importPaths = getImportPathsWithWellKnownTypes()
         let loadedProtos = await loadSavedProtosUseCase.execute(urls: savedPaths, importPaths: importPaths)
-        for proto in loadedProtos {
+        failedImports = loadedProtos.failures
+        for proto in loadedProtos.loaded {
             addOrReplaceProtoFile(proto)
             watcher.startWatching(proto)
         }
         logger.info("Saved proto files loaded", metadata: [
-            "count": "\(loadedProtos.count)",
-            "files": loadedProtos.map(\.name).joined(separator: ","),
+            "count": "\(loadedProtos.loaded.count)",
+            "files": loadedProtos.loaded.map(\.name).joined(separator: ","),
         ])
 
         isLoading = false
@@ -158,9 +163,10 @@ public final class SidebarViewModel: ObservableObject {
         return paths
     }
 
-    /// Imports a proto file from the given URL
-    /// Uses configured import paths for dependency resolution
-    /// Saves the path to persistent storage after successful import
+    /// Imports a proto file from the given URL.
+    ///
+    /// A file that fails to parse is kept as a failed import, beside the contracts that already load,
+    /// and its path is saved so it can be removed or retried later.
     public func importProtoFile(url: URL) async {
         isLoading = true
         error = nil
@@ -168,6 +174,8 @@ public final class SidebarViewModel: ObservableObject {
         do {
             let importPaths = getImportPathsWithWellKnownTypes()
             let protoFile = try await importProtoFileUseCase.execute(url: url, importPaths: importPaths)
+            contractErrors[url] = nil
+            failedImports.removeAll { $0.path == url }
             addOrReplaceProtoFile(protoFile)
             watcher.startWatching(protoFile)
             logger.info("Proto file imported", metadata: [
@@ -184,7 +192,8 @@ public final class SidebarViewModel: ObservableObject {
                 "error": error.localizedDescription,
             ])
             await telemetry.track(.protoLoadFailed(source: "file"))
-            self.error = error.localizedDescription
+            recordImportFailure(url, message: error.localizedDescription)
+            saveProtoPaths()
         }
 
         isLoading = false
@@ -194,11 +203,33 @@ public final class SidebarViewModel: ObservableObject {
     public func removeProtoFile(_ protoFile: ProtoFile) async {
         watcher.stopWatching(protoFile)
         protoFiles.removeAll { $0.id == protoFile.id }
+        contractErrors[protoFile.path] = nil
         saveProtoPaths()
         await telemetry.track(.protoRemoved())
     }
 
-    /// Re-parses an already-loaded proto file and replaces the stale entry in `protoFiles`
+    /// Drops a proto file that never parsed and forgets its saved path.
+    public func removeFailedImport(_ failure: FailedProtoImport) async {
+        failedImports.removeAll { $0.path == failure.path }
+        saveProtoPaths()
+        await telemetry.track(.protoRemoved())
+    }
+
+    /// Tries every failed import again, then refreshes loaded contracts that are showing an error.
+    public func retryFailedContracts() async {
+        let paths = failedImports.map(\.path)
+        for path in paths {
+            await importProtoFile(url: path)
+        }
+
+        let stale = protoFiles.filter { contractErrors[$0.path] != nil }
+        for protoFile in stale {
+            await refreshProtoFile(protoFile)
+        }
+    }
+
+    /// Re-parses an already-loaded proto file and replaces the stale entry in `protoFiles`.
+    /// A failure keeps the previous contract and records the message on that row.
     public func refreshProtoFile(_ protoFile: ProtoFile) async {
         error = nil
 
@@ -208,6 +239,7 @@ public final class SidebarViewModel: ObservableObject {
             let updated = try await refreshProtoFileUseCase.execute(
                 protoFile: protoFile,
                 importPaths: importPaths)
+            contractErrors[protoFile.path] = nil
             addOrReplaceProtoFile(updated)
             await telemetry.track(.protoRefreshed())
         } catch {
@@ -215,15 +247,31 @@ public final class SidebarViewModel: ObservableObject {
                 "name": protoFile.name,
                 "error": error.localizedDescription,
             ])
-            self.error = error.localizedDescription
+            contractErrors[protoFile.path] = error.localizedDescription
         }
     }
 
     // MARK: - Private Methods
 
     private func saveProtoPaths() {
-        let paths = protoFiles.map(\.path)
+        let paths = protoFiles.map(\.path) + failedImports.map(\.path)
         protoPathsPersistence.saveProtoPaths(paths)
+    }
+
+    /// A contract that already loaded keeps its services and shows the new error on its row.
+    private func recordImportFailure(_ url: URL, message: String) {
+        if protoFiles.contains(where: { $0.path == url }) {
+            contractErrors[url] = message
+            failedImports.removeAll { $0.path == url }
+            return
+        }
+
+        let failure = FailedProtoImport(path: url, message: message)
+        if let index = failedImports.firstIndex(where: { $0.path == url }) {
+            failedImports[index] = failure
+        } else {
+            failedImports.append(failure)
+        }
     }
 
     /// Logs the picker error and exposes it to the UI.

@@ -1,7 +1,8 @@
 import Foundation
 
-/// Use case for loading proto files from saved paths
-/// Attempts to load each proto file, skips files that fail to load
+/// Loads proto files from saved paths.
+///
+/// A path that fails to parse is returned as a failure and does not stop the others from loading.
 public final class LoadSavedProtosUseCase: LoadSavedProtosUseCaseProtocol {
     private let importProtoFileUseCase: ImportProtoFileUseCaseProtocol
     private let logger: AppLogger
@@ -11,27 +12,24 @@ public final class LoadSavedProtosUseCase: LoadSavedProtosUseCaseProtocol {
         self.logger = logger
     }
 
-    /// Executes the loading of saved proto files
-    /// - Parameters:
-    ///   - urls: Array of file URLs to load
-    ///   - importPaths: Array of directory paths for resolving proto dependencies
-    /// - Returns: Array of successfully loaded ProtoFile entities (failures are silently skipped)
-    public func execute(urls: [URL], importPaths: [String]) async -> [ProtoFile] {
-        var loadedProtos: [ProtoFile] = []
+    /// Loads every saved path. Failures are reported with the paths that parsed.
+    public func execute(urls: [URL], importPaths: [String]) async -> SavedProtosLoadResult {
+        var loaded: [ProtoFile] = []
+        var failures: [FailedProtoImport] = []
 
         for url in urls {
             do {
                 let proto = try await importProtoFileUseCase.execute(url: url, importPaths: importPaths)
-                loadedProtos.append(proto)
+                loaded.append(proto)
             } catch {
                 logger.error("Proto loading failed", metadata: [
                     "file": url.path,
                     "error": error.localizedDescription,
                 ])
-                continue
+                failures.append(FailedProtoImport(path: url, message: error.localizedDescription))
             }
         }
 
-        return loadedProtos
+        return SavedProtosLoadResult(loaded: loaded, failures: failures)
     }
 }

@@ -159,7 +159,7 @@ private struct TabBarItemView: View {
 
     /// Same for every tab, so long names truncate instead of pushing neighbors away.
     private static let width: CGFloat = 180
-    /// Holds the contract icon or, while hovered, the close button — swapping them never moves the title.
+    /// Holds the contract color or, while hovered, the close button — swapping them never moves the title.
     private static let leadingSlotSize: CGFloat = 16
 
     init(
@@ -234,7 +234,7 @@ private struct TabBarItemView: View {
                 .foregroundStyle(.secondary)
                 .help("Close Tab")
             } else {
-                ContractIcon(colorSlot: item.colorSlot)
+                ContractColorMark(colorSlot: item.colorSlot)
             }
         }
         .font(.callout)

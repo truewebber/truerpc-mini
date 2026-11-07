@@ -128,18 +128,98 @@ final class SidebarViewModelTests: XCTestCase {
 
     // MARK: - Import Error Tests
 
-    func test_importProtoFile_whenError_setsErrorMessage() async {
-        // Given
-        let testURL = URL(fileURLWithPath: "/test/invalid.proto")
-        mockUseCase.mockResultsByURL[testURL] = .failure(TestError.importFailed)
+    func test_importProtoFile_whenError_recordsTheFailureWithoutBlockingTheSidebar() async {
+        let existingURL = URL(fileURLWithPath: "/test/users.proto")
+        let brokenURL = URL(fileURLWithPath: "/test/orders.proto")
+        let error = NSError(
+            domain: "test",
+            code: 1,
+            userInfo: [NSLocalizedDescriptionKey: "missing import \"billing/types.proto\""])
+        mockUseCase.mockResultsByURL[existingURL] = .success(ProtoFile(
+            name: "users.proto",
+            path: existingURL,
+            services: []))
+        mockUseCase.mockResultsByURL[brokenURL] = .failure(error)
+        await sut.importProtoFile(url: existingURL)
 
-        // When
-        await sut.importProtoFile(url: testURL)
+        await sut.importProtoFile(url: brokenURL)
 
-        // Then
-        XCTAssertNotNil(sut.error)
-        XCTAssertTrue(sut.protoFiles.isEmpty)
+        XCTAssertNil(sut.error)
+        XCTAssertEqual(sut.protoFiles.map(\.path), [existingURL])
+        XCTAssertEqual(sut.failedImports, [FailedProtoImport(path: brokenURL, message: error.localizedDescription)])
+        XCTAssertEqual(mockProtoPathsPersistence.savedPaths, [existingURL, brokenURL])
         XCTAssertFalse(sut.isLoading)
+    }
+
+    func test_removeFailedImport_dropsItAndPersistsTheRemainingContracts() async throws {
+        let brokenURL = URL(fileURLWithPath: "/test/orders.proto")
+        mockUseCase.mockResultsByURL[brokenURL] = .failure(TestError.importFailed)
+        await sut.importProtoFile(url: brokenURL)
+        let failure = try XCTUnwrap(sut.failedImports.first)
+
+        await sut.removeFailedImport(failure)
+
+        XCTAssertTrue(sut.failedImports.isEmpty)
+        XCTAssertTrue(mockProtoPathsPersistence.savedPaths.isEmpty)
+        XCTAssertEqual(mockTelemetry.trackedEvents.last?.name, "proto_removed")
+    }
+
+    func test_importProtoFile_whenAFailedImportSucceeds_movesItIntoTheContractList() async {
+        let brokenURL = URL(fileURLWithPath: "/test/orders.proto")
+        mockUseCase.mockResultsByURL[brokenURL] = .failure(TestError.importFailed)
+        await sut.importProtoFile(url: brokenURL)
+        mockUseCase.mockResultsByURL[brokenURL] = .success(ProtoFile(
+            name: "orders.proto",
+            path: brokenURL,
+            services: []))
+
+        await sut.importProtoFile(url: brokenURL)
+
+        XCTAssertTrue(sut.failedImports.isEmpty)
+        XCTAssertEqual(sut.protoFiles.map(\.path), [brokenURL])
+    }
+
+    func test_retryFailedContracts_loadsTheImportThatPreviouslyFailed() async {
+        let brokenURL = URL(fileURLWithPath: "/test/orders.proto")
+        mockUseCase.mockResultsByURL[brokenURL] = .failure(TestError.importFailed)
+        await sut.importProtoFile(url: brokenURL)
+        mockUseCase.mockResultsByURL[brokenURL] = .success(ProtoFile(
+            name: "orders.proto",
+            path: brokenURL,
+            services: []))
+
+        await sut.retryFailedContracts()
+
+        XCTAssertTrue(sut.failedImports.isEmpty)
+        XCTAssertEqual(sut.protoFiles.map(\.path), [brokenURL])
+    }
+
+    func test_retryFailedContracts_clearsTheErrorOnALoadedContractThatRefreshes() async {
+        let url = URL(fileURLWithPath: "/test/users.proto")
+        let proto = ProtoFile(name: "users.proto", path: url, services: [])
+        sut.protoFiles = [proto]
+        mockRefreshUseCase.mockResultsByPath[url] = .failure(TestError.importFailed)
+        await sut.refreshProtoFile(proto)
+        mockRefreshUseCase.mockResultsByPath[url] = .success(proto)
+
+        await sut.retryFailedContracts()
+
+        XCTAssertNil(sut.contractErrors[url])
+    }
+
+    func test_loadSavedProtos_publishesFailuresBesideLoadedContracts() async {
+        let loadedURL = URL(fileURLWithPath: "/test/users.proto")
+        let brokenURL = URL(fileURLWithPath: "/test/orders.proto")
+        let loaded = ProtoFile(name: "users.proto", path: loadedURL, services: [])
+        let failure = FailedProtoImport(path: brokenURL, message: "missing import")
+        mockProtoPathsPersistence.savedPaths = [loadedURL, brokenURL]
+        mockLoadSavedProtosUseCase.mockProtos = [loaded]
+        mockLoadSavedProtosUseCase.mockFailures = [failure]
+
+        await sut.loadSavedProtos()
+
+        XCTAssertEqual(sut.protoFiles.map(\.path), [loadedURL])
+        XCTAssertEqual(sut.failedImports, [failure])
     }
 
     func test_importProtoFile_whenError_logsError() async {
@@ -367,7 +447,8 @@ final class SidebarViewModelTests: XCTestCase {
 
         XCTAssertEqual(sut.protoFiles.count, 1)
         XCTAssertEqual(sut.protoFiles[0].name, "broken.proto")
-        XCTAssertEqual(sut.error, expectedError.localizedDescription)
+        XCTAssertNil(sut.error)
+        XCTAssertEqual(sut.contractErrors[url], expectedError.localizedDescription)
     }
 
     func test_refreshProtoFile_tracksRefreshedTelemetryEvent() async {
@@ -495,14 +576,15 @@ final class MockLoadSavedProtosUseCase: LoadSavedProtosUseCaseProtocol {
     var executeURLs: [URL]?
     var executeImportPaths: [String]?
     var mockProtos: [ProtoFile] = []
+    var mockFailures: [FailedProtoImport] = []
 
     init() {}
 
-    func execute(urls: [URL], importPaths: [String]) -> [ProtoFile] {
+    func execute(urls: [URL], importPaths: [String]) -> SavedProtosLoadResult {
         executeCalled = true
         executeURLs = urls
         executeImportPaths = importPaths
-        return mockProtos
+        return SavedProtosLoadResult(loaded: mockProtos, failures: mockFailures)
     }
 }
 

@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 /// Opens a method from the sidebar. `inNewTab` is set for a click with the open-in-new-tab modifiers held
@@ -12,6 +13,7 @@ public struct SidebarView: View {
     @State private var isImporterPresented = false
     @State private var isImportPathsSheetPresented = false
     @State private var isNewTabModifierPressed = false
+    @State private var presentedImportError: PresentedImportError?
     let onMethodSelected: MethodSelectionHandler
     let onSettingsOpened: () -> Void
 
@@ -52,14 +54,16 @@ public struct SidebarView: View {
 
             Divider()
 
-            if viewModel.isLoading {
+            if viewModel.isLoading, !hasContracts {
                 loadingView
-            } else if let error = viewModel.error {
-                errorView(message: error)
-            } else if viewModel.protoFiles.isEmpty {
-                emptyStateView
+            } else if !hasContracts {
+                if let error = viewModel.error {
+                    errorView(message: error)
+                } else {
+                    emptyStateView
+                }
             } else {
-                protoFilesList
+                contractList
             }
         }
         .fileImporter(
@@ -75,6 +79,7 @@ public struct SidebarView: View {
                 settingsViewModel: di.resolve(SettingsViewModel.self)!)
                 .onDisappear {
                     viewModel.refreshImportPathsCount()
+                    Task { await viewModel.retryFailedContracts() }
                 }
         }
         .onChange(of: isImportPathsSheetPresented) { _, isPresented in
@@ -82,6 +87,13 @@ public struct SidebarView: View {
                 onSettingsOpened()
             }
         }
+        .sheet(item: $presentedImportError) { error in
+            ImportErrorDetail(title: error.title, message: error.message)
+        }
+    }
+
+    private func showImportError(title: String, message: String) {
+        presentedImportError = PresentedImportError(title: title, message: message)
     }
 
     private var loadingView: some View {
@@ -89,11 +101,22 @@ public struct SidebarView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
+    private var hasContracts: Bool {
+        !viewModel.protoFiles.isEmpty || !viewModel.failedImports.isEmpty
+    }
+
     private func errorView(message: String) -> some View {
         ContentUnavailableView {
             Label("Could Not Load Protos", systemImage: "exclamationmark.triangle")
         } description: {
             Text(message)
+        } actions: {
+            Button("Show Full Error") {
+                showImportError(title: "Could Not Load Protos", message: message)
+            }
+            Button("Dismiss") {
+                viewModel.error = nil
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -111,17 +134,52 @@ public struct SidebarView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
+    private var contractList: some View {
+        VStack(spacing: 0) {
+            if let error = viewModel.error {
+                noticeBanner(message: error)
+            }
+            protoFilesList
+        }
+    }
+
+    private func noticeBanner(message: String) -> some View {
+        HStack(alignment: .firstTextBaseline) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(.orange)
+                .accessibilityHidden(true)
+            ImportErrorSummary(message: message, lineLimit: 2) {
+                showImportError(title: "Could Not Load Protos", message: message)
+            }
+            Spacer(minLength: 0)
+            Button("Dismiss") {
+                viewModel.error = nil
+            }
+            .buttonStyle(.borderless)
+        }
+        .padding(.horizontal)
+        .padding(.vertical, 8)
+    }
+
     private var protoFilesList: some View {
         List {
             ForEach(viewModel.protoFiles, id: \.path) { protoFile in
                 ProtoFileRow(
                     protoFile: protoFile,
                     colorSlot: viewModel.contractColorSlots[protoFile.path],
+                    loadError: viewModel.contractErrors[protoFile.path],
+                    onShowError: { showImportError(title: protoFile.name, message: $0) },
                     onMethodSelected: { method, service, file, inNewTab in
                         onMethodSelected(method, service, file, inNewTab || isNewTabModifierPressed)
                     },
                     onRefresh: { await viewModel.refreshProtoFile(protoFile) })
                     .contextMenu {
+                        if let message = viewModel.contractErrors[protoFile.path] {
+                            Button("Show Full Error") {
+                                showImportError(title: protoFile.name, message: message)
+                            }
+                            Divider()
+                        }
                         Button {
                             Task { await viewModel.refreshProtoFile(protoFile) }
                         } label: {
@@ -139,6 +197,20 @@ public struct SidebarView: View {
                 for index in indexSet {
                     let proto = viewModel.protoFiles[index]
                     Task { await viewModel.removeProtoFile(proto) }
+                }
+            }
+
+            ForEach(viewModel.failedImports) { failure in
+                FailedProtoRow(
+                    failure: failure,
+                    onRetry: { await viewModel.importProtoFile(url: failure.path) },
+                    onRemove: { Task { await viewModel.removeFailedImport(failure) } },
+                    onShowError: { showImportError(title: failure.name, message: failure.message) })
+            }
+            .onDelete { indexSet in
+                let failures = indexSet.map { viewModel.failedImports[$0] }
+                for failure in failures {
+                    Task { await viewModel.removeFailedImport(failure) }
                 }
             }
         }
@@ -166,6 +238,8 @@ public struct SidebarView: View {
 private struct ProtoFileRow: View {
     let protoFile: ProtoFile
     let colorSlot: Int?
+    let loadError: String?
+    let onShowError: (String) -> Void
     let onMethodSelected: MethodSelectionHandler
     let onRefresh: () async -> Void
     @State private var isExpanded = true
@@ -188,41 +262,193 @@ private struct ProtoFileRow: View {
                 }
             }
         } label: {
-            HStack {
-                Label {
-                    Text(protoFile.name)
-                        .font(.body)
-                } icon: {
-                    ContractIcon(colorSlot: colorSlot)
+            VStack(alignment: .leading, spacing: 2) {
+                HStack {
+                    Label {
+                        Text(protoFile.name)
+                            .font(.body)
+                    } icon: {
+                        ContractIcon(colorSlot: colorSlot)
+                    }
+
+                    Spacer()
+
+                    if isHovered || isRefreshing {
+                        Button {
+                            guard !isRefreshing else { return }
+
+                            isRefreshing = true
+                            Task {
+                                await onRefresh()
+                                isRefreshing = false
+                            }
+                        } label: {
+                            if isRefreshing {
+                                ProgressView()
+                                    .controlSize(.small)
+                            } else {
+                                Label("Refresh", systemImage: "arrow.clockwise")
+                                    .labelStyle(.iconOnly)
+                            }
+                        }
+                        .buttonStyle(.borderless)
+                        .help("Refresh")
+                        .disabled(isRefreshing)
+                    }
                 }
 
-                Spacer()
-
-                if isHovered || isRefreshing {
-                    Button {
-                        guard !isRefreshing else { return }
-
-                        isRefreshing = true
-                        Task {
-                            await onRefresh()
-                            isRefreshing = false
-                        }
-                    } label: {
-                        if isRefreshing {
-                            ProgressView()
-                                .controlSize(.small)
-                        } else {
-                            Label("Refresh", systemImage: "arrow.clockwise")
-                                .labelStyle(.iconOnly)
-                        }
+                if let loadError {
+                    ImportErrorSummary(message: loadError, lineLimit: 2) {
+                        onShowError(loadError)
                     }
-                    .buttonStyle(.borderless)
-                    .help("Refresh")
-                    .disabled(isRefreshing)
                 }
             }
         }
         .onHover { isHovered = $0 }
+    }
+}
+
+private struct FailedProtoRow: View {
+    let failure: FailedProtoImport
+    let onRetry: () async -> Void
+    let onRemove: () -> Void
+    let onShowError: () -> Void
+    @State private var isRetrying = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Label {
+                    Text(failure.name)
+                        .font(.body)
+                } icon: {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.orange)
+                }
+
+                Spacer()
+
+                Button {
+                    guard !isRetrying else { return }
+
+                    isRetrying = true
+                    Task {
+                        await onRetry()
+                        isRetrying = false
+                    }
+                } label: {
+                    if isRetrying {
+                        ProgressView()
+                            .controlSize(.small)
+                    } else {
+                        Label("Retry", systemImage: "arrow.clockwise")
+                            .labelStyle(.iconOnly)
+                    }
+                }
+                .buttonStyle(.borderless)
+                .help("Retry")
+                .disabled(isRetrying)
+
+                Button(role: .destructive, action: onRemove) {
+                    Label("Remove", systemImage: "trash")
+                        .labelStyle(.iconOnly)
+                }
+                .buttonStyle(.borderless)
+                .help("Remove")
+            }
+
+            ImportErrorSummary(message: failure.message, lineLimit: 3, onShowFullError: onShowError)
+        }
+        .contextMenu {
+            Button("Show Full Error", action: onShowError)
+            Divider()
+            Button("Retry") {
+                Task { await onRetry() }
+            }
+            Button("Remove", role: .destructive, action: onRemove)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityAction(named: "Show Full Error", onShowError)
+        .accessibilityAction(named: "Retry") {
+            Task { await onRetry() }
+        }
+        .accessibilityAction(named: "Remove", onRemove)
+    }
+}
+
+private struct PresentedImportError: Identifiable {
+    let id = UUID()
+    let title: String
+    let message: String
+}
+
+/// The start of an import error, with a control that opens the whole message.
+private struct ImportErrorSummary: View {
+    let message: String
+    var lineLimit: Int = 3
+    let onShowFullError: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Button(action: onShowFullError) {
+                Text(message)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(lineLimit)
+                    .multilineTextAlignment(.leading)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .buttonStyle(.plain)
+            .help("Show Full Error")
+
+            Button("Show Full Error", action: onShowFullError)
+                .buttonStyle(.borderless)
+                .font(.caption)
+                .help("Show Full Error")
+        }
+    }
+}
+
+/// The complete import error, scrollable and selectable so a long path can be read and copied.
+private struct ImportErrorDetail: View {
+    let title: String
+    let message: String
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text(title)
+                .font(.headline)
+                .padding(.horizontal, 20)
+                .padding(.top, 16)
+                .padding(.bottom, 12)
+
+            Divider()
+
+            ScrollView {
+                Text(message)
+                    .font(.body)
+                    .textSelection(.enabled)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(20)
+            }
+
+            Divider()
+
+            HStack {
+                Button("Copy") {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(message, forType: .string)
+                }
+                Spacer()
+                Button("Close") { dismiss() }
+                    .keyboardShortcut(.cancelAction)
+            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 12)
+        }
+        .frame(width: 640, height: 420)
     }
 }
 
@@ -297,6 +523,14 @@ private struct MethodRow: View {
 }
 
 #if DEBUG
+    private let previewLongImportError = """
+    Failed to parse /Users/truewebber/projects/services/billing/api/src/main/proto/com/example/billing/v2/orders.proto:12:8: \
+    Import "com/example/billing/v2/types/money.proto" was not found or had errors.
+    Searched:
+    /Users/truewebber/Library/Application Support/TrueRPC Mini/import-paths/com/example/billing/v2/types/money.proto
+    /Users/truewebber/projects/services/billing/api/src/main/proto/com/example/billing/v2/types/money.proto
+    """
+
     #Preview("Empty", traits: .fixedLayout(width: 320, height: 700)) {
         previewSidebar()
     }
@@ -306,7 +540,34 @@ private struct MethodRow: View {
     }
 
     #Preview("Error", traits: .fixedLayout(width: 320, height: 700)) {
-        previewSidebar(error: "Failed to load proto file: missing import \"google/protobuf/timestamp.proto\".")
+        previewSidebar(error: "The file picker could not open the selected proto.")
+    }
+
+    #Preview("Failed Import", traits: .fixedLayout(width: 320, height: 700)) {
+        previewSidebar(
+            files: [.previewCatalog],
+            failures: [
+                FailedProtoImport(
+                    path: URL(fileURLWithPath: "/Users/shared/protos/orders.proto"),
+                    message: previewLongImportError),
+            ])
+    }
+
+    #Preview("Refresh Failed", traits: .fixedLayout(width: 320, height: 700)) {
+        previewSidebar(
+            files: [.previewCatalog],
+            contractErrors: [
+                ProtoFile.previewCatalog.path: previewLongImportError,
+            ])
+    }
+
+    #Preview("Error Detail", traits: .sizeThatFitsLayout) {
+        ImportErrorDetail(title: "orders.proto", message: previewLongImportError)
+    }
+
+    #Preview("Error Detail Dark", traits: .sizeThatFitsLayout) {
+        ImportErrorDetail(title: "orders.proto", message: previewLongImportError)
+            .preferredColorScheme(.dark)
     }
 
     #Preview("Data", traits: .fixedLayout(width: 320, height: 700)) {
@@ -330,11 +591,18 @@ private struct MethodRow: View {
     private func previewSidebar(
         files: [ProtoFile] = [],
         isLoading: Bool = false,
-        error: String? = nil)
+        error: String? = nil,
+        failures: [FailedProtoImport] = [],
+        contractErrors: [URL: String] = [:])
         -> some View
     {
         SidebarView(
-            viewModel: previewSidebarViewModel(files: files, isLoading: isLoading, error: error),
+            viewModel: previewSidebarViewModel(
+                files: files,
+                isLoading: isLoading,
+                error: error,
+                failures: failures,
+                contractErrors: contractErrors),
             onMethodSelected: { _, _, _, _ in },
             onSettingsOpened: {})
             .environmentObject(previewSidebarDI())
@@ -344,7 +612,9 @@ private struct MethodRow: View {
     private func previewSidebarViewModel(
         files: [ProtoFile],
         isLoading: Bool,
-        error: String?)
+        error: String?,
+        failures: [FailedProtoImport],
+        contractErrors: [URL: String])
         -> SidebarViewModel
     {
         let viewModel = SidebarViewModel(
@@ -358,6 +628,8 @@ private struct MethodRow: View {
             logger: NullLogger(),
             telemetry: PreviewSidebarTelemetry())
         viewModel.protoFiles = files
+        viewModel.failedImports = failures
+        viewModel.contractErrors = contractErrors
         viewModel.isLoading = isLoading
         viewModel.error = error
         return viewModel
@@ -404,8 +676,8 @@ private struct MethodRow: View {
     }
 
     private final class PreviewLoadSavedProtosUseCase: LoadSavedProtosUseCaseProtocol, Sendable {
-        func execute(urls _: [URL], importPaths _: [String]) -> [ProtoFile] {
-            []
+        func execute(urls _: [URL], importPaths _: [String]) -> SavedProtosLoadResult {
+            SavedProtosLoadResult(loaded: [], failures: [])
         }
     }
 
