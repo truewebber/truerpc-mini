@@ -8,4 +8,22 @@ public protocol AutocompleteProviderProtocol: Sendable {
         rootMessageType: String,
         in protoFile: ProtoFile)
         async -> [AutocompleteSuggestion]
+
+    /// The type name for an empty value at `context`, or `nil` when the caret is not on a field value.
+    func valueTypeHint(
+        for context: AutocompleteContext,
+        rootMessageType: String,
+        in protoFile: ProtoFile)
+        async -> JsonValueTypeHint?
+}
+
+public extension AutocompleteProviderProtocol {
+    func valueTypeHint(
+        for _: AutocompleteContext,
+        rootMessageType _: String,
+        in _: ProtoFile)
+        -> JsonValueTypeHint?
+    {
+        nil
+    }
 }

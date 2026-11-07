@@ -43,6 +43,29 @@ public final class ProtoSchemaAutocompleteProvider: AutocompleteProviderProtocol
         }
     }
 
+    public func valueTypeHint(
+        for context: AutocompleteContext,
+        rootMessageType: String,
+        in protoFile: ProtoFile)
+        async -> JsonValueTypeHint?
+    {
+        guard context.mode != .key else { return nil }
+        guard let rootDescriptor = try? await protoRepository.getMessageDescriptor(
+            forType: rootMessageType,
+            in: protoFile)
+        else { return nil }
+        guard let field = await fieldAtValuePosition(
+            context: context,
+            rootDescriptor: rootDescriptor,
+            protoFile: protoFile)
+        else { return nil }
+
+        let isElement = context.mode == .arrayElement
+        return JsonValueTypeHint(
+            name: isElement ? scalarTypeHint(for: field) : typeHint(for: field),
+            kind: isElement ? elementKind(for: field) : kind(for: field))
+    }
+
     // MARK: - Mode handlers
 
     private func keyModeSuggestions(
@@ -210,6 +233,42 @@ public final class ProtoSchemaAutocompleteProvider: AutocompleteProviderProtocol
         }
     }
 
+    private func fieldAtValuePosition(
+        context: AutocompleteContext,
+        rootDescriptor: MessageDescriptor,
+        protoFile: ProtoFile)
+        async -> FieldDescriptor?
+    {
+        let fieldName: String
+        let parentPath: [String]
+        switch context.mode {
+        case .key:
+            return nil
+
+        case .enumValue:
+            if let key = context.currentFieldKey {
+                fieldName = key
+                parentPath = context.resolvedPath
+            } else if let last = context.resolvedPath.last {
+                fieldName = last
+                parentPath = Array(context.resolvedPath.dropLast())
+            } else {
+                return nil
+            }
+
+        case .arrayElement:
+            guard let last = context.resolvedPath.last else { return nil }
+
+            fieldName = last
+            parentPath = Array(context.resolvedPath.dropLast())
+        }
+
+        guard let parent = await navigate(from: rootDescriptor, path: parentPath, protoFile: protoFile)
+        else { return nil }
+
+        return parent.field(named: fieldName)
+    }
+
     // MARK: - Schema navigation
 
     private func navigate(
@@ -252,6 +311,34 @@ public final class ProtoSchemaAutocompleteProvider: AutocompleteProviderProtocol
         if field.isRepeated {
             return .repeated
         }
+        switch field.type {
+        case .string, .bytes:
+            return .string
+
+        case .double, .float,
+             .int32, .int64, .uint32, .uint64,
+             .sint32, .sint64, .fixed32, .fixed64, .sfixed32, .sfixed64:
+            return .number
+
+        case .bool:
+            return .bool
+
+        case .message:
+            if isWellKnownStringType(field.typeName) {
+                return .wktString
+            }
+            return .message
+
+        case .enum:
+            return .enumField
+
+        case .group:
+            return .string
+        }
+    }
+
+    /// Kind of one value, ignoring the repeated wrapper. A repeated field's element uses this.
+    private func elementKind(for field: FieldDescriptor) -> SuggestionKind {
         switch field.type {
         case .string, .bytes:
             return .string

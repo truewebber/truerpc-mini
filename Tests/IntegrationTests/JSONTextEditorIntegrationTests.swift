@@ -454,6 +454,74 @@ final class JSONTextEditorIntegrationTests: XCTestCase {
         XCTAssertFalse(consumed, "Enter inside a string literal must not be consumed")
     }
 
+    // MARK: - Value type name after Tab
+
+    func test_commitSelection_stringKind_publishesTypeNameInsideEmptyQuotes() async throws {
+        let hint = JsonValueTypeHint(name: "string", kind: .string)
+        let suggestion = AutocompleteSuggestion(name: "username", typeHint: "string", kind: .string)
+        let provider = MockAutocompleteProvider(stubSuggestions: [suggestion], stubValueTypeHint: hint)
+        let (coordinator, vm) = makeCoordinator(provider: provider)
+        vm.suggestions = [suggestion]
+        vm.isVisible = true
+        let textView = makeTextView(text: "{\n  ")
+
+        _ = coordinator.textView(textView, doCommandBy: #selector(NSTextView.insertTab(_:)))
+        try await Task.sleep(for: .milliseconds(100))
+
+        XCTAssertTrue(textView.string.contains("\"username\": \"\""))
+        XCTAssertFalse(textView.string.contains("string"))
+        XCTAssertEqual(vm.valueTypeHint, hint)
+        XCTAssertFalse(vm.isVisible)
+    }
+
+    func test_commitSelection_numberKind_publishesTypeNameAfterColon() async throws {
+        let hint = JsonValueTypeHint(name: "int32", kind: .number)
+        let suggestion = AutocompleteSuggestion(name: "count", typeHint: "int32", kind: .number)
+        let provider = MockAutocompleteProvider(stubSuggestions: [suggestion], stubValueTypeHint: hint)
+        let (coordinator, vm) = makeCoordinator(provider: provider)
+        vm.suggestions = [suggestion]
+        vm.isVisible = true
+        let textView = makeTextView(text: "{\n  ")
+
+        _ = coordinator.textView(textView, doCommandBy: #selector(NSTextView.insertTab(_:)))
+        try await Task.sleep(for: .milliseconds(100))
+
+        XCTAssertTrue(textView.string.contains("\"count\": "))
+        XCTAssertEqual(vm.valueTypeHint, hint)
+    }
+
+    func test_commitSelection_numberKind_drawsTypeNameAtTheCaret() async throws {
+        let hint = JsonValueTypeHint(name: "int32", kind: .number)
+        let suggestion = AutocompleteSuggestion(name: "count", typeHint: "int32", kind: .number)
+        let provider = MockAutocompleteProvider(stubSuggestions: [suggestion], stubValueTypeHint: hint)
+        let (coordinator, vm) = makeCoordinator(provider: provider)
+        vm.suggestions = [suggestion]
+        vm.isVisible = true
+
+        let textView = NSTextView(frame: NSRect(x: 0, y: 0, width: 400, height: 200))
+        textView.string = "{\n  "
+        textView.font = JsonEditorMetrics.font
+        textView.setSelectedRange(NSRange(location: (textView.string as NSString).length, length: 0))
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 400, height: 200),
+            styleMask: [.titled],
+            backing: .buffered,
+            defer: false)
+        window.contentView = textView
+        textView.layoutSubtreeIfNeeded()
+        try textView.layoutManager?.ensureLayout(for: XCTUnwrap(textView.textContainer))
+
+        _ = coordinator.textView(textView, doCommandBy: #selector(NSTextView.insertTab(_:)))
+        try await Task.sleep(for: .milliseconds(150))
+
+        let label = textView.subviews.compactMap { $0 as? NSTextField }.first { $0.stringValue == "int32" }
+        XCTAssertEqual(label?.isHidden, false)
+        XCTAssertFalse(textView.string.contains("int32"))
+        if let label {
+            XCTAssertNil(label.hitTest(NSPoint(x: label.bounds.midX, y: label.bounds.midY)))
+        }
+    }
+
     // MARK: - Smart insert — string kind (via Tab)
 
     func test_commitSelection_stringKind_insertsKeyColonEmptyString() {

@@ -80,13 +80,20 @@ struct JSONTextEditor: NSViewRepresentable {
         /// by a stale task after an intentional dismiss.
         private var pendingUpdateTask: Task<Void, Never>?
 
+        /// Type-name refresh after a scalar insert or a caret move. Kept apart from suggestion updates.
+        private var pendingHintTask: Task<Void, Never>?
+
         /// Suppresses autocomplete re-trigger while smart-insert modifies the text view.
         private var suppressTextDidChange = false
 
         /// Stops font and color updates from being treated as another edit.
         private var isApplyingStyle = false
 
+        /// A keystroke already refreshes the type name. The selection change from that keystroke is skipped.
+        private var ignoreNextSelectionChange = false
+
         private let smartInsert = SmartInsertService()
+        private let valueTypeHintLabel = ValueTypeHintLabel()
 
         func applyStyle(to textView: NSTextView) {
             guard !isApplyingStyle else { return }
@@ -138,19 +145,28 @@ struct JSONTextEditor: NSViewRepresentable {
 
                 guard !suppressTextDidChange else { return }
 
+                ignoreNextSelectionChange = true
+                DispatchQueue.main.async { @MainActor [weak self] in
+                    self?.ignoreNextSelectionChange = false
+                }
+
                 if let vm = parent.autocompleteViewModel, let protoFile = parent.protoFile {
+                    pendingHintTask?.cancel()
                     pendingUpdateTask?.cancel()
                     pendingUpdateTask = Task { @MainActor [weak textView] in
                         await vm.textDidChange(text, cursorOffset: cursorOffset, protoFile: protoFile)
                         guard !Task.isCancelled else { return }
                         guard let textView else { return }
 
+                        self.showValueTypeHint(vm.valueTypeHint, in: textView)
                         if vm.isVisible {
                             self.showPopoverIfNeeded(in: textView)
                         } else {
                             self.autocompletePopover.close()
                         }
                     }
+                } else {
+                    showValueTypeHint(nil, in: textView)
                 }
 
                 // Offscreen text views are not drawn, and painting them delays autocomplete.
@@ -159,6 +175,25 @@ struct JSONTextEditor: NSViewRepresentable {
                 isApplyingStyle = true
                 JsonTextStyler.applyColors(to: textView)
                 isApplyingStyle = false
+            }
+        }
+
+        nonisolated func textViewDidChangeSelection(_ notification: Notification) {
+            guard let textView = notification.object as? NSTextView else { return }
+
+            MainActor.assumeIsolated {
+                guard !isApplyingStyle, !suppressTextDidChange else { return }
+
+                if ignoreNextSelectionChange {
+                    ignoreNextSelectionChange = false
+                    return
+                }
+                guard let vm = parent.autocompleteViewModel else {
+                    showValueTypeHint(nil, in: textView)
+                    return
+                }
+
+                scheduleValueTypeHintRefresh(in: textView, vm: vm)
             }
         }
 
@@ -375,12 +410,14 @@ struct JSONTextEditor: NSViewRepresentable {
             if continueAutocomplete, let protoFile = parent.protoFile {
                 let newText = textView.string
                 let offset = textView.selectedRange().location
+                pendingHintTask?.cancel()
                 pendingUpdateTask?.cancel()
                 pendingUpdateTask = Task { @MainActor [weak textView] in
                     await vm.textDidChange(newText, cursorOffset: offset, protoFile: protoFile)
                     guard !Task.isCancelled else { return }
                     guard let textView else { return }
 
+                    self.showValueTypeHint(vm.valueTypeHint, in: textView)
                     if vm.isVisible {
                         self.showPopoverIfNeeded(in: textView)
                     } else {
@@ -391,7 +428,58 @@ struct JSONTextEditor: NSViewRepresentable {
                 pendingUpdateTask?.cancel()
                 vm.dismiss()
                 autocompletePopover.close()
+                scheduleValueTypeHintRefresh(in: textView, vm: vm)
             }
+        }
+
+        /// Loads the type name for the caret and draws it. Does not open or close the suggestion list.
+        private func scheduleValueTypeHintRefresh(in textView: NSTextView, vm: AutocompleteViewModel) {
+            guard let protoFile = parent.protoFile else {
+                showValueTypeHint(nil, in: textView)
+                return
+            }
+
+            let text = textView.string
+            let offset = textView.selectedRange().location
+            pendingHintTask?.cancel()
+            pendingHintTask = Task { @MainActor [weak textView] in
+                await vm.refreshValueTypeHint(text, cursorOffset: offset, protoFile: protoFile)
+                guard !Task.isCancelled else { return }
+                guard let textView else { return }
+
+                self.showValueTypeHint(vm.valueTypeHint, in: textView)
+            }
+        }
+
+        /// Draws `hint` at the caret. The label is not text, so it never enters the document or undo.
+        private func showValueTypeHint(_ hint: JsonValueTypeHint?, in textView: NSTextView) {
+            let selection = textView.selectedRange()
+            guard let hint, selection.length == 0, let window = textView.window else {
+                valueTypeHintLabel.isHidden = true
+                return
+            }
+
+            let rect = cursorViewRect(in: textView, range: selection, window: window)
+            guard rect.height > 0 else {
+                valueTypeHintLabel.isHidden = true
+                return
+            }
+
+            if valueTypeHintLabel.superview !== textView {
+                valueTypeHintLabel.removeFromSuperview()
+                textView.addSubview(valueTypeHintLabel)
+            }
+            valueTypeHintLabel.stringValue = hint.name
+            valueTypeHintLabel.font = JsonEditorMetrics.font
+            valueTypeHintLabel.textColor = JsonHighlightTheme.placeholderColor(for: hint.kind)
+            valueTypeHintLabel.sizeToFit()
+            let size = valueTypeHintLabel.frame.size
+            valueTypeHintLabel.frame = NSRect(
+                x: rect.minX,
+                y: rect.midY - size.height / 2,
+                width: max(size.width, 1),
+                height: max(size.height, 1))
+            valueTypeHintLabel.isHidden = false
         }
 
         // MARK: - Popover positioning
@@ -554,6 +642,32 @@ struct JSONTextEditor: NSViewRepresentable {
                 textView.setSelectedRange(NSRange(location: max(0, cursorPos), length: 0))
             }
         }
+    }
+}
+
+/// Placeholder drawn over the caret. `hitTest` returns nil so it never takes clicks or focus.
+private final class ValueTypeHintLabel: NSTextField {
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        isBezeled = false
+        isBordered = false
+        isEditable = false
+        isSelectable = false
+        drawsBackground = false
+        backgroundColor = .clear
+        font = JsonEditorMetrics.font
+        alignment = .left
+        maximumNumberOfLines = 1
+        lineBreakMode = .byClipping
+        setAccessibilityElement(false)
+    }
+
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+    }
+
+    override func hitTest(_: NSPoint) -> NSView? {
+        nil
     }
 }
 

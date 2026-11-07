@@ -761,4 +761,103 @@ final class ProtoSchemaAutocompleteProviderTests: XCTestCase {
 
         XCTAssertTrue(suggestions.isEmpty)
     }
+
+    // MARK: - Value type names
+
+    func test_valueTypeHint_keyMode_returnsNil() async {
+        let hint = await valueTypeHint(mode: .key, path: [])
+
+        XCTAssertNil(hint)
+    }
+
+    func test_valueTypeHint_stringField_returnsString() async {
+        let hint = await valueTypeHint(mode: .enumValue, path: [], currentFieldKey: "name")
+
+        XCTAssertEqual(hint, JsonValueTypeHint(name: "string", kind: .string))
+    }
+
+    func test_valueTypeHint_int32Field_returnsInt32() async {
+        let hint = await valueTypeHint(mode: .enumValue, path: ["count"])
+
+        XCTAssertEqual(hint, JsonValueTypeHint(name: "int32", kind: .number))
+    }
+
+    func test_valueTypeHint_bytesField_returnsBytes() async {
+        let hint = await valueTypeHint(mode: .enumValue, path: [], currentFieldKey: "data")
+
+        XCTAssertEqual(hint, JsonValueTypeHint(name: "bytes", kind: .string))
+    }
+
+    func test_valueTypeHint_boolField_returnsBool() async {
+        let hint = await valueTypeHint(mode: .enumValue, path: ["settings"], currentFieldKey: "enabled")
+
+        XCTAssertEqual(hint, JsonValueTypeHint(name: "bool", kind: .bool))
+    }
+
+    func test_valueTypeHint_messageField_returnsMessageName() async {
+        let hint = await valueTypeHint(mode: .enumValue, path: [], currentFieldKey: "settings")
+
+        XCTAssertEqual(hint, JsonValueTypeHint(name: "Settings", kind: .message))
+    }
+
+    func test_valueTypeHint_enumField_returnsEnumName() async {
+        let hint = await valueTypeHint(mode: .enumValue, path: [], currentFieldKey: "status")
+
+        XCTAssertEqual(hint, JsonValueTypeHint(name: "Status", kind: .enumField))
+    }
+
+    func test_valueTypeHint_timestampField_returnsTimestamp() async {
+        let hint = await valueTypeHint(mode: .enumValue, path: [], currentFieldKey: "created_at")
+
+        XCTAssertEqual(hint, JsonValueTypeHint(name: "Timestamp", kind: .wktString))
+    }
+
+    func test_valueTypeHint_durationField_returnsDuration() async {
+        let hint = await valueTypeHint(mode: .enumValue, path: [], currentFieldKey: "ttl")
+
+        XCTAssertEqual(hint, JsonValueTypeHint(name: "Duration", kind: .wktString))
+    }
+
+    func test_valueTypeHint_repeatedStringField_returnsArrayType() async {
+        let hint = await valueTypeHint(mode: .enumValue, path: [], currentFieldKey: "labels")
+
+        XCTAssertEqual(hint, JsonValueTypeHint(name: "string[]", kind: .repeated))
+    }
+
+    func test_valueTypeHint_repeatedStringElement_returnsElementType() async {
+        let hint = await valueTypeHint(mode: .arrayElement, path: ["labels"])
+
+        XCTAssertEqual(hint, JsonValueTypeHint(name: "string", kind: .string))
+    }
+
+    func test_valueTypeHint_repeatedMessageElement_returnsElementName() async {
+        let hint = await valueTypeHint(mode: .arrayElement, path: ["items"])
+
+        XCTAssertEqual(hint, JsonValueTypeHint(name: "Settings", kind: .message))
+    }
+
+    func test_valueTypeHint_repeatedEnumElement_returnsEnumName() async {
+        let hint = await valueTypeHint(mode: .arrayElement, path: ["tags"])
+
+        XCTAssertEqual(hint, JsonValueTypeHint(name: "Status", kind: .enumField))
+    }
+
+    func test_valueTypeHint_unknownField_returnsNil() async {
+        let hint = await valueTypeHint(mode: .enumValue, path: [], currentFieldKey: "missing")
+
+        XCTAssertNil(hint)
+    }
+
+    private func valueTypeHint(
+        mode: AutocompleteMode,
+        path: [String],
+        currentFieldKey: String? = nil)
+        async -> JsonValueTypeHint?
+    {
+        let context = AutocompleteContext(
+            resolvedPath: path,
+            mode: mode,
+            currentFieldKey: currentFieldKey)
+        return await sut.valueTypeHint(for: context, rootMessageType: "test.TestRequest", in: protoFile)
+    }
 }

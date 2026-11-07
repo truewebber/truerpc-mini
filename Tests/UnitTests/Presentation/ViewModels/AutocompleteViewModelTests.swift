@@ -31,8 +31,14 @@ final class AutocompleteViewModelTests: XCTestCase {
         AutocompleteSuggestion(name: name, typeHint: "string", kind: kind)
     }
 
-    private func makeSUT(suggestions: [AutocompleteSuggestion]) -> AutocompleteViewModel {
-        mockProvider = MockAutocompleteProvider(stubSuggestions: suggestions)
+    private func makeSUT(
+        suggestions: [AutocompleteSuggestion],
+        valueTypeHint: JsonValueTypeHint? = nil)
+        -> AutocompleteViewModel
+    {
+        mockProvider = MockAutocompleteProvider(
+            stubSuggestions: suggestions,
+            stubValueTypeHint: valueTypeHint)
         let vm = AutocompleteViewModel(
             provider: mockProvider,
             resolver: mockResolver,
@@ -127,6 +133,83 @@ final class AutocompleteViewModelTests: XCTestCase {
 
         XCTAssertFalse(vm.isVisible)
         XCTAssertTrue(vm.suggestions.isEmpty)
+    }
+
+    func test_textDidChange_whenValueSlotIsEmpty_publishesTypeName() async {
+        let hint = JsonValueTypeHint(name: "int32", kind: .number)
+        let vm = makeSUT(suggestions: [], valueTypeHint: hint)
+        mockResolver.stubResolve(AutocompleteContext(
+            resolvedPath: [],
+            mode: .enumValue,
+            currentFieldKey: "count"))
+        let text = "{\n  \"count\": "
+
+        await vm.textDidChange(text, cursorOffset: (text as NSString).length, protoFile: testProtoFile)
+
+        XCTAssertEqual(vm.valueTypeHint, hint)
+        XCTAssertFalse(vm.isVisible)
+    }
+
+    func test_textDidChange_whenKeyMode_doesNotPublishTypeName() async {
+        let hint = JsonValueTypeHint(name: "int32", kind: .number)
+        let vm = makeSUT(suggestions: [makeSuggestion()], valueTypeHint: hint)
+        mockResolver.stubResolve(AutocompleteContext(resolvedPath: [], mode: .key))
+
+        await vm.textDidChange("{", cursorOffset: 1, protoFile: testProtoFile)
+
+        XCTAssertNil(vm.valueTypeHint)
+        XCTAssertTrue(vm.isVisible)
+    }
+
+    func test_textDidChange_whenPartialValue_hidesTypeName() async {
+        let hint = JsonValueTypeHint(name: "int32", kind: .number)
+        let vm = makeSUT(suggestions: [], valueTypeHint: hint)
+        mockResolver.stubResolve(AutocompleteContext(
+            resolvedPath: [],
+            mode: .enumValue,
+            partialKey: "1",
+            currentFieldKey: "count"))
+        let text = "{\n  \"count\": 1"
+
+        await vm.textDidChange(text, cursorOffset: (text as NSString).length, protoFile: testProtoFile)
+
+        XCTAssertNil(vm.valueTypeHint)
+    }
+
+    func test_textDidChange_whenTextHasNoObject_clearsTypeName() async {
+        let hint = JsonValueTypeHint(name: "string", kind: .string)
+        let vm = makeSUT(suggestions: [], valueTypeHint: hint)
+        mockResolver.stubResolve(AutocompleteContext(
+            resolvedPath: [],
+            mode: .enumValue,
+            currentFieldKey: "name"))
+        let text = "{\"name\": \"\"}"
+        let cursor = (text as NSString).range(of: "\"\"").location + 1
+        await vm.textDidChange(text, cursorOffset: cursor, protoFile: testProtoFile)
+        XCTAssertEqual(vm.valueTypeHint, hint)
+
+        await vm.textDidChange("hello", cursorOffset: 5, protoFile: testProtoFile)
+
+        XCTAssertNil(vm.valueTypeHint)
+    }
+
+    func test_refreshValueTypeHint_whenValueSlotIsEmpty_publishesTypeNameWithoutChangingSuggestions() async {
+        let hint = JsonValueTypeHint(name: "bool", kind: .bool)
+        let vm = makeSUT(suggestions: [makeSuggestion(name: "name")], valueTypeHint: hint)
+        mockResolver.stubResolve(AutocompleteContext(resolvedPath: [], mode: .key))
+        await vm.textDidChange("{", cursorOffset: 1, protoFile: testProtoFile)
+        XCTAssertTrue(vm.isVisible)
+
+        mockResolver.stubResolve(AutocompleteContext(
+            resolvedPath: [],
+            mode: .enumValue,
+            currentFieldKey: "active"))
+        let text = "{\n  \"active\": "
+        await vm.refreshValueTypeHint(text, cursorOffset: (text as NSString).length, protoFile: testProtoFile)
+
+        XCTAssertEqual(vm.valueTypeHint, hint)
+        XCTAssertTrue(vm.isVisible)
+        XCTAssertEqual(vm.suggestions.map(\.name), ["name"])
     }
 
     func test_textDidChange_textWithoutOpeningBrace_doesNotShowSuggestions() async {

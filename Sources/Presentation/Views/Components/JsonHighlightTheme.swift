@@ -22,6 +22,20 @@ enum JsonHighlightTheme {
         case .punctuation: .secondaryLabelColor
         }
     }
+
+    /// Ghost color for a type name drawn at an empty value. Token hues stay tied to the JSON scheme.
+    static func placeholderColor(for kind: SuggestionKind) -> NSColor {
+        let syntax: JsonSyntaxKind? = switch kind {
+        case .number: .number
+        case .string: .string
+        case .bool: .literal
+        default: nil
+        }
+        return NSColor(name: nil, dynamicProvider: { _ in
+            let base = syntax.map { appKitColor(for: $0) } ?? .secondaryLabelColor
+            return base.withAlphaComponent(0.55)
+        })
+    }
 }
 
 /// Shared type and spacing for the request editor and the response body.

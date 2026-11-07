@@ -10,6 +10,8 @@ public final class AutocompleteViewModel: ObservableObject {
     @Published public var suggestions: [AutocompleteSuggestion] = []
     @Published public var isVisible: Bool = false
     @Published public var selectedIndex: Int = 0
+    /// Type name for the empty value at the caret. `nil` hides the placeholder.
+    @Published public var valueTypeHint: JsonValueTypeHint?
 
     // MARK: - Dependencies
 
@@ -29,6 +31,9 @@ public final class AutocompleteViewModel: ObservableObject {
 
     /// Monotonic counter to discard results from superseded provider calls.
     private var updateVersion: UInt64 = 0
+
+    /// Separate from `updateVersion` so a type-name refresh does not drop the suggestion list.
+    private var hintVersion: UInt64 = 0
 
     // MARK: - Initialization
 
@@ -53,6 +58,7 @@ public final class AutocompleteViewModel: ObservableObject {
             suggestions = []
             isVisible = false
             selectedIndex = 0
+            clearValueTypeHint()
             return
         }
 
@@ -65,6 +71,7 @@ public final class AutocompleteViewModel: ObservableObject {
             suggestions = []
             isVisible = false
             selectedIndex = 0
+            clearValueTypeHint()
             return
         }
 
@@ -76,11 +83,24 @@ public final class AutocompleteViewModel: ObservableObject {
             allSiblings = context.siblingKeys
         }
 
+        let showHint = JsonValueTypeHintPlacement.shouldShow(
+            context: context,
+            text: text,
+            cursorUTF16: cursorOffset)
+        hintVersion &+= 1
+        let expectedHintVersion = hintVersion
+
         inflightTask = Task {
             let result = await provider.suggestions(
                 for: context,
                 rootMessageType: methodInputType,
                 in: protoFile)
+            let hint = showHint
+                ? await provider.valueTypeHint(
+                    for: context,
+                    rootMessageType: methodInputType,
+                    in: protoFile)
+                : nil
 
             guard expectedVersion == self.updateVersion else { return }
 
@@ -112,9 +132,48 @@ public final class AutocompleteViewModel: ObservableObject {
             self.suggestions = Self.sortSuggestions(filtered)
             self.selectedIndex = 0
             self.isVisible = !filtered.isEmpty
+            if expectedHintVersion == self.hintVersion {
+                self.valueTypeHint = hint
+            }
         }
 
         await inflightTask?.value
+    }
+
+    /// Updates only the type-name placeholder. Used after a scalar insert and when the caret moves.
+    public func refreshValueTypeHint(_ text: String, cursorOffset: Int, protoFile: ProtoFile) async {
+        hintVersion &+= 1
+        let expectedHintVersion = hintVersion
+
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.hasPrefix("{") else {
+            valueTypeHint = nil
+            return
+        }
+
+        let context = resolver.resolve(json: text, cursorOffset: cursorOffset)
+        guard !context.isOutsideRootObject,
+              JsonValueTypeHintPlacement.shouldShow(
+                  context: context,
+                  text: text,
+                  cursorUTF16: cursorOffset)
+        else {
+            valueTypeHint = nil
+            return
+        }
+
+        let hint = await provider.valueTypeHint(
+            for: context,
+            rootMessageType: methodInputType,
+            in: protoFile)
+        guard expectedHintVersion == hintVersion else { return }
+
+        valueTypeHint = hint
+    }
+
+    private func clearValueTypeHint() {
+        hintVersion &+= 1
+        valueTypeHint = nil
     }
 
     /// Sorts suggestions so `.fillDefaults` entries appear first.
