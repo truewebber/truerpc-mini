@@ -239,7 +239,6 @@ struct RequestEditorView: View {
                 autocompleteViewModel: viewModel.autocompleteViewModel,
                 protoFile: viewModel.editorTab.protoFile)
                 .id("json-editor-\(viewModel.editorTab.id)")
-                .font(.body.monospaced())
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .padding()
@@ -278,7 +277,6 @@ struct RequestEditorView: View {
             JSONTextEditor(text: Binding(
                 get: { viewModel.metadataJson },
                 set: { viewModel.updateMetadata($0) }))
-                .font(.body.monospaced())
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .padding()

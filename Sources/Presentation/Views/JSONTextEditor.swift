@@ -29,7 +29,15 @@ struct JSONTextEditor: NSViewRepresentable {
         textView.isAutomaticSpellingCorrectionEnabled = false
         textView.isAutomaticTextReplacementEnabled = false
 
-        textView.font = NSFont.monospacedSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)
+        textView.font = JsonEditorMetrics.font
+        textView.defaultParagraphStyle = JsonEditorMetrics.paragraphStyle
+        textView.typingAttributes = JsonEditorMetrics.storageAttributes
+        textView.textContainerInset = JsonEditorMetrics.textInset
+        textView.textContainer?.lineFragmentPadding = JsonEditorMetrics.lineFragmentPadding
+        textView.drawsBackground = true
+        textView.backgroundColor = .textBackgroundColor
+        scrollView.drawsBackground = true
+        scrollView.backgroundColor = .textBackgroundColor
 
         textView.isHorizontallyResizable = false
         textView.textContainer?.widthTracksTextView = true
@@ -38,15 +46,22 @@ struct JSONTextEditor: NSViewRepresentable {
         textView.delegate = context.coordinator
         textView.string = text
         context.coordinator.textView = textView
+        context.coordinator.applyStyle(to: textView)
 
         return scrollView
     }
 
-    func updateNSView(_ nsView: NSScrollView, context _: Context) {
+    func updateNSView(_ nsView: NSScrollView, context: Context) {
         let textView = nsView.documentView as! NSTextView
         if textView.string != text {
+            let selection = textView.selectedRange()
             textView.string = text
+            let length = textView.string.utf16.count
+            let location = min(selection.location, length)
+            let rangeLength = min(selection.length, max(0, length - location))
+            textView.setSelectedRange(NSRange(location: location, length: rangeLength))
         }
+        context.coordinator.applyStyle(to: textView)
     }
 
     func makeCoordinator() -> Coordinator {
@@ -68,7 +83,18 @@ struct JSONTextEditor: NSViewRepresentable {
         /// Suppresses autocomplete re-trigger while smart-insert modifies the text view.
         private var suppressTextDidChange = false
 
+        /// Stops font and color updates from being treated as another edit.
+        private var isApplyingStyle = false
+
         private let smartInsert = SmartInsertService()
+
+        func applyStyle(to textView: NSTextView) {
+            guard !isApplyingStyle else { return }
+
+            isApplyingStyle = true
+            defer { isApplyingStyle = false }
+            JsonTextStyler.apply(to: textView)
+        }
 
         init(_ parent: JSONTextEditor) {
             self.parent = parent
@@ -104,29 +130,35 @@ struct JSONTextEditor: NSViewRepresentable {
             guard let textView = notification.object as? NSTextView else { return }
 
             MainActor.assumeIsolated {
+                guard !isApplyingStyle else { return }
+
                 let text = textView.string
+                let cursorOffset = textView.selectedRange().location
                 parent.text = text
 
                 guard !suppressTextDidChange else { return }
 
-                let cursorOffset = textView.selectedRange().location
+                if let vm = parent.autocompleteViewModel, let protoFile = parent.protoFile {
+                    pendingUpdateTask?.cancel()
+                    pendingUpdateTask = Task { @MainActor [weak textView] in
+                        await vm.textDidChange(text, cursorOffset: cursorOffset, protoFile: protoFile)
+                        guard !Task.isCancelled else { return }
+                        guard let textView else { return }
 
-                guard let vm = parent.autocompleteViewModel,
-                      let protoFile = parent.protoFile
-                else { return }
-
-                pendingUpdateTask?.cancel()
-                pendingUpdateTask = Task { @MainActor [weak textView] in
-                    await vm.textDidChange(text, cursorOffset: cursorOffset, protoFile: protoFile)
-                    guard !Task.isCancelled else { return }
-                    guard let textView else { return }
-
-                    if vm.isVisible {
-                        self.showPopoverIfNeeded(in: textView)
-                    } else {
-                        self.autocompletePopover.close()
+                        if vm.isVisible {
+                            self.showPopoverIfNeeded(in: textView)
+                        } else {
+                            self.autocompletePopover.close()
+                        }
                     }
                 }
+
+                // Offscreen text views are not drawn, and painting them delays autocomplete.
+                guard textView.window != nil else { return }
+
+                isApplyingStyle = true
+                JsonTextStyler.applyColors(to: textView)
+                isApplyingStyle = false
             }
         }
 
