@@ -46,7 +46,9 @@ struct TrueRPCMiniApp: App {
     // MARK: - Initialization
 
     init() {
-        let isUITesting = ProcessInfo.processInfo.arguments.contains("--uitesting")
+        #if DEBUG
+            let launch = AppLaunch(arguments: ProcessInfo.processInfo.arguments)
+        #endif
 
         UserDefaults.runAnalyticsMigration()
 
@@ -153,8 +155,8 @@ struct TrueRPCMiniApp: App {
 
         di.register(AutocompleteProviderProtocol.self) {
             #if DEBUG
-                if isUITesting {
-                    return UITestAutocompleteProvider()
+                if let provider = launch.autocompleteProvider {
+                    return provider
                 }
             #endif
             return ProtoSchemaAutocompleteProvider(protoRepository: di.resolve(ProtoRepositoryProtocol.self)!)
@@ -308,18 +310,8 @@ struct TrueRPCMiniApp: App {
         appVM.onLaunched()
 
         #if DEBUG
-            if isUITesting {
-                let testMethod = Method(
-                    name: "TestMethod",
-                    inputType: ".uitest.TestRequest",
-                    outputType: ".uitest.TestResponse",
-                    isStreaming: false)
-                let testService = Service(name: "TestService", methods: [testMethod])
-                let testProto = ProtoFile(
-                    name: "uitest.proto",
-                    path: URL(fileURLWithPath: "/tmp/uitest.proto"),
-                    services: [testService])
-                appVM.openMethod(method: testMethod, service: testService, protoFile: testProto)
+            if let editor = launch.editor {
+                appVM.openMethod(method: editor.method, service: editor.service, protoFile: editor.protoFile)
             }
         #endif
 
