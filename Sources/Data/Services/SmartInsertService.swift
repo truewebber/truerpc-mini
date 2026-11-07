@@ -461,6 +461,69 @@ public struct SmartInsertService: SmartInsertServiceProtocol {
         return result
     }
 
+    // MARK: - Array element field insertion
+
+    public func isArrayElementSlot(in ns: NSString, cursorUTF16: Int) -> Bool {
+        if isInsideStringLiteral(in: ns, at: cursorUTF16) {
+            return false
+        }
+
+        var containers: [UInt16] = []
+        var inString = false
+        var escaped = false
+        let end = min(max(0, cursorUTF16), ns.length)
+        var index = 0
+        while index < end {
+            let character = ns.character(at: index)
+            if escaped {
+                escaped = false
+                index += 1
+                continue
+            }
+            if inString {
+                if character == JsonScanUTF16.backslash {
+                    escaped = true
+                } else if character == JsonScanUTF16.quote {
+                    inString = false
+                }
+                index += 1
+                continue
+            }
+            if character == JsonScanUTF16.quote {
+                inString = true
+            } else if character == JsonScanUTF16.braceOpen || character == JsonScanUTF16.bracketOpen {
+                containers.append(character)
+            } else if character == JsonScanUTF16.braceClose || character == JsonScanUTF16.bracketClose {
+                _ = containers.popLast()
+            }
+            index += 1
+        }
+        return containers.last == JsonScanUTF16.bracketOpen
+    }
+
+    public func arrayElementObjectSnippet(
+        for suggestion: AutocompleteSuggestion,
+        lineIndent: String)
+        -> (text: String, cursorBack: Int)?
+    {
+        guard insertsField(suggestion.kind) else { return nil }
+
+        let fieldIndent = lineIndent + "  "
+        let (fieldText, fieldCursorBack) = smartInsertComponents(for: suggestion, lineIndent: fieldIndent)
+        let suffix = "\n\(lineIndent)}"
+        let text = "{\n\(fieldIndent)\(fieldText)\(suffix)"
+        return (text, (suffix as NSString).length + fieldCursorBack)
+    }
+
+    private func insertsField(_ kind: SuggestionKind) -> Bool {
+        switch kind {
+        case .string, .number, .bool, .enumField, .wktString, .message, .repeated:
+            true
+        case .boolLiteral, .enum, .wktDefault, .fillDefaults:
+            false
+        }
+    }
+
     // MARK: - Private helpers
 
     private func countUnescapedQuotes(in ns: NSString, upTo limit: Int) -> Int {

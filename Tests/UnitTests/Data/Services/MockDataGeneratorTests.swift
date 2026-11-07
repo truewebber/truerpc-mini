@@ -68,6 +68,32 @@ final class MockDataGeneratorTests: XCTestCase {
         XCTAssertEqual(items[0] as? String, "")
     }
 
+    func test_generate_forMapField_returnsOnePair() async throws {
+        let file = FileDescriptor(name: "t.proto", package: "map")
+        var message = MessageDescriptor(name: "M", parent: file)
+        let entry = MapEntryInfo(
+            keyFieldInfo: KeyFieldInfo(name: "key", number: 1, type: .string),
+            valueFieldInfo: ValueFieldInfo(name: "value", number: 2, type: .string))
+        message.addField(FieldDescriptor(
+            name: "labels",
+            number: 1,
+            type: .message,
+            typeName: "map.M.LabelsEntry",
+            isMap: true,
+            mapEntryInfo: entry))
+
+        let repo = StubProtoRepository(descriptors: ["map.M": message])
+        let sut = MockDataGenerator(protoRepository: repo)
+
+        let json = try await sut.generate(for: "map.M", in: protoFile)
+        let data = try XCTUnwrap(json.data(using: .utf8))
+        let obj = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let labels = try XCTUnwrap(obj["labels"] as? [String: Any])
+
+        XCTAssertEqual(labels.count, 1)
+        XCTAssertEqual(labels["key"] as? String, "")
+    }
+
     func test_generate_forNestedEnumField_skipsZeroIndex() async throws {
         let file = FileDescriptor(name: "t.proto", package: "en")
         var message = MessageDescriptor(name: "Msg", parent: file)

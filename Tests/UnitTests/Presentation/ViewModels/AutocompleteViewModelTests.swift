@@ -548,6 +548,21 @@ final class AutocompleteViewModelTests: XCTestCase {
 
     // MARK: - Partial key prefix filtering
 
+    func test_textDidChange_withPartialStringKey_filtersWithoutRegardToCase() async {
+        let vm = makeSUT(suggestions: [
+            makeSuggestion(name: "firstName"),
+            makeSuggestion(name: "lastName"),
+        ])
+        mockResolver.stubResolve(AutocompleteContext(
+            resolvedPath: [],
+            mode: .key,
+            partialKey: "FIR"))
+
+        await vm.textDidChange("{\"FIR", cursorOffset: 5, protoFile: testProtoFile)
+
+        XCTAssertEqual(vm.suggestions.map(\.name), ["firstName"])
+    }
+
     func test_textDidChange_withPartialStringKey_filtersByPrefix() async {
         let vm = makeSUT(suggestions: [
             makeSuggestion(name: "firstName"),
@@ -664,6 +679,62 @@ final class AutocompleteViewModelTests: XCTestCase {
             vm.suggestions.map(\.name).contains("fillDefaults"),
             "fillDefaults must be hidden inside nested objects even when no siblings exist")
         XCTAssertTrue(vm.suggestions.map(\.name).contains("id"))
+    }
+
+    func test_textDidChange_arrayElement_hidesFillDefaults() async {
+        let vm = makeSUT(suggestions: [
+            makeSuggestion(name: "fillDefaults", kind: .fillDefaults),
+            makeSuggestion(name: "enabled", kind: .bool),
+        ])
+        mockResolver.stubResolve(AutocompleteContext(resolvedPath: ["items"], mode: .arrayElement))
+
+        await vm.textDidChange("{\"items\": [", cursorOffset: 11, protoFile: testProtoFile)
+
+        XCTAssertEqual(vm.suggestions.map(\.name), ["enabled"])
+        XCTAssertTrue(vm.isVisible)
+    }
+
+    func test_textDidChange_insideMessageArrayElement_hidesOnlyThatElementsKeys() async {
+        let vm = makeSUT(suggestions: [
+            makeSuggestion(name: "fillDefaults", kind: .fillDefaults),
+            makeSuggestion(name: "enabled", kind: .bool),
+            makeSuggestion(name: "detail", kind: .message),
+        ])
+        mockResolver.stubResolve(AutocompleteContext(
+            resolvedPath: ["items"],
+            mode: .key,
+            siblingKeys: ["enabled"]))
+
+        await vm.textDidChange("{\"items\":[{\"enabled\":true,", cursorOffset: 26, protoFile: testProtoFile)
+
+        XCTAssertEqual(vm.suggestions.map(\.name), ["detail"])
+    }
+
+    func test_textDidChange_oneofAlternative_staysUntilItsOwnKeyIsWritten() async {
+        let vm = makeSUT(suggestions: [
+            AutocompleteSuggestion(name: "opt_a", typeHint: "string", kind: .string, oneOfGroup: "choice"),
+            AutocompleteSuggestion(name: "opt_b", typeHint: "int32", kind: .number, oneOfGroup: "choice"),
+        ])
+        mockResolver.stubResolve(AutocompleteContext(
+            resolvedPath: [],
+            mode: .key,
+            siblingKeys: ["opt_a"]))
+
+        await vm.textDidChange("{\"opt_a\": \"\", ", cursorOffset: 14, protoFile: testProtoFile)
+
+        XCTAssertEqual(vm.suggestions.map(\.name), ["opt_b"])
+    }
+
+    func test_textDidChange_emptyNestedMessage_hidesTheOnlyFillDefaultsRow() async {
+        let vm = makeSUT(suggestions: [
+            makeSuggestion(name: "fillDefaults", kind: .fillDefaults),
+        ])
+        mockResolver.stubResolve(AutocompleteContext(resolvedPath: ["box"], mode: .key))
+
+        await vm.textDidChange("{\"box\": {", cursorOffset: 9, protoFile: testProtoFile)
+
+        XCTAssertTrue(vm.suggestions.isEmpty)
+        XCTAssertFalse(vm.isVisible)
     }
 
     func test_textDidChange_rootLevelNoSiblings_showsFillDefaults() async {

@@ -9,6 +9,14 @@ final class AutocompletePopoverViewTests: XCTestCase {
         AutocompleteSuggestion(name: name, typeHint: "hint", kind: kind)
     }
 
+    func test_rowOpacity_oneofAlternative_isDimmed() {
+        XCTAssertEqual(AutocompleteSuggestionAppearance.rowOpacity(oneOfGroup: "choice"), 0.7)
+    }
+
+    func test_rowOpacity_ordinaryField_isOpaque() {
+        XCTAssertEqual(AutocompleteSuggestionAppearance.rowOpacity(oneOfGroup: nil), 1)
+    }
+
     // MARK: - sortSuggestions — count preservation
 
     func test_sortSuggestions_preservesCount() {

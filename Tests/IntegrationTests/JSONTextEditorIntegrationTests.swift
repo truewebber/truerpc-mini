@@ -1121,6 +1121,25 @@ final class JSONTextEditorIntegrationTests: XCTestCase {
         XCTAssertFalse(vm.isVisible)
     }
 
+    func test_commitSelection_fillDefaults_replacesTheDocumentThroughTheHandler() async {
+        let (coordinator, vm) = makeCoordinator()
+        vm.suggestions = [AutocompleteSuggestion(name: "fillDefaults", typeHint: "", kind: .fillDefaults)]
+        vm.isVisible = true
+        let textView = makeTextView(text: "{\n  ")
+        let preset = "{\"name\":\"\"}"
+        let replaced = expectation(description: "preset replaces the document")
+        vm.fillDefaultsHandler = {
+            textView.string = preset
+            replaced.fulfill()
+        }
+
+        _ = coordinator.textView(textView, doCommandBy: #selector(NSTextView.insertTab(_:)))
+        await fulfillment(of: [replaced], timeout: 1)
+
+        XCTAssertEqual(textView.string, preset)
+        XCTAssertFalse(vm.isVisible)
+    }
+
     // MARK: - Unrecognized command selectors not consumed
 
     func test_unrecognizedCommand_whenPopoverVisible_isNotConsumed() {
@@ -1640,6 +1659,57 @@ final class JSONTextEditorIntegrationTests: XCTestCase {
         XCTAssertFalse(textView.string.contains("bool"))
     }
 
+    func test_commitSelection_enumField_opensConstantsBesideTheTypeName() async throws {
+        let (coordinator, vm) = makeCoordinator(provider: ValueTypeHintScenarioProvider())
+        vm.suggestions = [AutocompleteSuggestion(name: "status", typeHint: "Status", kind: .enumField)]
+        vm.isVisible = true
+        let (textView, window) = try laidOutTextView("{\n  ", width: 420)
+        XCTAssertNotNil(window.contentView)
+        textView.setSelectedRange(NSRange(location: (textView.string as NSString).length, length: 0))
+
+        _ = coordinator.textView(textView, doCommandBy: #selector(NSTextView.insertTab(_:)))
+        try await Task.sleep(for: .milliseconds(400))
+
+        XCTAssertTrue(textView.string.contains("\"status\": "), textView.string)
+        XCTAssertEqual(visibleTypeLabel(in: textView)?.stringValue, "Status")
+        XCTAssertEqual(vm.suggestions.map(\.name), ["ACTIVE", "INACTIVE"])
+        XCTAssertTrue(coordinator.autocompletePopover.isShown)
+    }
+
+    func test_commitSelection_timestampField_opensNowBesideTheTypeName() async throws {
+        let (coordinator, vm) = makeCoordinator(provider: ValueTypeHintScenarioProvider())
+        vm.suggestions = [AutocompleteSuggestion(name: "created_at", typeHint: "Timestamp", kind: .wktString)]
+        vm.isVisible = true
+        let (textView, window) = try laidOutTextView("{\n  ", width: 420)
+        XCTAssertNotNil(window.contentView)
+        textView.setSelectedRange(NSRange(location: (textView.string as NSString).length, length: 0))
+
+        _ = coordinator.textView(textView, doCommandBy: #selector(NSTextView.insertTab(_:)))
+        try await Task.sleep(for: .milliseconds(400))
+
+        XCTAssertTrue(textView.string.contains("\"created_at\": \"\""), textView.string)
+        XCTAssertEqual(visibleTypeLabel(in: textView)?.stringValue, "Timestamp")
+        XCTAssertEqual(vm.suggestions.map(\.name), ["now"])
+        XCTAssertTrue(coordinator.autocompletePopover.isShown)
+    }
+
+    func test_commitSelection_durationField_opensUnitsBesideTheTypeName() async throws {
+        let (coordinator, vm) = makeCoordinator(provider: ValueTypeHintScenarioProvider())
+        vm.suggestions = [AutocompleteSuggestion(name: "ttl", typeHint: "Duration", kind: .wktString)]
+        vm.isVisible = true
+        let (textView, window) = try laidOutTextView("{\n  ", width: 420)
+        XCTAssertNotNil(window.contentView)
+        textView.setSelectedRange(NSRange(location: (textView.string as NSString).length, length: 0))
+
+        _ = coordinator.textView(textView, doCommandBy: #selector(NSTextView.insertTab(_:)))
+        try await Task.sleep(for: .milliseconds(400))
+
+        XCTAssertTrue(textView.string.contains("\"ttl\": \"\""), textView.string)
+        XCTAssertEqual(visibleTypeLabel(in: textView)?.stringValue, "Duration")
+        XCTAssertEqual(vm.suggestions.map(\.name), ["0s", "1s"])
+        XCTAssertTrue(coordinator.autocompletePopover.isShown)
+    }
+
     func test_commitSelection_boolLiteral_hidesTheTypeName() async throws {
         let (coordinator, vm) = makeCoordinator(provider: ValueTypeHintScenarioProvider())
         let text = "{\n  \"flags\": \"\"\n}"
@@ -1771,7 +1841,77 @@ final class JSONTextEditorIntegrationTests: XCTestCase {
 
         XCTAssertNil(vm.valueTypeHint)
         XCTAssertNil(visibleTypeLabel(in: textView))
-        XCTAssertEqual(vm.suggestions.map(\.name), ["key"])
+        XCTAssertTrue(vm.suggestions.isEmpty)
+        XCTAssertFalse(coordinator.autocompletePopover.isShown)
+    }
+
+    func test_valueTypeHint_mapStringValue_showsTheValueTypeWithoutAList() async throws {
+        let (coordinator, vm) = makeCoordinator(provider: ValueTypeHintScenarioProvider())
+        let text = "{\n  \"attrs\": {\n    \"home\": \n  }\n}"
+        let (textView, window) = try laidOutTextView(text, width: 420)
+        XCTAssertNotNil(window.contentView)
+        let value = (text as NSString).range(of: "\"home\": ")
+        textView.setSelectedRange(NSRange(location: value.location + value.length, length: 0))
+
+        try await publishEdit(coordinator, in: textView)
+
+        XCTAssertEqual(visibleTypeLabel(in: textView)?.stringValue, "string")
+        XCTAssertTrue(vm.suggestions.isEmpty)
+        XCTAssertFalse(coordinator.autocompletePopover.isShown)
+    }
+
+    func test_valueTypeHint_mapMessageValue_listsTheValueFieldsInsideTheObject() async throws {
+        let (coordinator, vm) = makeCoordinator(provider: ValueTypeHintScenarioProvider())
+        let text = "{\n  \"addresses\": {\n    \"home\": {\n      \n    }\n  }\n}"
+        let (textView, window) = try laidOutTextView(text, width: 420)
+        XCTAssertNotNil(window.contentView)
+        let marker = (text as NSString).range(of: "{\n      \n    }")
+        textView.setSelectedRange(NSRange(location: marker.location + "{\n      ".count, length: 0))
+
+        try await publishEdit(coordinator, in: textView)
+
+        XCTAssertEqual(vm.suggestions.map(\.name), ["street", "city"])
+        XCTAssertNil(vm.valueTypeHint)
+        XCTAssertTrue(coordinator.autocompletePopover.isShown)
+    }
+
+    func test_commitSelection_messageArrayElement_wrapsTheChosenFieldInAnObject() async throws {
+        let (coordinator, vm) = makeCoordinator(provider: ValueTypeHintScenarioProvider())
+        let text = "{\n  \"items\": [\n    \n  ]\n}"
+        let (textView, window) = try laidOutTextView(text, width: 420)
+        XCTAssertNotNil(window.contentView)
+        let cursor = (text as NSString).range(of: "[\n    \n").location + "[\n    ".count
+        textView.setSelectedRange(NSRange(location: cursor, length: 0))
+        try await publishEdit(coordinator, in: textView)
+        XCTAssertEqual(vm.suggestions.map(\.name), ["enabled", "title"])
+        XCTAssertEqual(visibleTypeLabel(in: textView)?.stringValue, "Settings")
+
+        _ = coordinator.textView(textView, doCommandBy: #selector(NSTextView.insertTab(_:)))
+        try await Task.sleep(for: .milliseconds(400))
+
+        XCTAssertTrue(textView.string.contains("\"enabled\": "), textView.string)
+        XCTAssertTrue(textView.string.contains("{"), textView.string)
+        let enabled = (textView.string as NSString).range(of: "\"enabled\": ")
+        let closing = (textView.string as NSString).range(of: "}", options: [], range: NSRange(
+            location: enabled.location,
+            length: textView.string.utf16.count - enabled.location))
+        let bracket = (textView.string as NSString).range(of: "]")
+        XCTAssertLessThan(closing.location, bracket.location)
+        XCTAssertEqual(vm.suggestions.map(\.name), ["true", "false"])
+        XCTAssertEqual(visibleTypeLabel(in: textView)?.stringValue, "bool")
+    }
+
+    func test_valueTypeHint_boolArrayElement_showsTheLiterals() async throws {
+        let (coordinator, vm) = makeCoordinator(provider: ValueTypeHintScenarioProvider())
+        let text = "{\n  \"flags\": []\n}"
+        let (textView, window) = try laidOutTextView(text, width: 420)
+        XCTAssertNotNil(window.contentView)
+        textView.setSelectedRange(NSRange(location: (text as NSString).range(of: "[]").location + 1, length: 0))
+
+        try await publishEdit(coordinator, in: textView)
+
+        XCTAssertEqual(vm.suggestions.map(\.name), ["true", "false"])
+        XCTAssertEqual(visibleTypeLabel(in: textView)?.stringValue, "bool")
         XCTAssertTrue(coordinator.autocompletePopover.isShown)
     }
 
@@ -2032,8 +2172,20 @@ private struct ValueTypeHintScenarioProvider: AutocompleteProviderProtocol {
             if context.resolvedPath == ["settings"] {
                 return [AutocompleteSuggestion(name: "enabled", typeHint: "bool", kind: .bool)]
             }
+            if context.resolvedPath == ["items"] {
+                return [
+                    AutocompleteSuggestion(name: "enabled", typeHint: "bool", kind: .bool),
+                    AutocompleteSuggestion(name: "title", typeHint: "string", kind: .string),
+                ]
+            }
             if context.resolvedPath == ["attrs"] {
-                return [AutocompleteSuggestion(name: "key", typeHint: "string", kind: .string)]
+                return []
+            }
+            if context.resolvedPath.first == "addresses", context.resolvedPath.count == 2 {
+                return [
+                    AutocompleteSuggestion(name: "street", typeHint: "string", kind: .string),
+                    AutocompleteSuggestion(name: "city", typeHint: "string", kind: .string),
+                ]
             }
             return [
                 AutocompleteSuggestion(name: "name", typeHint: "string", kind: .string),
@@ -2045,9 +2197,23 @@ private struct ValueTypeHintScenarioProvider: AutocompleteProviderProtocol {
                 AutocompleteSuggestion(name: "ttl", typeHint: "Duration", kind: .wktString),
                 AutocompleteSuggestion(name: "flags", typeHint: "bool", kind: .bool),
                 AutocompleteSuggestion(name: "attrs", typeHint: "map", kind: .message),
+                AutocompleteSuggestion(name: "items", typeHint: "Settings[]", kind: .repeated),
+                AutocompleteSuggestion(name: "addresses", typeHint: "map", kind: .message),
             ]
 
         case .enumValue:
+            if context.resolvedPath == ["attrs"] {
+                return []
+            }
+            if context.resolvedPath == ["addresses"] {
+                return []
+            }
+            if context.resolvedPath == ["items"], context.currentFieldKey == "enabled" {
+                return [
+                    AutocompleteSuggestion(name: "true", typeHint: "bool", kind: .boolLiteral),
+                    AutocompleteSuggestion(name: "false", typeHint: "bool", kind: .boolLiteral),
+                ]
+            }
             switch context.currentFieldKey {
             case "status":
                 return [
@@ -2081,6 +2247,12 @@ private struct ValueTypeHintScenarioProvider: AutocompleteProviderProtocol {
             }
 
         case .arrayElement:
+            if context.resolvedPath == ["items"] {
+                return [
+                    AutocompleteSuggestion(name: "enabled", typeHint: "bool", kind: .bool),
+                    AutocompleteSuggestion(name: "title", typeHint: "string", kind: .string),
+                ]
+            }
             guard context.resolvedPath == ["flags"] else { return [] }
 
             return [
@@ -2101,6 +2273,12 @@ private struct ValueTypeHintScenarioProvider: AutocompleteProviderProtocol {
             return nil
 
         case .enumValue:
+            if context.resolvedPath == ["attrs"] {
+                return JsonValueTypeHint(name: "string", kind: .string)
+            }
+            if context.resolvedPath == ["addresses"] {
+                return JsonValueTypeHint(name: "Address", kind: .message)
+            }
             switch context.currentFieldKey {
             case "name":
                 return JsonValueTypeHint(name: "string", kind: .string)
@@ -2116,7 +2294,7 @@ private struct ValueTypeHintScenarioProvider: AutocompleteProviderProtocol {
                 return JsonValueTypeHint(name: "Timestamp", kind: .wktString)
             case "ttl":
                 return JsonValueTypeHint(name: "Duration", kind: .wktString)
-            case "flags":
+            case "flags", "enabled":
                 return JsonValueTypeHint(name: "bool", kind: .bool)
             case "attrs":
                 return JsonValueTypeHint(name: "map", kind: .message)
@@ -2125,6 +2303,9 @@ private struct ValueTypeHintScenarioProvider: AutocompleteProviderProtocol {
             }
 
         case .arrayElement:
+            if context.resolvedPath == ["items"] {
+                return JsonValueTypeHint(name: "Settings", kind: .message)
+            }
             if context.resolvedPath == ["labels"] {
                 return JsonValueTypeHint(name: "string", kind: .string)
             }

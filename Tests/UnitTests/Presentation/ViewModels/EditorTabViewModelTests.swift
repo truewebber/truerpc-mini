@@ -728,6 +728,15 @@ extension EditorTabViewModelTests {
         XCTAssertEqual(sut.requestJson, "{\"preset\": true}")
     }
 
+    func test_fillDefaultsHandler_replacesTheRequestWithThePreset() async {
+        mockGenerateMockDataUseCase.mockJSON = "{\"name\":\"\"}"
+        sut.requestJson = "{"
+
+        await sut.autocompleteViewModel.fillDefaultsHandler?()
+
+        XCTAssertEqual(sut.requestJson, "{\"name\":\"\"}")
+    }
+
     func test_init_createsAutocompleteViewModelWithInjectedDependencies() {
         // Then
         XCTAssertNotNil(sut.autocompleteViewModel)

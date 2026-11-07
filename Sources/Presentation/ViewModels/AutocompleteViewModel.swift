@@ -115,7 +115,7 @@ public final class AutocompleteViewModel: ObservableObject {
                     return !allSiblings.contains($0.name)
                 }
             } else {
-                result
+                result.filter { $0.kind != .fillDefaults }
             }
 
             // Filter by partial key prefix when the user has already started typing.

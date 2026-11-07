@@ -581,6 +581,92 @@ final class JsonPathResolverTests: XCTestCase {
         XCTAssertEqual(context.partialKey, "")
     }
 
+    func test_resolve_cursorInsideMapObject_isKeyModeOnTheMapField() {
+        let json = "{\"labels\": {}}"
+        let cursor = (json as NSString).range(of: "{}").location + 1
+
+        let context = sut.resolve(json: json, cursorOffset: cursor)
+
+        XCTAssertEqual(context.mode, .key)
+        XCTAssertEqual(context.resolvedPath, ["labels"])
+        XCTAssertEqual(context.partialKey, "")
+    }
+
+    func test_resolve_cursorAfterMapKeyColon_isTheMapValue() {
+        let json = "{\"labels\": {\"home\": "
+        let context = sut.resolve(json: json, cursorOffset: json.count)
+
+        XCTAssertEqual(context.mode, .enumValue)
+        XCTAssertEqual(context.resolvedPath, ["labels"])
+        XCTAssertEqual(context.currentFieldKey, "home")
+    }
+
+    func test_resolve_cursorInsideMapValueObject_dropsTheKeyIntoThePath() {
+        let json = "{\"addresses\": {\"home\": {}}}"
+        let cursor = (json as NSString).range(of: "{\"home\": {}}").location
+        let inner = (json as NSString).range(
+            of: "{}",
+            options: [],
+            range: NSRange(location: cursor, length: json.count - cursor))
+        let caret = inner.location + 1
+
+        let context = sut.resolve(json: json, cursorOffset: caret)
+
+        XCTAssertEqual(context.mode, .key)
+        XCTAssertEqual(context.resolvedPath, ["addresses", "home"])
+    }
+
+    func test_resolve_cursorBetweenMessageArrayElements_isArrayElementMode() {
+        let json = "{\"items\": [ {} ]}"
+        let cursor = (json as NSString).range(of: "[ {} ]").location + "[ ".count
+
+        let context = sut.resolve(json: json, cursorOffset: cursor)
+
+        XCTAssertEqual(context.mode, .arrayElement)
+        XCTAssertEqual(context.resolvedPath, ["items"])
+    }
+
+    func test_resolve_cursorAfterClosedMessageElementAndComma_isBetweenElements() {
+        let json = "{\"items\":[{}, "
+        let context = sut.resolve(json: json, cursorOffset: json.count)
+
+        XCTAssertEqual(context.mode, .arrayElement)
+        XCTAssertEqual(context.resolvedPath, ["items"])
+        XCTAssertTrue(context.siblingKeys.isEmpty)
+    }
+
+    func test_resolve_cursorInsideMapOfMessageArrayElement_isKeyModeOnTheMap() {
+        let json = "{\"places\":[{\"meta\":{}}]}"
+        let object = (json as NSString).range(of: "{\"meta\":{}}")
+        let inner = (json as NSString).range(
+            of: "{}",
+            options: [],
+            range: NSRange(location: object.location, length: object.length))
+        let context = sut.resolve(json: json, cursorOffset: inner.location + 1)
+
+        XCTAssertEqual(context.mode, .key)
+        XCTAssertEqual(context.resolvedPath, ["places", "meta"])
+    }
+
+    func test_resolve_cursorInsideRepeatedFieldOfMessageArrayElement_isArrayElementMode() {
+        let json = "{\"places\":[{\"tags\":[]}]}"
+        let cursor = (json as NSString).range(of: "[]").location + 1
+        let context = sut.resolve(json: json, cursorOffset: cursor)
+
+        XCTAssertEqual(context.mode, .arrayElement)
+        XCTAssertEqual(context.resolvedPath, ["places", "tags"])
+    }
+
+    func test_resolve_cursorInsideMessageArrayElement_isKeyModeOnTheRepeatedField() {
+        let json = "{\"items\": [ {} ]}"
+        let cursor = (json as NSString).range(of: "{}").location + 1
+
+        let context = sut.resolve(json: json, cursorOffset: cursor)
+
+        XCTAssertEqual(context.mode, .key)
+        XCTAssertEqual(context.resolvedPath, ["items"])
+    }
+
     func test_resolve_cursorInsideEmptyArray_isArrayElementMode() {
         let json = "{\"labels\": []}"
         let cursor = (json as NSString).range(of: "[]").location + 1
@@ -669,6 +755,26 @@ final class JsonPathResolverTests: XCTestCase {
         let context = sut.resolve(json: json, cursorOffset: json.count)
         XCTAssertEqual(context.mode, .arrayElement)
         XCTAssertEqual(context.partialKey, "")
+    }
+
+    func test_resolve_secondMessageArrayElement_doesNotSeeKeysFromTheFirst() {
+        let json = "{\"items\":[{\"enabled\":true},{}]}"
+        let cursor = (json as NSString).range(of: ",{}").location + ",{".count
+
+        let context = sut.resolve(json: json, cursorOffset: cursor)
+
+        XCTAssertEqual(context.mode, .key)
+        XCTAssertEqual(context.resolvedPath, ["items"])
+        XCTAssertTrue(context.siblingKeys.isEmpty)
+    }
+
+    func test_collectKeysAfterCursor_doesNotCrossIntoTheNextArrayElement() {
+        let json = "{\"items\":[{\"enabled\":true},{\"title\":1},{\"id\":2}]}"
+        let cursor = (json as NSString).range(of: "{\"title\"").location + 1
+
+        let keys = sut.collectKeysAfterCursor(json: json, cursorOffset: cursor)
+
+        XCTAssertEqual(keys, ["title"])
     }
 
     // MARK: - collectKeysAfterCursor

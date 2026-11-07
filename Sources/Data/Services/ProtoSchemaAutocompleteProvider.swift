@@ -74,9 +74,12 @@ public final class ProtoSchemaAutocompleteProvider: AutocompleteProviderProtocol
         protoFile: ProtoFile)
         async -> [AutocompleteSuggestion]
     {
-        guard let descriptor = await navigate(from: rootDescriptor, path: path, protoFile: protoFile) else { return [] }
-
-        return fieldSuggestions(for: descriptor)
+        switch await scope(from: rootDescriptor, path: path, protoFile: protoFile) {
+        case let .message(descriptor):
+            fieldSuggestions(for: descriptor)
+        case .mapObject, nil:
+            []
+        }
     }
 
     private func enumValueModeSuggestions(
@@ -102,24 +105,20 @@ public final class ProtoSchemaAutocompleteProvider: AutocompleteProviderProtocol
             parentPath = Array(path.dropLast())
         }
 
-        guard let parent = await navigate(from: rootDescriptor, path: parentPath, protoFile: protoFile)
-        else { return [] }
-        guard let field = parent.field(named: fieldName) else { return [] }
+        switch await scope(from: rootDescriptor, path: parentPath, protoFile: protoFile) {
+        case let .message(parent):
+            guard let field = parent.field(named: fieldName) else { return [] }
 
-        if field.type == .bool {
-            return boolLiteralSuggestions()
+            return await valueSuggestions(for: field, parent: parent, protoFile: protoFile)
+
+        case let .mapObject(field, owner):
+            guard let value = valueField(of: field) else { return [] }
+
+            return await valueSuggestions(for: value, parent: owner, protoFile: protoFile)
+
+        case nil:
+            return []
         }
-
-        // WKT fields whose JSON representation is a string (Timestamp → RFC 3339, Duration → "1.5s").
-        if field.type == .message, let typeName = field.typeName, isWellKnownStringType(typeName) {
-            return wktDefaultSuggestions(for: typeName)
-        }
-
-        guard field.type == .enum, let typeName = field.typeName else { return [] }
-        guard let enumDescriptor = await resolveEnumDescriptor(typeName: typeName, in: parent, protoFile: protoFile)
-        else { return [] }
-
-        return enumValueSuggestions(from: enumDescriptor, typeName: typeName)
     }
 
     private func arrayElementModeSuggestions(
@@ -132,9 +131,9 @@ public final class ProtoSchemaAutocompleteProvider: AutocompleteProviderProtocol
 
         let parentPath = Array(path.dropLast())
 
-        guard let parent = await navigate(from: rootDescriptor, path: parentPath, protoFile: protoFile)
+        guard case let .message(parent) = await scope(from: rootDescriptor, path: parentPath, protoFile: protoFile)
         else { return [] }
-        guard let field = parent.field(named: fieldName) else { return [] }
+        guard let field = parent.field(named: fieldName), !field.isMap else { return [] }
 
         switch field.type {
         case .message:
@@ -149,7 +148,7 @@ public final class ProtoSchemaAutocompleteProvider: AutocompleteProviderProtocol
                 in: protoFile)
             else { return [] }
 
-            return fieldSuggestions(for: elementDescriptor)
+            return fieldSuggestions(for: elementDescriptor, includeFillDefaults: false)
 
         case .enum:
             guard let typeName = field.typeName,
@@ -175,10 +174,36 @@ public final class ProtoSchemaAutocompleteProvider: AutocompleteProviderProtocol
         ]
     }
 
-    private func fieldSuggestions(for descriptor: MessageDescriptor) -> [AutocompleteSuggestion] {
-        var result: [AutocompleteSuggestion] = [
-            AutocompleteSuggestion(name: "fillDefaults", typeHint: "", kind: .fillDefaults),
-        ]
+    private func valueSuggestions(
+        for field: FieldDescriptor,
+        parent: MessageDescriptor,
+        protoFile: ProtoFile)
+        async -> [AutocompleteSuggestion]
+    {
+        if field.type == .bool {
+            return boolLiteralSuggestions()
+        }
+
+        // WKT fields whose JSON representation is a string (Timestamp → RFC 3339, Duration → "1.5s").
+        if field.type == .message, let typeName = field.typeName, isWellKnownStringType(typeName) {
+            return wktDefaultSuggestions(for: typeName)
+        }
+
+        guard field.type == .enum, let typeName = field.typeName else { return [] }
+        guard let enumDescriptor = await resolveEnumDescriptor(typeName: typeName, in: parent, protoFile: protoFile)
+        else { return [] }
+
+        return enumValueSuggestions(from: enumDescriptor, typeName: typeName)
+    }
+
+    private func fieldSuggestions(
+        for descriptor: MessageDescriptor,
+        includeFillDefaults: Bool = true)
+        -> [AutocompleteSuggestion]
+    {
+        var result: [AutocompleteSuggestion] = includeFillDefaults
+            ? [AutocompleteSuggestion(name: "fillDefaults", typeHint: "", kind: .fillDefaults)]
+            : []
 
         for field in descriptor.allFields() {
             let oneOfGroup = field.oneofIndex.flatMap { descriptor.oneof(at: $0)?.name }
@@ -277,31 +302,75 @@ public final class ProtoSchemaAutocompleteProvider: AutocompleteProviderProtocol
             parentPath = Array(context.resolvedPath.dropLast())
         }
 
-        guard let parent = await navigate(from: rootDescriptor, path: parentPath, protoFile: protoFile)
-        else { return nil }
+        switch await scope(from: rootDescriptor, path: parentPath, protoFile: protoFile) {
+        case let .message(parent):
+            return parent.field(named: fieldName)
 
-        return parent.field(named: fieldName)
+        case let .mapObject(field, _):
+            return valueField(of: field)
+
+        case nil:
+            return nil
+        }
     }
 
     // MARK: - Schema navigation
 
-    private func navigate(
+    private enum SchemaScope {
+        case message(MessageDescriptor)
+        /// Inside a map's JSON object. The next path segment, if any, is a free-form key.
+        case mapObject(FieldDescriptor, owner: MessageDescriptor)
+    }
+
+    private func scope(
         from descriptor: MessageDescriptor,
         path: [String],
         protoFile: ProtoFile)
-        async -> MessageDescriptor?
+        async -> SchemaScope?
     {
         var current = descriptor
-        for segment in path {
-            guard let field = current.field(named: segment),
-                  field.type == .message,
+        var index = 0
+        while index < path.count {
+            guard let field = current.field(named: path[index]) else { return nil }
+
+            index += 1
+
+            if field.isMap {
+                if index == path.count {
+                    return .mapObject(field, owner: current)
+                }
+                index += 1
+                guard let value = valueField(of: field),
+                      value.type == .message,
+                      let typeName = value.typeName,
+                      let next = try? await protoRepository.getMessageDescriptor(forType: typeName, in: protoFile)
+                else { return nil }
+
+                if index == path.count {
+                    return .message(next)
+                }
+                current = next
+                continue
+            }
+
+            guard field.type == .message,
                   let typeName = field.typeName,
                   let next = try? await protoRepository.getMessageDescriptor(forType: typeName, in: protoFile)
             else { return nil }
 
             current = next
         }
-        return current
+        return .message(current)
+    }
+
+    private func valueField(of mapField: FieldDescriptor) -> FieldDescriptor? {
+        guard let info = mapField.mapEntryInfo?.valueFieldInfo else { return nil }
+
+        return FieldDescriptor(
+            name: info.name,
+            number: info.number,
+            type: info.type,
+            typeName: info.typeName)
     }
 
     /// Resolves an enum descriptor by first checking nested enums on `parent`, then falling back

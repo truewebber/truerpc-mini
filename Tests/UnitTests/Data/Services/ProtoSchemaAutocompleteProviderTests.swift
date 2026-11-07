@@ -596,15 +596,27 @@ final class ProtoSchemaAutocompleteProviderTests: XCTestCase {
         XCTAssertTrue(suggestions.allSatisfy { $0.kind == .enum })
     }
 
-    func test_arrayElementMode_repeatedMessageField_returnsFieldsPlusFillDefaults() async {
+    func test_arrayElementMode_repeatedMessageField_returnsElementFieldsWithoutFillDefaults() async {
         let context = AutocompleteContext(resolvedPath: ["items"], mode: .arrayElement)
 
         let suggestions = await sut.suggestions(for: context, rootMessageType: "test.TestRequest", in: protoFile)
 
-        XCTAssertFalse(suggestions.isEmpty)
-        XCTAssertEqual(suggestions[0].kind, .fillDefaults)
-        let fieldNames = Set(suggestions.dropFirst().map(\.name))
+        XCTAssertFalse(suggestions.contains { $0.kind == .fillDefaults })
+        let fieldNames = Set(suggestions.map(\.name))
         XCTAssertTrue(fieldNames.contains("enabled"))
+        XCTAssertTrue(fieldNames.contains("detail"))
+    }
+
+    func test_keyMode_insideRepeatedMessageElement_offersTheElementFields() async {
+        let context = AutocompleteContext(resolvedPath: ["items"], mode: .key)
+
+        let suggestions = await sut.suggestions(for: context, rootMessageType: "test.TestRequest", in: protoFile)
+        let byName = Dictionary(uniqueKeysWithValues: suggestions.map { ($0.name, $0) })
+
+        XCTAssertEqual(suggestions.first?.kind, .fillDefaults)
+        XCTAssertEqual(byName["enabled"]?.kind, .bool)
+        XCTAssertEqual(byName["detail"]?.kind, .message)
+        XCTAssertEqual(byName["detail"]?.typeHint, "Detail")
     }
 
     func test_arrayElementMode_repeatedScalarField_returnsEmpty() async {
@@ -748,6 +760,18 @@ final class ProtoSchemaAutocompleteProviderTests: XCTestCase {
         XCTAssertTrue(names.contains("60s"))
         XCTAssertTrue(names.contains("3600s"))
         XCTAssertTrue(names.contains("86400s"))
+    }
+
+    func test_enumValueMode_durationField_listsTheCanonicalUnitsInOrder() async {
+        let context = AutocompleteContext(
+            resolvedPath: [],
+            mode: .enumValue,
+            currentFieldKey: "ttl")
+
+        let suggestions = await sut.suggestions(for: context, rootMessageType: "test.TestRequest", in: protoFile)
+
+        XCTAssertEqual(suggestions.map(\.name), Self.canonicalDurations)
+        XCTAssertTrue(suggestions.allSatisfy { $0.kind == .wktDefault && $0.insertValue == nil })
     }
 
     func test_arrayElementMode_repeatedTimestampField_returnsNowSuggestion() async {
@@ -1075,6 +1099,411 @@ final class ProtoSchemaAutocompleteProviderTests: XCTestCase {
         XCTAssertEqual(byName["mask"]?.kind, .message)
         XCTAssertEqual(byName["mask"]?.typeHint, "FieldMask")
     }
+
+    func test_keyMode_messageFieldOfItsOwnType_returnsTheSameFields() async {
+        let file = FileDescriptor(name: "tree.proto", package: "tree")
+        var node = MessageDescriptor(name: "Node", parent: file)
+        node.addField(FieldDescriptor(name: "child", number: 1, type: .message, typeName: "tree.Node"))
+        node.addField(FieldDescriptor(name: "label", number: 2, type: .string))
+        let provider = ProtoSchemaAutocompleteProvider(
+            protoRepository: StubProtoRepository(descriptors: ["tree.Node": node]))
+        let proto = ProtoFile(name: "tree.proto", path: URL(fileURLWithPath: "/tree.proto"), services: [])
+
+        let suggestions = await provider.suggestions(
+            for: AutocompleteContext(resolvedPath: ["child"], mode: .key),
+            rootMessageType: "tree.Node",
+            in: proto)
+        let names = Set(suggestions.map(\.name))
+
+        XCTAssertTrue(names.contains("child"))
+        XCTAssertTrue(names.contains("label"))
+        XCTAssertEqual(suggestions.first?.kind, .fillDefaults)
+    }
+
+    func test_keyMode_emptyNestedMessage_returnsOnlyFillDefaults() async {
+        let file = FileDescriptor(name: "empty.proto", package: "empty")
+        var root = MessageDescriptor(name: "Root", parent: file)
+        root.addField(FieldDescriptor(name: "box", number: 1, type: .message, typeName: "empty.Box"))
+        let box = MessageDescriptor(name: "Box", parent: file)
+        let provider = ProtoSchemaAutocompleteProvider(
+            protoRepository: StubProtoRepository(descriptors: ["empty.Root": root, "empty.Box": box]))
+        let proto = ProtoFile(name: "empty.proto", path: URL(fileURLWithPath: "/empty.proto"), services: [])
+
+        let suggestions = await provider.suggestions(
+            for: AutocompleteContext(resolvedPath: ["box"], mode: .key),
+            rootMessageType: "empty.Root",
+            in: proto)
+
+        XCTAssertEqual(suggestions.map(\.kind), [.fillDefaults])
+        XCTAssertEqual(suggestions.first?.typeHint, "")
+    }
+
+    func test_keyMode_insideMapObject_offersNoEntryFields() async {
+        let (provider, proto) = mapSchema()
+
+        let suggestions = await provider.suggestions(
+            for: AutocompleteContext(resolvedPath: ["labels"], mode: .key),
+            rootMessageType: "map.Request",
+            in: proto)
+
+        XCTAssertTrue(suggestions.isEmpty)
+    }
+
+    func test_enumValueMode_mapStringValue_offersNoListAndHintsString() async {
+        let (provider, proto) = mapSchema()
+        let context = AutocompleteContext(
+            resolvedPath: ["labels"],
+            mode: .enumValue,
+            currentFieldKey: "home")
+
+        let suggestions = await provider.suggestions(
+            for: context,
+            rootMessageType: "map.Request",
+            in: proto)
+        let hint = await provider.valueTypeHint(for: context, rootMessageType: "map.Request", in: proto)
+
+        XCTAssertTrue(suggestions.isEmpty)
+        XCTAssertEqual(hint, JsonValueTypeHint(name: "string", kind: .string))
+    }
+
+    func test_enumValueMode_mapIntegerValue_hintsTheJsonNumberName() async {
+        let (provider, proto) = mapSchema()
+        let context = AutocompleteContext(
+            resolvedPath: ["counts"],
+            mode: .enumValue,
+            currentFieldKey: "1")
+
+        let suggestions = await provider.suggestions(
+            for: context,
+            rootMessageType: "map.Request",
+            in: proto)
+        let hint = await provider.valueTypeHint(for: context, rootMessageType: "map.Request", in: proto)
+
+        XCTAssertTrue(suggestions.isEmpty)
+        XCTAssertEqual(hint, JsonValueTypeHint(name: "int32", kind: .number))
+    }
+
+    func test_enumValueMode_mapBoolValue_offersTrueAndFalse() async {
+        let (provider, proto) = mapSchema()
+        let context = AutocompleteContext(
+            resolvedPath: ["flags"],
+            mode: .enumValue,
+            currentFieldKey: "true")
+
+        let suggestions = await provider.suggestions(
+            for: context,
+            rootMessageType: "map.Request",
+            in: proto)
+
+        XCTAssertEqual(suggestions.map(\.name), ["true", "false"])
+        XCTAssertTrue(suggestions.allSatisfy { $0.kind == .boolLiteral })
+    }
+
+    func test_enumValueMode_mapEnumValue_offersConstants() async {
+        let (provider, proto) = mapSchema()
+        let context = AutocompleteContext(
+            resolvedPath: ["codes"],
+            mode: .enumValue,
+            currentFieldKey: "home")
+
+        let suggestions = await provider.suggestions(
+            for: context,
+            rootMessageType: "map.Request",
+            in: proto)
+
+        XCTAssertEqual(Set(suggestions.map(\.name)), Set(["ACTIVE", "INACTIVE"]))
+        XCTAssertTrue(suggestions.allSatisfy { $0.kind == .enum && $0.typeHint == "Status" })
+    }
+
+    func test_enumValueMode_mapTimestampValue_offersNow() async {
+        let (provider, proto) = mapSchema()
+        let context = AutocompleteContext(
+            resolvedPath: ["when"],
+            mode: .enumValue,
+            currentFieldKey: "created")
+
+        let suggestions = await provider.suggestions(
+            for: context,
+            rootMessageType: "map.Request",
+            in: proto)
+        let hint = await provider.valueTypeHint(for: context, rootMessageType: "map.Request", in: proto)
+
+        XCTAssertEqual(suggestions.map(\.name), ["now"])
+        XCTAssertEqual(suggestions.first?.kind, .wktDefault)
+        XCTAssertEqual(hint, JsonValueTypeHint(name: "Timestamp", kind: .wktString))
+    }
+
+    func test_enumValueMode_mapMessageValue_offersNoListAndHintsTheMessage() async {
+        let (provider, proto) = mapSchema()
+        let context = AutocompleteContext(
+            resolvedPath: ["addresses"],
+            mode: .enumValue,
+            currentFieldKey: "home")
+
+        let suggestions = await provider.suggestions(
+            for: context,
+            rootMessageType: "map.Request",
+            in: proto)
+        let hint = await provider.valueTypeHint(for: context, rootMessageType: "map.Request", in: proto)
+
+        XCTAssertTrue(suggestions.isEmpty)
+        XCTAssertEqual(hint, JsonValueTypeHint(name: "Address", kind: .message))
+    }
+
+    func test_keyMode_insideMapValueMessage_offersValueFieldsNotTheKey() async {
+        let (provider, proto) = mapSchema()
+
+        let suggestions = await provider.suggestions(
+            for: AutocompleteContext(resolvedPath: ["addresses", "home"], mode: .key),
+            rootMessageType: "map.Request",
+            in: proto)
+        let byName = Dictionary(uniqueKeysWithValues: suggestions.map { ($0.name, $0) })
+
+        XCTAssertNil(byName["key"])
+        XCTAssertNil(byName["value"])
+        XCTAssertNil(byName["home"])
+        XCTAssertEqual(byName["street"]?.kind, .string)
+        XCTAssertEqual(byName["city"]?.kind, .string)
+        XCTAssertEqual(byName["tags"]?.kind, .repeated)
+        XCTAssertEqual(byName["tags"]?.typeHint, "string[]")
+        XCTAssertEqual(byName["meta"]?.kind, .message)
+        XCTAssertEqual(byName["meta"]?.typeHint, "map")
+        XCTAssertEqual(suggestions.first?.kind, .fillDefaults)
+    }
+
+    func test_arrayElementMode_scalarRepeatedInsideMapValue_offersNothing() async {
+        let (provider, proto) = mapSchema()
+
+        let suggestions = await provider.suggestions(
+            for: AutocompleteContext(resolvedPath: ["addresses", "home", "tags"], mode: .arrayElement),
+            rootMessageType: "map.Request",
+            in: proto)
+
+        XCTAssertTrue(suggestions.isEmpty)
+    }
+
+    func test_keyMode_mapKeyThatMatchesAFieldName_staysOnTheValueMessage() async {
+        let (provider, proto) = mapSchema()
+
+        let suggestions = await provider.suggestions(
+            for: AutocompleteContext(resolvedPath: ["addresses", "street"], mode: .key),
+            rootMessageType: "map.Request",
+            in: proto)
+        let names = Set(suggestions.map(\.name))
+
+        XCTAssertTrue(names.contains("street"))
+        XCTAssertTrue(names.contains("city"))
+        XCTAssertEqual(suggestions.first?.kind, .fillDefaults)
+    }
+
+    func test_keyMode_insideScalarMapKey_offersNothing() async {
+        let (provider, proto) = mapSchema()
+
+        let suggestions = await provider.suggestions(
+            for: AutocompleteContext(resolvedPath: ["counts", "1"], mode: .key),
+            rootMessageType: "map.Request",
+            in: proto)
+
+        XCTAssertTrue(suggestions.isEmpty)
+    }
+
+    func test_arrayElementMode_repeatedMessage_offersItsOwnRepeatedAndMapWithoutFillDefaults() async {
+        let (provider, proto) = mapSchema()
+
+        let suggestions = await provider.suggestions(
+            for: AutocompleteContext(resolvedPath: ["places"], mode: .arrayElement),
+            rootMessageType: "map.Request",
+            in: proto)
+        let byName = Dictionary(uniqueKeysWithValues: suggestions.map { ($0.name, $0) })
+
+        XCTAssertFalse(suggestions.contains { $0.kind == .fillDefaults })
+        XCTAssertEqual(byName["tags"]?.kind, .repeated)
+        XCTAssertEqual(byName["tags"]?.typeHint, "string[]")
+        XCTAssertEqual(byName["meta"]?.kind, .message)
+        XCTAssertEqual(byName["meta"]?.typeHint, "map")
+        XCTAssertEqual(byName["street"]?.kind, .string)
+    }
+
+    func test_keyMode_insideRepeatedMessageElement_offersThatElementsMapAndRepeated() async {
+        let (provider, proto) = mapSchema()
+
+        let suggestions = await provider.suggestions(
+            for: AutocompleteContext(resolvedPath: ["places"], mode: .key),
+            rootMessageType: "map.Request",
+            in: proto)
+        let byName = Dictionary(uniqueKeysWithValues: suggestions.map { ($0.name, $0) })
+
+        XCTAssertEqual(suggestions.first?.kind, .fillDefaults)
+        XCTAssertEqual(byName["tags"]?.typeHint, "string[]")
+        XCTAssertEqual(byName["meta"]?.typeHint, "map")
+    }
+
+    func test_keyMode_mapInsideRepeatedMessageElement_offersNoKeys() async {
+        let (provider, proto) = mapSchema()
+
+        let suggestions = await provider.suggestions(
+            for: AutocompleteContext(resolvedPath: ["places", "meta"], mode: .key),
+            rootMessageType: "map.Request",
+            in: proto)
+
+        XCTAssertTrue(suggestions.isEmpty)
+    }
+
+    func test_enumValueMode_mapInsideRepeatedMessageElement_followsTheValueType() async {
+        let (provider, proto) = mapSchema()
+        let context = AutocompleteContext(
+            resolvedPath: ["places", "meta"],
+            mode: .enumValue,
+            currentFieldKey: "home")
+
+        let suggestions = await provider.suggestions(
+            for: context,
+            rootMessageType: "map.Request",
+            in: proto)
+        let hint = await provider.valueTypeHint(for: context, rootMessageType: "map.Request", in: proto)
+
+        XCTAssertTrue(suggestions.isEmpty)
+        XCTAssertEqual(hint, JsonValueTypeHint(name: "string", kind: .string))
+    }
+
+    func test_arrayElementMode_repeatedInsideRepeatedMessageElement_offersNothing() async {
+        let (provider, proto) = mapSchema()
+        let context = AutocompleteContext(resolvedPath: ["places", "tags"], mode: .arrayElement)
+
+        let suggestions = await provider.suggestions(
+            for: context,
+            rootMessageType: "map.Request",
+            in: proto)
+        let hint = await provider.valueTypeHint(for: context, rootMessageType: "map.Request", in: proto)
+
+        XCTAssertTrue(suggestions.isEmpty)
+        XCTAssertEqual(hint, JsonValueTypeHint(name: "string", kind: .string))
+    }
+
+    func test_enumValueMode_mapDurationValue_offersTheCanonicalUnits() async {
+        let (provider, proto) = mapSchema()
+        let context = AutocompleteContext(
+            resolvedPath: ["waits"],
+            mode: .enumValue,
+            currentFieldKey: "home")
+
+        let suggestions = await provider.suggestions(
+            for: context,
+            rootMessageType: "map.Request",
+            in: proto)
+        let hint = await provider.valueTypeHint(for: context, rootMessageType: "map.Request", in: proto)
+
+        XCTAssertEqual(suggestions.map(\.name), Self.canonicalDurations)
+        XCTAssertTrue(suggestions.allSatisfy { $0.kind == .wktDefault && $0.insertValue == nil })
+        XCTAssertEqual(hint, JsonValueTypeHint(name: "Duration", kind: .wktString))
+    }
+
+    func test_arrayElementMode_repeatedDuration_offersTheCanonicalUnits() async {
+        let (provider, proto) = mapSchema()
+        let context = AutocompleteContext(resolvedPath: ["spans"], mode: .arrayElement)
+
+        let suggestions = await provider.suggestions(
+            for: context,
+            rootMessageType: "map.Request",
+            in: proto)
+        let hint = await provider.valueTypeHint(for: context, rootMessageType: "map.Request", in: proto)
+
+        XCTAssertEqual(suggestions.map(\.name), Self.canonicalDurations)
+        XCTAssertTrue(suggestions.allSatisfy { $0.kind == .wktDefault && $0.insertValue == nil })
+        XCTAssertEqual(hint, JsonValueTypeHint(name: "Duration", kind: .wktString))
+    }
+
+    func test_arrayElementMode_mapField_offersNothing() async {
+        let (provider, proto) = mapSchema()
+
+        let suggestions = await provider.suggestions(
+            for: AutocompleteContext(resolvedPath: ["labels"], mode: .arrayElement),
+            rootMessageType: "map.Request",
+            in: proto)
+
+        XCTAssertTrue(suggestions.isEmpty)
+    }
+
+    private func mapSchema() -> (ProtoSchemaAutocompleteProvider, ProtoFile) {
+        let file = FileDescriptor(name: "map.proto", package: "map")
+        var status = EnumDescriptor(name: "Status", parent: file)
+        status.addValue(EnumDescriptor.EnumValue(name: "ACTIVE", number: 0))
+        status.addValue(EnumDescriptor.EnumValue(name: "INACTIVE", number: 1))
+
+        var address = MessageDescriptor(name: "Address", parent: file)
+        address.addField(FieldDescriptor(name: "street", number: 1, type: .string))
+        address.addField(FieldDescriptor(name: "city", number: 2, type: .string))
+        address.addField(FieldDescriptor(name: "tags", number: 3, type: .string, isRepeated: true))
+        address.addField(mapField(name: "meta", number: 4, valueType: .string, valueTypeName: nil))
+
+        var entry = MessageDescriptor(name: "LabelsEntry", parent: file)
+        entry.addField(FieldDescriptor(name: "key", number: 1, type: .string))
+        entry.addField(FieldDescriptor(name: "value", number: 2, type: .string))
+
+        var root = MessageDescriptor(name: "Request", parent: file)
+        root.addField(mapField(name: "labels", number: 1, valueType: .string, valueTypeName: nil))
+        root.addField(mapField(name: "counts", number: 2, valueType: .int32, valueTypeName: nil))
+        root.addField(mapField(name: "flags", number: 3, valueType: .bool, valueTypeName: nil))
+        root.addField(mapField(name: "codes", number: 4, valueType: .enum, valueTypeName: "map.Status"))
+        root.addField(mapField(
+            name: "when",
+            number: 5,
+            valueType: .message,
+            valueTypeName: "google.protobuf.Timestamp"))
+        root.addField(mapField(name: "addresses", number: 6, valueType: .message, valueTypeName: "map.Address"))
+        root.addField(FieldDescriptor(
+            name: "places",
+            number: 7,
+            type: .message,
+            typeName: "map.Address",
+            isRepeated: true))
+        root.addField(mapField(
+            name: "waits",
+            number: 8,
+            valueType: .message,
+            valueTypeName: "google.protobuf.Duration"))
+        root.addField(FieldDescriptor(
+            name: "spans",
+            number: 9,
+            type: .message,
+            typeName: "google.protobuf.Duration",
+            isRepeated: true))
+
+        let provider = ProtoSchemaAutocompleteProvider(
+            protoRepository: StubProtoRepository(
+                descriptors: [
+                    "map.Request": root,
+                    "map.Address": address,
+                    "map.Request.LabelsEntry": entry,
+                ],
+                enumDescriptors: ["map.Status": status]))
+        let proto = ProtoFile(name: "map.proto", path: URL(fileURLWithPath: "/map.proto"), services: [])
+        return (provider, proto)
+    }
+
+    private func mapField(
+        name: String,
+        number: Int,
+        valueType: FieldType,
+        valueTypeName: String?)
+        -> FieldDescriptor
+    {
+        let entry = MapEntryInfo(
+            keyFieldInfo: KeyFieldInfo(name: "key", number: 1, type: .string),
+            valueFieldInfo: ValueFieldInfo(name: "value", number: 2, type: valueType, typeName: valueTypeName))
+        return FieldDescriptor(
+            name: name,
+            number: number,
+            type: .message,
+            typeName: "map.Request.\(name)Entry",
+            isRepeated: true,
+            isMap: true,
+            mapEntryInfo: entry)
+    }
+
+    private static let canonicalDurations = [
+        "0s", "1s", "60s", "3600s", "86400s", "604800s", "2592000s", "31536000s",
+    ]
 
     private func valueTypeHint(
         mode: AutocompleteMode,

@@ -131,6 +131,13 @@ private struct FittedPopoverLayout: Layout {
     }
 }
 
+enum AutocompleteSuggestionAppearance {
+    /// Oneof alternatives stay in the list and are drawn dimmer than ordinary fields.
+    static func rowOpacity(oneOfGroup: String?) -> Double {
+        oneOfGroup == nil ? 1 : 0.7
+    }
+}
+
 private struct SuggestionRow: View {
     let suggestion: AutocompleteSuggestion
     let isSelected: Bool
@@ -166,7 +173,7 @@ private struct SuggestionRow: View {
                     .fill(Color(nsColor: .selectedContentBackgroundColor))
             }
         }
-        .opacity(suggestion.oneOfGroup != nil ? 0.7 : 1.0)
+        .opacity(AutocompleteSuggestionAppearance.rowOpacity(oneOfGroup: suggestion.oneOfGroup))
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("suggestion_row_\(index)")
     }

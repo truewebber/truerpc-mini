@@ -413,6 +413,119 @@ final class SmartInsertServiceTests: XCTestCase {
         XCTAssertEqual(sut.indentedClosingSuffix(count: 2, baseIndent: "    "), "\n    }\n  }")
     }
 
+    func test_isArrayElementSlot_betweenBrackets_isTrue() {
+        let text = "{\"items\": [\n    \n  ]}" as NSString
+        let cursor = text.range(of: "[\n    ").location + "[\n    ".count
+
+        XCTAssertTrue(sut.isArrayElementSlot(in: text, cursorUTF16: cursor))
+    }
+
+    func test_isArrayElementSlot_insideElementObject_isFalse() {
+        let text = "{\"items\": [ {} ]}" as NSString
+        let cursor = text.range(of: "{}").location + 1
+
+        XCTAssertFalse(sut.isArrayElementSlot(in: text, cursorUTF16: cursor))
+    }
+
+    func test_isArrayElementSlot_afterCompletedElement_isTrue() {
+        let text = "{\"items\": [ {\"enabled\": true},  ]}" as NSString
+        let cursor = text.range(of: ",  ]").location + 1
+
+        XCTAssertTrue(sut.isArrayElementSlot(in: text, cursorUTF16: cursor))
+    }
+
+    func test_isArrayElementSlot_insideMapObject_isFalse() {
+        let text = "{\"labels\": {}}" as NSString
+        let cursor = text.range(of: "{}").location + 1
+
+        XCTAssertFalse(sut.isArrayElementSlot(in: text, cursorUTF16: cursor))
+    }
+
+    func test_isArrayElementSlot_insideString_isFalse() {
+        let text = "{\"items\": [ \"\" ]}" as NSString
+        let cursor = text.range(of: "\"\"").location + 1
+
+        XCTAssertFalse(sut.isArrayElementSlot(in: text, cursorUTF16: cursor))
+    }
+
+    func test_isArrayElementSlot_insideNestedArray_isTrue() {
+        let text = "{\"items\": [ {\"tags\": []} ]}" as NSString
+        let cursor = text.range(of: "[]").location + 1
+
+        XCTAssertTrue(sut.isArrayElementSlot(in: text, cursorUTF16: cursor))
+    }
+
+    func test_arrayElementObjectSnippet_boolField_wrapsTheFieldAndLeavesTheCaretInTheValue() {
+        let suggestion = AutocompleteSuggestion(name: "enabled", typeHint: "bool", kind: .bool)
+        let snippet = sut.arrayElementObjectSnippet(for: suggestion, lineIndent: "    ")
+
+        let (text, cursorBack) = tryUnwrapSnippet(snippet)
+        XCTAssertEqual(text, "{\n      \"enabled\": \n    }")
+        let caret = (text as NSString).length - cursorBack
+        XCTAssertEqual((text as NSString).substring(to: caret), "{\n      \"enabled\": ")
+    }
+
+    func test_arrayElementObjectSnippet_stringField_leavesTheCaretInsideTheQuotes() {
+        let suggestion = AutocompleteSuggestion(name: "name", typeHint: "string", kind: .string)
+        let snippet = sut.arrayElementObjectSnippet(for: suggestion, lineIndent: "    ")
+
+        let (text, cursorBack) = tryUnwrapSnippet(snippet)
+        XCTAssertEqual(text, "{\n      \"name\": \"\"\n    }")
+        let caret = (text as NSString).length - cursorBack
+        XCTAssertEqual((text as NSString).character(at: caret - 1), UInt16(UnicodeScalar("\"").value))
+        XCTAssertEqual((text as NSString).character(at: caret), UInt16(UnicodeScalar("\"").value))
+    }
+
+    func test_arrayElementObjectSnippet_messageField_leavesTheCaretInsideTheNestedObject() {
+        let suggestion = AutocompleteSuggestion(name: "detail", typeHint: "Detail", kind: .message)
+        let snippet = sut.arrayElementObjectSnippet(for: suggestion, lineIndent: "    ")
+
+        let (text, cursorBack) = tryUnwrapSnippet(snippet)
+        XCTAssertEqual(text, "{\n      \"detail\": {\n        \n      }\n    }")
+        let caret = (text as NSString).length - cursorBack
+        XCTAssertEqual((text as NSString).substring(to: caret), "{\n      \"detail\": {\n        ")
+    }
+
+    func test_arrayElementObjectSnippet_repeatedField_leavesTheCaretBetweenBrackets() {
+        let suggestion = AutocompleteSuggestion(name: "tags", typeHint: "string[]", kind: .repeated)
+        let snippet = sut.arrayElementObjectSnippet(for: suggestion, lineIndent: "    ")
+
+        let (text, cursorBack) = tryUnwrapSnippet(snippet)
+        XCTAssertEqual(text, "{\n      \"tags\": []\n    }")
+        let caret = (text as NSString).length - cursorBack
+        XCTAssertEqual((text as NSString).substring(to: caret), "{\n      \"tags\": [")
+    }
+
+    func test_arrayElementObjectSnippet_valueLiteral_returnsNil() {
+        let literals: [AutocompleteSuggestion] = [
+            AutocompleteSuggestion(name: "true", typeHint: "bool", kind: .boolLiteral),
+            AutocompleteSuggestion(name: "ACTIVE", typeHint: "Status", kind: .enum),
+            AutocompleteSuggestion(
+                name: "now",
+                typeHint: "Timestamp",
+                kind: .wktDefault,
+                insertValue: "2026-01-01T00:00:00Z"),
+            AutocompleteSuggestion(name: "fillDefaults", typeHint: "", kind: .fillDefaults),
+        ]
+
+        for suggestion in literals {
+            XCTAssertNil(sut.arrayElementObjectSnippet(for: suggestion, lineIndent: "    "))
+        }
+    }
+
+    private func tryUnwrapSnippet(
+        _ snippet: (text: String, cursorBack: Int)?,
+        line: UInt = #line)
+        -> (String, Int)
+    {
+        guard let snippet else {
+            XCTFail("Expected a wrapped field snippet", line: line)
+            return ("", 0)
+        }
+
+        return (snippet.text, snippet.cursorBack)
+    }
+
     func test_indentedClosingSuffix_count1_noIndent_returnsUnindentedBrace() {
         XCTAssertEqual(sut.indentedClosingSuffix(count: 1, baseIndent: ""), "\n}")
     }

@@ -978,7 +978,10 @@ struct JSONTextEditor: NSViewRepresentable {
             // Compute line indentation from pre-insertion text so the snippet and all
             // closing-brace patches share a consistent base indent.
             let lineIndent = smartInsert.lineIndentation(in: ns, at: range.location)
-            let (insertText, cursorBack) = smartInsert.smartInsertComponents(
+            let wrapped = smartInsert.isArrayElementSlot(in: ns, cursorUTF16: range.location)
+                ? smartInsert.arrayElementObjectSnippet(for: suggestion, lineIndent: lineIndent)
+                : nil
+            let (insertText, cursorBack) = wrapped ?? smartInsert.smartInsertComponents(
                 for: suggestion, lineIndent: lineIndent)
             guard !insertText.isEmpty else { return }
 
